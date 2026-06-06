@@ -8,12 +8,12 @@ export type {
 export type {
   GameFrame,
   LoadedGame,
-  ReadonlyEntityState,
   ReadonlyGameState,
   ShootingCore,
   StageSession,
   StartStageOptions,
 } from "./core.ts";
+export type { ReadonlyEntityState } from "./simulation/runtime-entity.ts";
 export type {
   AssetKeyRegistry,
   BulletDefinition,

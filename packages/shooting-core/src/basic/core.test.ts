@@ -41,6 +41,14 @@ test("loads valid minimum content and advances deterministic ticks", () => {
     "stageStarted",
     "tickAdvanced",
   ]);
+  assert.deepEqual(frame0.ok && frame0.value.state.entities, [
+    {
+      id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: { x: 192, y: 400 },
+    },
+  ]);
 
   const frame1 = started.value.tick(createEmptyInputFrame(1));
   assert.equal(frame1.ok, true);
@@ -51,7 +59,7 @@ test("returns identical frames for identical seed and input sequence", () => {
   const first = startMinimumStage();
   const second = startMinimumStage();
 
-  for (let tick = 0; tick < 3; tick += 1) {
+  for (let tick = 0; tick <= 60; tick += 1) {
     const firstFrame = first.tick(createEmptyInputFrame(tick));
     const secondFrame = second.tick(createEmptyInputFrame(tick));
 
@@ -67,7 +75,7 @@ test("spawns enemy entities from the stage timeline deterministically", () => {
   for (let tick = 0; tick < 60; tick += 1) {
     const frame = started.tick(createEmptyInputFrame(tick));
     assert.equal(frame.ok, true);
-    assert.equal(frame.ok && frame.value.state.entities.length, 0);
+    assert.deepEqual(frame.ok && frame.value.state.entities.map((entity) => entity.kind), ["player"]);
   }
 
   const spawnFrame = started.tick(createEmptyInputFrame(60));
@@ -80,7 +88,7 @@ test("spawns enemy entities from the stage timeline deterministically", () => {
   assert.deepEqual(spawnFrame.value.events[0], {
     type: "entitySpawned",
     tick: 60,
-    entityId: 1,
+    entityId: 2,
     entityKind: "enemy",
     definitionId: "enemy.scout",
     path: "path.none",
@@ -90,6 +98,12 @@ test("spawns enemy entities from the stage timeline deterministically", () => {
   assert.deepEqual(spawnFrame.value.state.entities, [
     {
       id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: { x: 192, y: 400 },
+    },
+    {
+      id: 2,
       kind: "enemy",
       definitionId: "enemy.scout",
       position: { x: 192, y: -16 },
@@ -107,7 +121,89 @@ test("spawns enemy entities from the stage timeline deterministically", () => {
   const nextFrame = started.tick(createEmptyInputFrame(61));
   assert.equal(nextFrame.ok, true);
   assert.deepEqual(nextFrame.ok && nextFrame.value.events.map((event) => event.type), ["tickAdvanced"]);
-  assert.equal(nextFrame.ok && nextFrame.value.state.entities.length, 1);
+  assert.equal(nextFrame.ok && nextFrame.value.state.entities.length, 2);
+});
+
+test("spawns multiple enemies on the same tick in timeline order", () => {
+  const definition = createMinimumDefinition();
+  const baseStage = definition.content.stages[0]!;
+  const spawnStep = baseStage.timeline[0]!;
+  const loaded = createShootingCore("0.0.0").load({
+    ...definition,
+    content: {
+      ...definition.content,
+      assetKeys: {
+        keys: [...definition.content.assetKeys.keys, "enemy.heavy"],
+      },
+      enemies: [
+        ...definition.content.enemies,
+        { id: "enemy.heavy", version: 1, asset: "enemy.heavy", collision: { radius: 20 }, hp: 30, score: 300 },
+      ],
+      stages: [
+        {
+          ...baseStage,
+          timeline: [
+            { ...spawnStep, tick: 0, action: { ...spawnStep.action, position: { x: 96, y: -16 } } },
+            {
+              ...spawnStep,
+              tick: 0,
+              action: {
+                ...spawnStep.action,
+                enemy: "enemy.heavy",
+                path: "path.swoop",
+                pattern: "pattern.spread",
+                position: { x: 288, y: -16 },
+              },
+            },
+          ],
+        },
+      ],
+      patterns: [...definition.content.patterns, { id: "pattern.spread", version: 1 }],
+      paths: [...definition.content.paths, { id: "path.swoop", version: 1 }],
+    },
+  });
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+
+  const started = loaded.value.startStage({
+    stageId: "stage.stage_01",
+    difficulty: "normal",
+    seed: "seed-1",
+  });
+  assert.equal(started.ok, true);
+  if (!started.ok) {
+    assert.fail("expected stage session");
+  }
+
+  const frame = started.value.tick(createEmptyInputFrame(0));
+  assert.equal(frame.ok, true);
+  if (!frame.ok) {
+    assert.fail("expected frame");
+  }
+
+  assert.deepEqual(frame.value.events.map((event) => event.type), ["stageStarted", "entitySpawned", "entitySpawned", "tickAdvanced"]);
+  assert.deepEqual(frame.value.events.filter((event) => event.type === "entitySpawned").map((event) => ({
+    entityId: event.entityId,
+    definitionId: event.definitionId,
+    path: event.path,
+    pattern: event.pattern,
+    position: event.position,
+  })), [
+    { entityId: 2, definitionId: "enemy.scout", path: "path.none", pattern: "pattern.none", position: { x: 96, y: -16 } },
+    { entityId: 3, definitionId: "enemy.heavy", path: "path.swoop", pattern: "pattern.spread", position: { x: 288, y: -16 } },
+  ]);
+  assert.deepEqual(frame.value.state.entities.map((entity) => ({
+    id: entity.id,
+    kind: entity.kind,
+    definitionId: entity.definitionId,
+    position: entity.position,
+  })), [
+    { id: 1, kind: "player", definitionId: "player.default", position: { x: 192, y: 400 } },
+    { id: 2, kind: "enemy", definitionId: "enemy.scout", position: { x: 96, y: -16 } },
+    { id: 3, kind: "enemy", definitionId: "enemy.heavy", position: { x: 288, y: -16 } },
+  ]);
 });
 
 test("keeps a validated content snapshot after load", () => {
@@ -265,7 +361,7 @@ test("rejects duplicate ids and missing assets", () => {
       ...definition.content,
       enemies: [
         ...definition.content.enemies,
-        { id: "enemy.scout", version: 1, asset: "enemy.missing", hp: 10, score: 10 },
+        { id: "enemy.scout", version: 1, asset: "enemy.missing", collision: { radius: 12 }, hp: 10, score: 10 },
       ],
     },
   });
@@ -396,7 +492,9 @@ test("rejects invalid numeric content constraints", () => {
           ],
         },
       ],
-      enemies: [{ ...definition.content.enemies[0], hp: -10 }],
+      enemies: [{ ...definition.content.enemies[0], collision: { radius: -2 }, hp: -10 }],
+      bullets: [{ ...definition.content.bullets[0], collision: { radius: 0 } }],
+      playerShots: [{ ...definition.content.playerShots[0], collision: { radius: -1 } }],
     },
   });
 

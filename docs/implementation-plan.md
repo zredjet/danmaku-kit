@@ -20,7 +20,7 @@ Done:
 - registry の最小 validation を実装する
 - `load()` 成功時に validated content snapshot を保持する
 - `InputFrame`、deep immutable event log、PRNG、entity id allocator を置く
-- tick 成功時のみ PRNG、pending event、expected tick を更新する最小 commit 境界を作る
+- tick 成功時のみ PRNG、entity allocator、active entities、timeline cursor、pending event、expected tick を更新する最小 commit 境界を作る
 - `CoreResult` / `CoreError` / `CoreErrorCode` を `result.ts` に分離し、下位モジュールが `core.ts` に依存しない形へ寄せる
 - package export 経由の minimum gameplay flow test を追加する
 - `tsc --noEmit` による public type contract 検査を追加する
@@ -30,10 +30,16 @@ Done:
 - Core 本体は DOM 型を含めず、テスト TypeScript は `tsconfig.test.json` で別途型検査する
 - renderer なしの `node:test` で load / startStage / tick / empty tick deterministic smoke / package boundary を検証する
 - Stage timeline の `spawnEnemy` から deterministic な enemy entity と `entitySpawned` event を生成する
+- Player / Enemy / EnemyBullet / PlayerShot の runtime entity component 型を定義する
+- stage start 時に player runtime entity を生成し、公開 `GameFrame.state.entities` に投影する
+- Enemy runtime entity に path / pattern / hp / scoreOnKill を保持し、後続 system が参照できるようにする
+- Enemy / EnemyBullet / PlayerShot の collision radius を content schema から runtime entity へ流す
 
 Next:
 
-- Player、Enemy、EnemyBullet、PlayerShot の component minimum を定義する
+- player shot runtime entity の生成を入れる
+- enemy bullet runtime entity の生成を入れる
+- tick 内 system order と id 昇順 tie-breaker を固定する
 - player shot と enemy の最小 collision を入れる
 - enemy bullet と player の最小 collision を入れる
 - fixed `scoreOnKill` を event と state に接続する
@@ -71,9 +77,12 @@ Next:
    - Later: feature registry 導入時に未使用 feature 定義の warning を追加する
 
 3. Phase 1A-3: Entity / component minimum
-   - Next: Player、Enemy、EnemyBullet、PlayerShot の runtime entity を作る
+   - Done: Player、Enemy、EnemyBullet、PlayerShot の runtime entity component 型を作る
+   - Done: stage start 時に Player entity を生成する
    - Done: Stage timeline の spawnEnemy から Enemy entity と `entitySpawned` event を生成する
-   - Next: entity id は monotonic に採番し、tick 内の処理順を id 昇順へ寄せる
+   - Done: entity id は monotonic に採番する
+   - Next: PlayerShot / EnemyBullet entity の生成経路を作る
+   - Next: tick 内 system order と id 昇順 tie-breaker を固定する
 
 4. Phase 1A-4: Movement and collision minimum
    - Next: player shot と enemy の hit
@@ -87,7 +96,7 @@ Next:
 
 ## 後続で明示対応するレビュー指摘
 
-- `StageSession.tick()` は PRNG、pending event、expected tick の最小 commit 境界へ寄せた。collision / pattern / budget failure 追加時は `CommittedStageState` と `WorkingStageState` を明示し、成功時だけ committed state へ swap する。
+- `StageSession.tick()` は PRNG、entity allocator、active entities、timeline cursor、pending event、expected tick の commit 境界へ寄せた。collision / pattern / budget failure 追加時は `CommittedStageState` と `WorkingStageState` を明示し、成功時だけ committed state へ swap する。
 - `EntityAllocator` は restore 経路を追加済み。Phase 1B の `SerializedGameState` に `nextEntityId` を含める。
 - `XorShift32.restore()` は invalid state を `CoreResult` として返す API に見直し済み。
 - root package export の minimum gameplay flow test は追加済み。`npm install` による workspace symlink 作成を開発手順に含める。
@@ -96,7 +105,7 @@ Next:
 ## Phase 1B へ進む条件
 
 - renderer なしで `StageSession.tick()` が 1 tick 単位で成功する
-- minimum content fixture から player / enemy / bullet / shot を生成できる
+- minimum content fixture から player / enemy を生成でき、bullet / shot の runtime entity 型境界が用意されている
 - collision と score の最小 event が deterministic に並ぶ
 - `npm install` 後の `npm test` が通る
 - `npm run typecheck` が通る

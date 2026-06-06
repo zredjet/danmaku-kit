@@ -136,24 +136,27 @@ function validateDefinitionShape(definition: unknown, errors: CoreError[]): Game
     validateStageShape(stage, errors);
   }
   for (const enemy of enemies) {
-    validateAllowedKeys("enemy", enemy, ["id", "version", "asset", "hp", "score"], errors);
+    validateAllowedKeys("enemy", enemy, ["id", "version", "asset", "collision", "hp", "score"], errors);
     validateNonEmptyString("enemy.id", enemy.id, errors);
     validatePositiveInteger("enemy.version", enemy.version, errors);
     validateNonEmptyString("enemy.asset", enemy.asset, errors);
+    validateCollisionShape("enemy.collision", enemy.collision, errors);
     validatePositiveNumber("enemy.hp", enemy.hp, errors);
     validateNonNegativeInteger("enemy.score", enemy.score, errors);
   }
   for (const bullet of bullets) {
-    validateAllowedKeys("bullet", bullet, ["id", "version", "asset"], errors);
+    validateAllowedKeys("bullet", bullet, ["id", "version", "asset", "collision"], errors);
     validateNonEmptyString("bullet.id", bullet.id, errors);
     validatePositiveInteger("bullet.version", bullet.version, errors);
     validateNonEmptyString("bullet.asset", bullet.asset, errors);
+    validateCollisionShape("bullet.collision", bullet.collision, errors);
   }
   for (const playerShot of playerShots) {
-    validateAllowedKeys("playerShot", playerShot, ["id", "version", "asset", "damage"], errors);
+    validateAllowedKeys("playerShot", playerShot, ["id", "version", "asset", "collision", "damage"], errors);
     validateNonEmptyString("playerShot.id", playerShot.id, errors);
     validatePositiveInteger("playerShot.version", playerShot.version, errors);
     validateNonEmptyString("playerShot.asset", playerShot.asset, errors);
+    validateCollisionShape("playerShot.collision", playerShot.collision, errors);
     validatePositiveNumber("playerShot.damage", playerShot.damage, errors);
   }
   for (const pattern of patterns) {
@@ -171,6 +174,17 @@ function validateDefinitionShape(definition: unknown, errors: CoreError[]): Game
     return null;
   }
   return definition as GameDefinition;
+}
+
+/** radius だけを持つ最小 collision 定義を検証する。 */
+function validateCollisionShape(path: string, value: unknown, errors: CoreError[]): void {
+  const collision = asRecord(value);
+  if (!collision) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must be an object` });
+    return;
+  }
+  validateAllowedKeys(path, collision, ["radius"], errors);
+  validatePositiveNumber(`${path}.radius`, collision.radius, errors);
 }
 
 /** PlayerDefinition の shape validation。 */
@@ -194,13 +208,7 @@ function validatePlayerShape(player: Record<string, unknown>, errors: CoreError[
     validatePositiveNumber("player.movement.focusSpeed", movement.focusSpeed, errors);
   }
 
-  const collision = asRecord(player.collision);
-  if (!collision) {
-    errors.push({ code: "definition.invalidShape", message: "player.collision must be an object" });
-  } else {
-    validateAllowedKeys("player.collision", collision, ["radius"], errors);
-    validatePositiveNumber("player.collision.radius", collision.radius, errors);
-  }
+  validateCollisionShape("player.collision", player.collision, errors);
 
   const life = asRecord(player.life);
   if (!life) {

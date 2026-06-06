@@ -39,6 +39,9 @@ import type { HashableGameState } from "@shooting-sample/shooting-core";
 // @ts-expect-error internal PRNG snapshot is not part of the root public contract.
 import type { SerializedPrngState } from "@shooting-sample/shooting-core";
 
+// @ts-expect-error internal runtime components are not part of the root public contract.
+import type { EnemyRuntimeEntity, RuntimeEntityState, Vector2 } from "@shooting-sample/shooting-core";
+
 const core: ShootingCore = createShootingCore("type-contract");
 
 const definition: GameDefinition = createMinimumDefinition();
@@ -85,7 +88,25 @@ const entity: ReadonlyEntityState = {
   definitionId: "enemy.scout",
   position: { x: 192, y: -16 },
 };
-const state: ReadonlyGameState = { tick: 0, stageId, playerId, score: 0, entities: [entity] };
+const playerEntity: ReadonlyEntityState = {
+  id: 1,
+  kind: "player",
+  definitionId: "player.default",
+  position: { x: 192, y: 400 },
+};
+const enemyBulletEntity: ReadonlyEntityState = {
+  id: 2,
+  kind: "enemyBullet",
+  definitionId: "bullet.red_small",
+  position: { x: 192, y: 120 },
+};
+const playerShotEntity: ReadonlyEntityState = {
+  id: 3,
+  kind: "playerShot",
+  definitionId: "playerShot.basic",
+  position: { x: 192, y: 360 },
+};
+const state: ReadonlyGameState = { tick: 0, stageId, playerId, score: 0, entities: [playerEntity, entity] };
 const event: GameEvent = { type: "stageStarted", tick: 0, stageId };
 const tickedEvent: GameEvent = { type: "tickAdvanced", tick: 0 };
 const spawnedEvent: GameEvent = {
@@ -128,6 +149,18 @@ const invalidStageEvent: GameEvent = { type: "stageStarted", tick: 0, stageId: "
 // @ts-expect-error enemy id must use the enemy.* namespace.
 const invalidEnemyId: EnemyId = "stage.stage_01";
 
+// @ts-expect-error enemy entity must use an EnemyId definition id.
+const invalidEnemyEntity: ReadonlyEntityState = { ...entity, definitionId: "player.default" };
+
+// @ts-expect-error player entity must use a PlayerId definition id.
+const invalidPlayerEntity: ReadonlyEntityState = { ...playerEntity, definitionId: "enemy.scout" };
+
+// @ts-expect-error enemy bullet entity must use a BulletId definition id.
+const invalidEnemyBulletEntity: ReadonlyEntityState = { ...enemyBulletEntity, definitionId: "enemy.scout" };
+
+// @ts-expect-error player shot entity must use a PlayerShotId definition id.
+const invalidPlayerShotEntity: ReadonlyEntityState = { ...playerShotEntity, definitionId: "bullet.red_small" };
+
 // @ts-expect-error event payloads are immutable through the public contract.
 event.tick = 1;
 
@@ -136,6 +169,9 @@ spawnedEvent.position.x = 0;
 
 // @ts-expect-error readonly state entities cannot be mutated through the public contract.
 state.entities[0] = entity;
+
+// @ts-expect-error nested entity positions are immutable through the public contract.
+playerEntity.position.x = 0;
 
 function assertEventExhaustive(value: GameEvent): number {
   switch (value.type) {
@@ -183,12 +219,22 @@ void patternDefinition;
 void pathDefinition;
 void contentRegistry;
 void state;
+void playerEntity;
+void enemyBulletEntity;
+void playerShotEntity;
 void event;
 void tickedEvent;
 void spawnedEvent;
 void invalidStartOptions;
 void invalidStageEvent;
 void invalidEnemyId;
+void invalidEnemyEntity;
+void invalidPlayerEntity;
+void invalidEnemyBulletEntity;
+void invalidPlayerShotEntity;
 void assertEventExhaustive;
 void (undefined as unknown as HashableGameState);
 void (undefined as unknown as SerializedPrngState);
+void (undefined as unknown as EnemyRuntimeEntity);
+void (undefined as unknown as RuntimeEntityState);
+void (undefined as unknown as Vector2);

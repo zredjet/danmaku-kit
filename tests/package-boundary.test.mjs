@@ -16,7 +16,9 @@ test("rejects deep package imports outside the public export map", async () => {
     "src/basic/core.ts",
     "src/basic/content/types.ts",
     "src/basic/input/input-frame.ts",
+    "src/basic/simulation/entity.ts",
     "src/basic/simulation/prng.ts",
+    "src/basic/simulation/runtime-entity.ts",
   ];
 
   for (const subpath of forbiddenSubpaths) {

@@ -1,5 +1,13 @@
 import { isNamespacedId } from "./content/identifier.ts";
-import type { Difficulty, EnemyId, GameDefinition, PlayerDefinition, PlayerId, StageDefinition, StageId } from "./content/types.ts";
+import type {
+  Difficulty,
+  EnemyDefinition,
+  GameDefinition,
+  PlayerDefinition,
+  PlayerId,
+  StageDefinition,
+  StageId,
+} from "./content/types.ts";
 import { validateGameDefinition } from "./content/validation.ts";
 import { EventLog } from "./events/game-event.ts";
 import type { GameEvent } from "./events/game-event.ts";
@@ -9,7 +17,8 @@ import { deepFreezeClone, deepFreezePlainData } from "./internal/immutable.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
 import type { CoreErrorCode, CoreResult } from "./result.ts";
 import { EntityAllocator } from "./simulation/entity.ts";
-import type { EntityId } from "./simulation/entity.ts";
+import { createEnemyRuntimeEntity, createPlayerRuntimeEntity, toReadonlyEntityState } from "./simulation/runtime-entity.ts";
+import type { ReadonlyEntityState, RuntimeEntityState } from "./simulation/runtime-entity.ts";
 import { XorShift32 } from "./simulation/prng.ts";
 
 const MAX_SEED_LENGTH = 128;
@@ -30,8 +39,8 @@ export type StartStageOptions = {
 /**
  * 1 tick 終了時点の gameplay state。
  *
- * renderer 専用情報を含めず、将来 state hash や replay diff の対象にしやすい
- * 値だけを置く。
+ * renderer / debug HUD が読む表示用 snapshot。HP や pattern cursor のような内部 component は
+ * `HashableGameState.runtimeEntities` 側で扱い、この型へは直接混ぜない。
  */
 export type ReadonlyGameState = Readonly<{
   tick: number;
@@ -39,17 +48,6 @@ export type ReadonlyGameState = Readonly<{
   playerId: PlayerId;
   score: number;
   entities: ReadonlyArray<ReadonlyEntityState>;
-}>;
-
-/** renderer / debug / replay が読む最小 entity snapshot。 */
-export type ReadonlyEntityState = Readonly<{
-  id: EntityId;
-  kind: "enemy";
-  definitionId: EnemyId;
-  position: Readonly<{
-    x: number;
-    y: number;
-  }>;
 }>;
 
 /**
@@ -64,6 +62,7 @@ export type HashableGameState = Readonly<{
   nextEntityId: number;
   timelineCursor: number;
   prngState: number;
+  runtimeEntities: ReadonlyArray<RuntimeEntityState>;
   pendingEvents: ReadonlyArray<GameEvent>;
 }>;
 
@@ -134,13 +133,16 @@ export function createShootingCore(coreVersion = "0.0.0"): ShootingCore {
 
 type LoadedContentIndex = Readonly<{
   definition: GameDefinition;
+  enemiesById: ReadonlyMap<string, EnemyDefinition>;
   playersById: ReadonlyMap<string, PlayerDefinition>;
   stagesById: ReadonlyMap<string, StageDefinition>;
 }>;
 
 type StageSessionContext = {
+  initialEntities: readonly RuntimeEntityState[];
   pendingEvents: readonly GameEvent[];
   entityAllocator: EntityAllocator;
+  enemiesById: ReadonlyMap<string, EnemyDefinition>;
   prng: XorShift32;
   stage: StageDefinition;
   player: PlayerDefinition;
@@ -150,6 +152,7 @@ type StageSessionContext = {
 function createLoadedContentIndex(definition: GameDefinition): LoadedContentIndex {
   return {
     definition,
+    enemiesById: new Map(definition.content.enemies.map((enemy) => [enemy.id, enemy])),
     playersById: new Map(definition.content.players.map((player) => [player.id, player])),
     stagesById: new Map(definition.content.stages.map((stage) => [stage.id, stage])),
   };
@@ -187,9 +190,17 @@ function createLoadedGame(content: LoadedContentIndex): LoadedGame {
         return error("difficulty.notSupported", `Difficulty not supported: ${options.value.difficulty}`);
       }
 
+      const entityAllocator = new EntityAllocator();
+      const playerEntity = createPlayerRuntimeEntity(entityAllocator, player);
+      if (!playerEntity.ok) {
+        return playerEntity;
+      }
+
       // stageStarted は最初の GameFrame で renderer/debug が初期状態を同期するための event。
       return okResult(createStageSession({
-        entityAllocator: new EntityAllocator(),
+        entityAllocator,
+        enemiesById: content.enemiesById,
+        initialEntities: [playerEntity.value],
         pendingEvents: [{ type: "stageStarted", tick: 0, stageId: stage.id }],
         prng: new XorShift32(options.value.seed),
         stage,
@@ -207,7 +218,7 @@ function createLoadedGame(content: LoadedContentIndex): LoadedGame {
  */
 function createStageSession(options: StageSessionContext): StageSession {
   let expectedTick = 0;
-  let activeEntities: readonly ReadonlyEntityState[] = [];
+  let activeEntities: readonly RuntimeEntityState[] = options.initialEntities;
   let entityAllocator = options.entityAllocator;
   let pendingEvents = options.pendingEvents;
   let prng = options.prng;
@@ -252,20 +263,15 @@ function createStageSession(options: StageSessionContext): StageSession {
       ) {
         const step = options.stage.timeline[workingTimelineCursor]!;
         if (step.action.type === "spawnEnemy") {
-          const entity = workingEntityAllocator.create();
+          const enemyDefinition = options.enemiesById.get(step.action.enemy);
+          if (!enemyDefinition) {
+            return error("enemy.notFound", `Enemy not found: ${step.action.enemy}`);
+          }
+          const entity = createEnemyRuntimeEntity(workingEntityAllocator, enemyDefinition, step.action);
           if (!entity.ok) {
             return entity;
           }
-          const entityState: ReadonlyEntityState = Object.freeze({
-            id: entity.value.id,
-            kind: "enemy",
-            definitionId: step.action.enemy,
-            position: Object.freeze({
-              x: step.action.position.x,
-              y: step.action.position.y,
-            }),
-          });
-          workingEntities.push(entityState);
+          workingEntities.push(entity.value);
           eventLog.push({
             type: "entitySpawned",
             tick: expectedTick,
@@ -289,7 +295,7 @@ function createStageSession(options: StageSessionContext): StageSession {
         stageId: options.stage.id,
         playerId: options.player.id,
         score,
-        entities: Object.freeze(workingEntities.map((entity) => deepFreezeClone(entity))),
+        entities: Object.freeze(workingEntities.map((entity) => toReadonlyEntityState(entity))),
       });
       const frame = Object.freeze({
         tick: expectedTick,
@@ -299,7 +305,7 @@ function createStageSession(options: StageSessionContext): StageSession {
 
       prng = workingPrng;
       entityAllocator = workingEntityAllocator;
-      activeEntities = state.entities;
+      activeEntities = Object.freeze([...workingEntities]);
       pendingEvents = [];
       timelineCursor = workingTimelineCursor;
       expectedTick += 1;

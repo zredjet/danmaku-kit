@@ -99,6 +99,9 @@ export type EnemyDefinition = {
   id: EnemyId;
   version: number;
   asset: string;
+  collision: {
+    radius: number;
+  };
   hp: number;
   score: number;
 };
@@ -108,6 +111,9 @@ export type BulletDefinition = {
   id: BulletId;
   version: number;
   asset: string;
+  collision: {
+    radius: number;
+  };
 };
 
 /** プレイヤーショットの最小 content 定義。 */
@@ -115,6 +121,9 @@ export type PlayerShotDefinition = {
   id: PlayerShotId;
   version: number;
   asset: string;
+  collision: {
+    radius: number;
+  };
   damage: number;
 };
 
