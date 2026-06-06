@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "lib": [
+      "ES2024"
+    ],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "strict": true,
+    "types": [],
+    "target": "ES2024"
+  },
+  "include": [
+    "packages/shooting-core/src/basic/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "packages/shooting-core/src/basic/**/*.test.ts"
+  ]
+}

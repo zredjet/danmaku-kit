@@ -1,0 +1,89 @@
+/**
+ * Core 全体で共有するエラーコード。
+ *
+ * feature module や validation が `core.ts` に依存しないよう、失敗契約だけを
+ * 独立した小さなモジュールに置く。
+ */
+export type CoreErrorCode =
+  | "asset.duplicate"
+  | "asset.invalidKey"
+  | "asset.notFound"
+  | "definition.invalidShape"
+  | "definition.unknownField"
+  | "difficulty.notSupported"
+  | "enemy.notFound"
+  | "entityAllocator.invalidState"
+  | "feature.duplicate"
+  | "feature.unknown"
+  | "feature.unsupported"
+  | "id.duplicate"
+  | "id.invalidNamespace"
+  | "input.invalidShape"
+  | "input.tickMismatch"
+  | "path.notFound"
+  | "pattern.notFound"
+  | "player.defaultNotFound"
+  | "player.notFound"
+  | "playerShot.notFound"
+  | "prng.invalidState"
+  | "schema.unsupportedVersion"
+  | "stage.notFound"
+  | "startStage.invalidShape"
+  | "timeline.invalidOrder"
+  | "timeline.tooManySpawnsPerTick"
+  | "timeline.tooManySteps";
+
+/** Core が返す検証・実行エラー。 */
+export type CoreError = {
+  code: CoreErrorCode;
+  message: string;
+};
+
+/**
+ * 実行は継続できるが、content 制作者へ知らせたい注意情報。
+ *
+ * warning code は feature module 側で増えやすいため、現時点では string のままにする。
+ */
+export type CoreWarning = {
+  code: string;
+  message: string;
+};
+
+/**
+ * Core API の標準的な戻り値。
+ *
+ * public API は原則として throw せず、成功値かエラー配列を返す。
+ */
+export type CoreResult<T> =
+  | { ok: true; value: T; warnings: readonly CoreWarning[] }
+  | { ok: false; errors: readonly CoreError[] };
+
+/** 成功値を runtime immutable な `CoreResult` として返す。 */
+export function okResult<T>(value: T, warnings: readonly CoreWarning[] = []): CoreResult<T> {
+  return Object.freeze({
+    ok: true,
+    value,
+    warnings: freezeWarnings(warnings),
+  });
+}
+
+/** 複数エラーを runtime immutable な `CoreResult` として返す。 */
+export function errorResult<T>(errors: readonly CoreError[]): CoreResult<T> {
+  return Object.freeze({
+    ok: false,
+    errors: freezeErrors(errors),
+  });
+}
+
+/** 単一エラーを `CoreResult` の失敗として返すための小さな helper。 */
+export function coreError<T>(code: CoreErrorCode, message: string): CoreResult<T> {
+  return errorResult([{ code, message }]);
+}
+
+function freezeErrors(errors: readonly CoreError[]): readonly CoreError[] {
+  return Object.freeze(errors.map((error) => Object.freeze({ code: error.code, message: error.message })));
+}
+
+function freezeWarnings(warnings: readonly CoreWarning[]): readonly CoreWarning[] {
+  return Object.freeze(warnings.map((warning) => Object.freeze({ code: warning.code, message: warning.message })));
+}
