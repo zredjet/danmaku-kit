@@ -25,6 +25,7 @@ import {
   toReadonlyEntityState,
 } from "./simulation/runtime-entity.ts";
 import type { PlayerRuntimeEntity, ReadonlyEntityState, RuntimeEntityState } from "./simulation/runtime-entity.ts";
+import { freezeEntitiesInIdOrder } from "./simulation/system-order.ts";
 import { XorShift32 } from "./simulation/prng.ts";
 
 const MAX_SEED_LENGTH = 128;
@@ -245,7 +246,7 @@ function createStageSession(options: StageSessionContext): StageSession {
       if (!input.ok) {
         return input;
       }
-      // 入力 tick のズレは replay divergence に直結するため、状態を進める前に拒否する。
+      // system order の applyInput。入力 tick のズレは状態を進める前に拒否する。
       if (input.value.tick !== expectedTick) {
         return error("input.tickMismatch", `Expected tick ${expectedTick}, got ${input.value.tick}`);
       }
@@ -267,6 +268,7 @@ function createStageSession(options: StageSessionContext): StageSession {
       const workingEntities = [...activeEntities];
       let workingTimelineCursor = timelineCursor;
 
+      // system order の updateStageTimeline。timeline 順に spawn event を生成する。
       while (
         workingTimelineCursor < options.stage.timeline.length
         && options.stage.timeline[workingTimelineCursor]!.tick === expectedTick
@@ -296,7 +298,7 @@ function createStageSession(options: StageSessionContext): StageSession {
         workingTimelineCursor += 1;
       }
 
-      // MVP では shot の押下 edge ごとに 1 発だけ生成する。連射間隔や muzzle offset は後続の shot schema へ逃がす。
+      // system order の spawnBulletsPlayerShots。MVP は shot 押下 edge ごとに 1 発だけ生成する。
       const playerEntity = findPlayerEntity(workingEntities, options.player.id);
       if (!playerEntity) {
         return error("player.notFound", `Player entity not found: ${options.player.id}`);
@@ -324,12 +326,13 @@ function createStageSession(options: StageSessionContext): StageSession {
       eventLog.push({ type: "tickAdvanced", tick: expectedTick });
 
       // frame に載せる state は renderer が保持しても安全な immutable snapshot にする。
+      const orderedEntities = freezeEntitiesInIdOrder(workingEntities);
       const state: ReadonlyGameState = Object.freeze({
         tick: expectedTick,
         stageId: options.stage.id,
         playerId: options.player.id,
         score,
-        entities: Object.freeze(workingEntities.map((entity) => toReadonlyEntityState(entity))),
+        entities: Object.freeze(orderedEntities.map((entity) => toReadonlyEntityState(entity))),
       });
       const frame = Object.freeze({
         tick: expectedTick,
@@ -339,7 +342,7 @@ function createStageSession(options: StageSessionContext): StageSession {
 
       prng = workingPrng;
       entityAllocator = workingEntityAllocator;
-      activeEntities = Object.freeze([...workingEntities]);
+      activeEntities = orderedEntities;
       pendingEvents = [];
       timelineCursor = workingTimelineCursor;
       expectedTick += 1;

@@ -48,6 +48,9 @@ import type { RuntimeEntityState } from "@shooting-sample/shooting-core";
 // @ts-expect-error internal player shot system result is not part of the root public contract.
 import type { PlayerShotSpawnResult } from "@shooting-sample/shooting-core";
 
+// @ts-expect-error internal system order contract is not part of the root public contract.
+import type { StageTickSystemStep } from "@shooting-sample/shooting-core";
+
 // @ts-expect-error internal vector helper is not part of the root public contract.
 import type { Vector2 } from "@shooting-sample/shooting-core";
 
@@ -322,4 +325,5 @@ void (undefined as unknown as SerializedPrngState);
 void (undefined as unknown as EnemyRuntimeEntity);
 void (undefined as unknown as RuntimeEntityState);
 void (undefined as unknown as PlayerShotSpawnResult);
+void (undefined as unknown as StageTickSystemStep);
 void (undefined as unknown as Vector2);

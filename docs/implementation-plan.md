@@ -35,10 +35,10 @@ Done:
 - Enemy runtime entity に path / pattern / hp / scoreOnKill を保持し、後続 system が参照できるようにする
 - Enemy / EnemyBullet / PlayerShot の collision radius を content schema から runtime entity へ流す
 - Phase 1A 暫定として `pressed` の shot 入力から deterministic な PlayerShot entity と `playerShotsSpawnedBatch` event を生成する
+- tick 内 system order と entity id 昇順 tie-breaker を内部契約として固定する
 
 Next:
 
-- tick 内 system order と id 昇順 tie-breaker を固定する
 - PlayerShotDefinition に最小 projectile velocity / lifetime schema と validation を追加する
 - content 定義に基づく player shot movement / lifetime / cleanup を入れる
 - `fire.intervalTicks` と lifetime / cleanup 実装後に `held` 連射を有効化する
@@ -58,7 +58,8 @@ Next:
 | `docs/design.md` Content schema minimum | 最小 `GameDefinition` と registry validation | Done | `packages/shooting-core/src/basic/content/types.ts`, `packages/shooting-core/src/basic/content/validation.ts` | `packages/shooting-core/src/basic/core.test.ts` | `npm test` |
 | `docs/design.md` Input / fixed tick | `InputFrame` と tick precondition | Done | `packages/shooting-core/src/basic/input/input-frame.ts`, `packages/shooting-core/src/basic/core.ts` | `packages/shooting-core/src/basic/core.test.ts` | `npm test` |
 | `docs/design.md` Determinism foundation | PRNG、entity id allocator、timeline spawn cursor | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/simulation/prng.ts`, `packages/shooting-core/src/basic/simulation/entity.ts` | `packages/shooting-core/src/basic/core.test.ts`, `packages/shooting-core/src/basic/simulation/*.test.ts` | `npm test` |
-| `docs/design.md` Transactional tick contract | 汎用 working state / committed state の明示 | Next | 未実装 | collision / score 導入時に追加 | `npm test` |
+| `docs/design.md` 7.1 system order | tick system order と entity id tie-breaker の明示 | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/simulation/system-order.ts` | `packages/shooting-core/src/basic/simulation/system-order.test.ts`, `packages/shooting-core/src/basic/core.test.ts` | `npm test` |
+| `docs/design.md` Transactional tick contract | fatal state、serialize / restore 失敗契約、汎用 working / committed state 境界 | Later | 未実装 | Phase 1B / collision / score 導入時に追加 | `npm test` |
 | `docs/design.md` Replay determinism | serialize / restore / state hash | Later | 未実装 | Phase 1B golden test で追加 | `npm test`, `npm run typecheck` |
 
 ## 次の作業順
@@ -86,7 +87,7 @@ Next:
    - Done: Stage timeline の spawnEnemy から Enemy entity と `entitySpawned` event を生成する
    - Done: Phase 1A 暫定として `pressed` の shot 入力から PlayerShot entity と `playerShotsSpawnedBatch` event を生成する
    - Done: entity id は monotonic に採番する
-   - Next: tick 内 system order と id 昇順 tie-breaker を固定する
+   - Done: tick 内 system order と id 昇順 tie-breaker を固定する
 
 4. Phase 1A-4: Movement and collision minimum
    - Next: PlayerShotDefinition の最小 projectile velocity / lifetime schema と validation
