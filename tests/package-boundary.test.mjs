@@ -17,6 +17,7 @@ test("rejects deep package imports outside the public export map", async () => {
     "src/basic/content/types.ts",
     "src/basic/input/input-frame.ts",
     "src/basic/simulation/entity.ts",
+    "src/basic/simulation/player-shot-system.ts",
     "src/basic/simulation/prng.ts",
     "src/basic/simulation/runtime-entity.ts",
   ];

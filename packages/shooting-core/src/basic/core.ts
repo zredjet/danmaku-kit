@@ -5,6 +5,7 @@ import type {
   GameDefinition,
   PlayerDefinition,
   PlayerId,
+  PlayerShotDefinition,
   StageDefinition,
   StageId,
 } from "./content/types.ts";
@@ -17,8 +18,13 @@ import { deepFreezeClone, deepFreezePlainData } from "./internal/immutable.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
 import type { CoreErrorCode, CoreResult } from "./result.ts";
 import { EntityAllocator } from "./simulation/entity.ts";
-import { createEnemyRuntimeEntity, createPlayerRuntimeEntity, toReadonlyEntityState } from "./simulation/runtime-entity.ts";
-import type { ReadonlyEntityState, RuntimeEntityState } from "./simulation/runtime-entity.ts";
+import { spawnPlayerShotFromInput } from "./simulation/player-shot-system.ts";
+import {
+  createEnemyRuntimeEntity,
+  createPlayerRuntimeEntity,
+  toReadonlyEntityState,
+} from "./simulation/runtime-entity.ts";
+import type { PlayerRuntimeEntity, ReadonlyEntityState, RuntimeEntityState } from "./simulation/runtime-entity.ts";
 import { XorShift32 } from "./simulation/prng.ts";
 
 const MAX_SEED_LENGTH = 128;
@@ -134,6 +140,7 @@ export function createShootingCore(coreVersion = "0.0.0"): ShootingCore {
 type LoadedContentIndex = Readonly<{
   definition: GameDefinition;
   enemiesById: ReadonlyMap<string, EnemyDefinition>;
+  playerShotsById: ReadonlyMap<string, PlayerShotDefinition>;
   playersById: ReadonlyMap<string, PlayerDefinition>;
   stagesById: ReadonlyMap<string, StageDefinition>;
 }>;
@@ -143,6 +150,7 @@ type StageSessionContext = {
   pendingEvents: readonly GameEvent[];
   entityAllocator: EntityAllocator;
   enemiesById: ReadonlyMap<string, EnemyDefinition>;
+  playerShotsById: ReadonlyMap<string, PlayerShotDefinition>;
   prng: XorShift32;
   stage: StageDefinition;
   player: PlayerDefinition;
@@ -153,6 +161,7 @@ function createLoadedContentIndex(definition: GameDefinition): LoadedContentInde
   return {
     definition,
     enemiesById: new Map(definition.content.enemies.map((enemy) => [enemy.id, enemy])),
+    playerShotsById: new Map(definition.content.playerShots.map((playerShot) => [playerShot.id, playerShot])),
     playersById: new Map(definition.content.players.map((player) => [player.id, player])),
     stagesById: new Map(definition.content.stages.map((stage) => [stage.id, stage])),
   };
@@ -202,6 +211,7 @@ function createLoadedGame(content: LoadedContentIndex): LoadedGame {
         enemiesById: content.enemiesById,
         initialEntities: [playerEntity.value],
         pendingEvents: [{ type: "stageStarted", tick: 0, stageId: stage.id }],
+        playerShotsById: content.playerShotsById,
         prng: new XorShift32(options.value.seed),
         stage,
         player,
@@ -285,6 +295,30 @@ function createStageSession(options: StageSessionContext): StageSession {
         }
         workingTimelineCursor += 1;
       }
+
+      // MVP では shot の押下 edge ごとに 1 発だけ生成する。連射間隔や muzzle offset は後続の shot schema へ逃がす。
+      const playerEntity = findPlayerEntity(workingEntities, options.player.id);
+      if (!playerEntity) {
+        return error("player.notFound", `Player entity not found: ${options.player.id}`);
+      }
+      const playerShotDefinition = options.playerShotsById.get(playerEntity.shotDefinitionId);
+      if (!playerShotDefinition) {
+        return error("playerShot.notFound", `Player shot not found: ${playerEntity.shotDefinitionId}`);
+      }
+      const playerShotSpawn = spawnPlayerShotFromInput(
+        workingEntityAllocator,
+        input.value,
+        playerEntity,
+        playerShotDefinition,
+      );
+      if (!playerShotSpawn.ok) {
+        return playerShotSpawn;
+      }
+      if (playerShotSpawn.value) {
+        workingEntities.push(...playerShotSpawn.value.entities);
+        eventLog.push(playerShotSpawn.value.event);
+      }
+
       // PRNG はまだ event payload に出していないが、tick ごとの消費順を先に固定しておく。
       workingPrng.nextUint32();
       eventLog.push({ type: "tickAdvanced", tick: expectedTick });
@@ -312,6 +346,15 @@ function createStageSession(options: StageSessionContext): StageSession {
       return okResult(frame);
     },
   });
+}
+
+/** active entity list から現在の自機 runtime component を探す。 */
+function findPlayerEntity(
+  entities: readonly RuntimeEntityState[],
+  playerId: PlayerId,
+): PlayerRuntimeEntity | null {
+  const entity = entities.find((candidate) => candidate.kind === "player" && candidate.definitionId === playerId);
+  return entity?.kind === "player" ? entity : null;
 }
 
 /**

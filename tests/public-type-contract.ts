@@ -39,8 +39,17 @@ import type { HashableGameState } from "@shooting-sample/shooting-core";
 // @ts-expect-error internal PRNG snapshot is not part of the root public contract.
 import type { SerializedPrngState } from "@shooting-sample/shooting-core";
 
-// @ts-expect-error internal runtime components are not part of the root public contract.
-import type { EnemyRuntimeEntity, RuntimeEntityState, Vector2 } from "@shooting-sample/shooting-core";
+// @ts-expect-error internal runtime component is not part of the root public contract.
+import type { EnemyRuntimeEntity } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error internal runtime state is not part of the root public contract.
+import type { RuntimeEntityState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error internal player shot system result is not part of the root public contract.
+import type { PlayerShotSpawnResult } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error internal vector helper is not part of the root public contract.
+import type { Vector2 } from "@shooting-sample/shooting-core";
 
 const core: ShootingCore = createShootingCore("type-contract");
 
@@ -56,6 +65,7 @@ const input: InputFrame = {
 const loaded = core.load(definition);
 const loadedAsResult: CoreResult<unknown> = loaded;
 const errorCode: CoreErrorCode = "input.invalidShape";
+const playerShotErrorCode: CoreErrorCode = "playerShot.notFound";
 const difficulty: Difficulty = "normal";
 const enabledFeature: EnabledFeature = "bomb";
 const assetKeys: AssetKeyRegistry = { keys: ["player.default"] };
@@ -119,6 +129,17 @@ const spawnedEvent: GameEvent = {
   pattern: "pattern.none",
   position: { x: 192, y: -16 },
 };
+const playerShotsSpawnedEvent: GameEvent = {
+  type: "playerShotsSpawnedBatch",
+  tick: 0,
+  shots: [
+    {
+      entityId: 2,
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 400 },
+    },
+  ],
+};
 const startOptions: StartStageOptions = {
   stageId: "stage.stage_01",
   difficulty: "normal",
@@ -167,6 +188,59 @@ event.tick = 1;
 // @ts-expect-error nested event payloads are immutable through the public contract.
 spawnedEvent.position.x = 0;
 
+// @ts-expect-error nested batch event payloads are immutable through the public contract.
+playerShotsSpawnedEvent.shots[0]!.position.x = 0;
+
+// @ts-expect-error batch event shot arrays are immutable through the public contract.
+playerShotsSpawnedEvent.shots.push({ entityId: 3, definitionId: "playerShot.basic", position: { x: 192, y: 400 } });
+
+// @ts-expect-error entity.notFound is an internal invariant, not a public CoreErrorCode.
+const invalidCoreErrorCode: CoreErrorCode = "entity.notFound";
+
+const invalidEmptyPlayerShotsBatch: GameEvent = {
+  type: "playerShotsSpawnedBatch",
+  tick: 0,
+  // @ts-expect-error player shot batches must contain at least one shot.
+  shots: [],
+};
+
+const invalidPlayerShotBatchDefinition: GameEvent = {
+  type: "playerShotsSpawnedBatch",
+  tick: 0,
+  // @ts-expect-error player shot batches require PlayerShotId definition ids.
+  shots: [{ entityId: 2, definitionId: "enemy.scout", position: { x: 192, y: 400 } }],
+};
+
+const invalidPlayerShotBatchPath: GameEvent = {
+  type: "playerShotsSpawnedBatch",
+  tick: 0,
+  shots: [{ entityId: 2, definitionId: "playerShot.basic", position: { x: 192, y: 400 } }],
+  // @ts-expect-error player shot batches do not expose enemy path fields.
+  path: "path.none",
+};
+
+// @ts-expect-error enemy spawn events require pattern.
+const invalidEnemySpawnWithoutPattern: GameEvent = {
+  type: "entitySpawned",
+  tick: 60,
+  entityId: 1,
+  entityKind: "enemy",
+  definitionId: "enemy.scout",
+  path: "path.none",
+  position: { x: 192, y: -16 },
+};
+
+const invalidPlayerShotEntitySpawnedEvent: GameEvent = {
+  type: "entitySpawned",
+  tick: 0,
+  entityId: 2,
+  // @ts-expect-error playerShot entities are announced through playerShotsSpawnedBatch.
+  entityKind: "playerShot",
+  // @ts-expect-error entitySpawned definition ids must be EnemyId values.
+  definitionId: "playerShot.basic",
+  position: { x: 192, y: 400 },
+};
+
 // @ts-expect-error readonly state entities cannot be mutated through the public contract.
 state.entities[0] = entity;
 
@@ -181,6 +255,8 @@ function assertEventExhaustive(value: GameEvent): number {
       return value.tick;
     case "entitySpawned":
       return value.entityId;
+    case "playerShotsSpawnedBatch":
+      return value.shots.length;
     default: {
       const neverEvent: never = value;
       return neverEvent;
@@ -200,6 +276,7 @@ void input;
 void loaded;
 void loadedAsResult;
 void errorCode;
+void playerShotErrorCode;
 void difficulty;
 void enabledFeature;
 void assetKeys;
@@ -225,6 +302,7 @@ void playerShotEntity;
 void event;
 void tickedEvent;
 void spawnedEvent;
+void playerShotsSpawnedEvent;
 void invalidStartOptions;
 void invalidStageEvent;
 void invalidEnemyId;
@@ -232,9 +310,16 @@ void invalidEnemyEntity;
 void invalidPlayerEntity;
 void invalidEnemyBulletEntity;
 void invalidPlayerShotEntity;
+void invalidCoreErrorCode;
+void invalidEmptyPlayerShotsBatch;
+void invalidPlayerShotBatchDefinition;
+void invalidPlayerShotBatchPath;
+void invalidEnemySpawnWithoutPattern;
+void invalidPlayerShotEntitySpawnedEvent;
 void assertEventExhaustive;
 void (undefined as unknown as HashableGameState);
 void (undefined as unknown as SerializedPrngState);
 void (undefined as unknown as EnemyRuntimeEntity);
 void (undefined as unknown as RuntimeEntityState);
+void (undefined as unknown as PlayerShotSpawnResult);
 void (undefined as unknown as Vector2);

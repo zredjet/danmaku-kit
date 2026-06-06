@@ -60,13 +60,307 @@ test("returns identical frames for identical seed and input sequence", () => {
   const second = startMinimumStage();
 
   for (let tick = 0; tick <= 60; tick += 1) {
-    const firstFrame = first.tick(createEmptyInputFrame(tick));
-    const secondFrame = second.tick(createEmptyInputFrame(tick));
+    const input = tick % 10 === 0 ? createShotInputFrame(tick) : createEmptyInputFrame(tick);
+    const firstFrame = first.tick(input);
+    const secondFrame = second.tick(input);
 
     assert.equal(firstFrame.ok, true);
     assert.equal(secondFrame.ok, true);
     assert.deepEqual(firstFrame.ok && firstFrame.value, secondFrame.ok && secondFrame.value);
   }
+});
+
+test("spawns player shot entities from shot input deterministically", () => {
+  const started = startMinimumStage();
+
+  const frame = started.tick(createShotInputFrame(0));
+  assert.equal(frame.ok, true);
+  if (!frame.ok) {
+    assert.fail("expected shot frame");
+  }
+
+  assert.deepEqual(frame.value.events.map((event) => event.type), ["stageStarted", "playerShotsSpawnedBatch", "tickAdvanced"]);
+  assert.deepEqual(frame.value.events[1], {
+    type: "playerShotsSpawnedBatch",
+    tick: 0,
+    shots: [
+      {
+        entityId: 2,
+        definitionId: "playerShot.basic",
+        position: { x: 192, y: 400 },
+      },
+    ],
+  });
+  assert.deepEqual(frame.value.state.entities, [
+    {
+      id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: { x: 192, y: 400 },
+    },
+    {
+      id: 2,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 400 },
+    },
+  ]);
+  assert.equal(Object.isFrozen(frame.value.events), true);
+  assert.equal(Object.isFrozen(frame.value.events[1]), true);
+  if (frame.value.events[1]?.type !== "playerShotsSpawnedBatch") {
+    assert.fail("expected playerShotsSpawnedBatch event");
+  }
+  assert.equal(Object.isFrozen(frame.value.events[1].shots), true);
+  assert.equal(Object.isFrozen(frame.value.events[1].shots[0]), true);
+  assert.equal(Object.isFrozen(frame.value.events[1].shots[0]?.position), true);
+  assert.equal(Object.isFrozen(frame.value.state.entities[1]), true);
+  assert.equal(Object.isFrozen(frame.value.state.entities[1]?.position), true);
+
+  const nextFrame = started.tick(createShotInputFrame(1));
+  assert.equal(nextFrame.ok, true);
+  assert.deepEqual(nextFrame.ok && nextFrame.value.events.map((event) => event.type), ["playerShotsSpawnedBatch", "tickAdvanced"]);
+  assert.deepEqual(nextFrame.ok && nextFrame.value.state.entities.map((entity) => entity.id), [1, 2, 3]);
+});
+
+test("does not auto-fire from held-only shot input before shot lifetime is implemented", () => {
+  const started = startMinimumStage();
+
+  const frame = started.tick(createHeldShotInputFrame(0));
+  assert.equal(frame.ok, true);
+  if (!frame.ok) {
+    assert.fail("expected held-only shot frame");
+  }
+
+  assert.deepEqual(frame.value.events.map((event) => event.type), ["stageStarted", "tickAdvanced"]);
+  assert.deepEqual(frame.value.state.entities.map((entity) => entity.kind), ["player"]);
+});
+
+test("spawns one player shot batch from pressed-only shot input", () => {
+  const started = startMinimumStage();
+
+  const frame = started.tick(createPressedShotInputFrame(0));
+  assert.equal(frame.ok, true);
+  if (!frame.ok) {
+    assert.fail("expected pressed shot frame");
+  }
+
+  assert.deepEqual(frame.value.events.map((event) => event.type), [
+    "stageStarted",
+    "playerShotsSpawnedBatch",
+    "tickAdvanced",
+  ]);
+  assert.deepEqual(frame.value.events[1], {
+    type: "playerShotsSpawnedBatch",
+    tick: 0,
+    shots: [
+      {
+        entityId: 2,
+        definitionId: "playerShot.basic",
+        position: { x: 192, y: 400 },
+      },
+    ],
+  });
+});
+
+test("spawns one player shot batch when shot is both held and pressed", () => {
+  const started = startMinimumStage();
+
+  const frame = started.tick(createHeldAndPressedShotInputFrame(0));
+  assert.equal(frame.ok, true);
+  if (!frame.ok) {
+    assert.fail("expected held and pressed shot frame");
+  }
+
+  assert.deepEqual(frame.value.events.filter((event) => event.type === "playerShotsSpawnedBatch"), [
+    {
+      type: "playerShotsSpawnedBatch",
+      tick: 0,
+      shots: [
+        {
+          entityId: 2,
+          definitionId: "playerShot.basic",
+          position: { x: 192, y: 400 },
+        },
+      ],
+    },
+  ]);
+  if (frame.value.events[1]?.type !== "playerShotsSpawnedBatch") {
+    assert.fail("expected playerShotsSpawnedBatch event");
+  }
+  assert.equal(frame.value.events[1].shots.length, 1);
+  assert.deepEqual(frame.value.state.entities.filter((entity) => entity.kind === "playerShot"), [
+    {
+      id: 2,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 400 },
+    },
+  ]);
+});
+
+test("uses the selected player's shot definition when spawning player shots", () => {
+  const definition = createMinimumDefinition();
+  const basePlayer = definition.content.players[0]!;
+  const loaded = createShootingCore("0.0.0").load({
+    ...definition,
+    content: {
+      ...definition.content,
+      assetKeys: {
+        keys: [
+          ...definition.content.assetKeys.keys,
+          "player.alt",
+          "shot.player_alt",
+        ],
+      },
+      players: [
+        ...definition.content.players,
+        {
+          ...basePlayer,
+          id: "player.alt",
+          asset: "player.alt",
+          shot: { definition: "playerShot.alt" },
+        },
+      ],
+      playerShots: [
+        ...definition.content.playerShots,
+        {
+          id: "playerShot.alt",
+          version: 1,
+          asset: "shot.player_alt",
+          collision: { radius: 7 },
+          damage: 9,
+        },
+      ],
+    },
+  });
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game with alternate player");
+  }
+
+  const started = loaded.value.startStage({
+    stageId: "stage.stage_01",
+    difficulty: "normal",
+    playerId: "player.alt",
+    seed: "seed-1",
+  });
+  assert.equal(started.ok, true);
+  if (!started.ok) {
+    assert.fail("expected alternate player stage");
+  }
+
+  const frame = started.value.tick(createShotInputFrame(0));
+  assert.equal(frame.ok, true);
+  if (!frame.ok) {
+    assert.fail("expected alternate player shot frame");
+  }
+
+  assert.deepEqual(frame.value.events[1], {
+    type: "playerShotsSpawnedBatch",
+    tick: 0,
+    shots: [
+      {
+        entityId: 2,
+        definitionId: "playerShot.alt",
+        position: { x: 192, y: 400 },
+      },
+    ],
+  });
+  assert.deepEqual(frame.value.state.entities, [
+    {
+      id: 1,
+      kind: "player",
+      definitionId: "player.alt",
+      position: { x: 192, y: 400 },
+    },
+    {
+      id: 2,
+      kind: "playerShot",
+      definitionId: "playerShot.alt",
+      position: { x: 192, y: 400 },
+    },
+  ]);
+});
+
+test("orders timeline enemy spawn before player shot batch on the same tick", () => {
+  const definition = createMinimumDefinition();
+  const baseStage = definition.content.stages[0]!;
+  const spawnStep = baseStage.timeline[0]!;
+  const loaded = createShootingCore("0.0.0").load({
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [
+        {
+          ...baseStage,
+          timeline: [
+            {
+              ...spawnStep,
+              tick: 0,
+            },
+          ],
+        },
+      ],
+    },
+  });
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+
+  const started = loaded.value.startStage({
+    stageId: "stage.stage_01",
+    difficulty: "normal",
+    seed: "seed-1",
+  });
+  assert.equal(started.ok, true);
+  if (!started.ok) {
+    assert.fail("expected stage session");
+  }
+
+  const frame = started.value.tick(createShotInputFrame(0));
+  assert.equal(frame.ok, true);
+  if (!frame.ok) {
+    assert.fail("expected frame");
+  }
+
+  assert.deepEqual(frame.value.events.map((event) => event.type), [
+    "stageStarted",
+    "entitySpawned",
+    "playerShotsSpawnedBatch",
+    "tickAdvanced",
+  ]);
+  assert.deepEqual(frame.value.events[1], {
+    type: "entitySpawned",
+    tick: 0,
+    entityId: 2,
+    entityKind: "enemy",
+    definitionId: "enemy.scout",
+    path: "path.none",
+    pattern: "pattern.none",
+    position: { x: 192, y: -16 },
+  });
+  assert.deepEqual(frame.value.events[2], {
+    type: "playerShotsSpawnedBatch",
+    tick: 0,
+    shots: [
+      {
+        entityId: 3,
+        definitionId: "playerShot.basic",
+        position: { x: 192, y: 400 },
+      },
+    ],
+  });
+  assert.deepEqual(frame.value.state.entities.map((entity) => ({
+    id: entity.id,
+    kind: entity.kind,
+    definitionId: entity.definitionId,
+    position: entity.position,
+  })), [
+    { id: 1, kind: "player", definitionId: "player.default", position: { x: 192, y: 400 } },
+    { id: 2, kind: "enemy", definitionId: "enemy.scout", position: { x: 192, y: -16 } },
+    { id: 3, kind: "playerShot", definitionId: "playerShot.basic", position: { x: 192, y: 400 } },
+  ]);
 });
 
 test("spawns enemy entities from the stage timeline deterministically", () => {
@@ -184,13 +478,17 @@ test("spawns multiple enemies on the same tick in timeline order", () => {
   }
 
   assert.deepEqual(frame.value.events.map((event) => event.type), ["stageStarted", "entitySpawned", "entitySpawned", "tickAdvanced"]);
-  assert.deepEqual(frame.value.events.filter((event) => event.type === "entitySpawned").map((event) => ({
-    entityId: event.entityId,
-    definitionId: event.definitionId,
-    path: event.path,
-    pattern: event.pattern,
-    position: event.position,
-  })), [
+  assert.deepEqual(frame.value.events.flatMap((event) => (
+    event.type === "entitySpawned" && event.entityKind === "enemy"
+      ? [{
+        entityId: event.entityId,
+        definitionId: event.definitionId,
+        path: event.path,
+        pattern: event.pattern,
+        position: event.position,
+      }]
+      : []
+  )), [
     { entityId: 2, definitionId: "enemy.scout", path: "path.none", pattern: "pattern.none", position: { x: 96, y: -16 } },
     { entityId: 3, definitionId: "enemy.heavy", path: "path.swoop", pattern: "pattern.spread", position: { x: 288, y: -16 } },
   ]);
@@ -208,6 +506,8 @@ test("spawns multiple enemies on the same tick in timeline order", () => {
 
 test("keeps a validated content snapshot after load", () => {
   const definition = createMinimumDefinition();
+  const originalPlayerShot = definition.content.playerShots[0] as unknown as Record<string, unknown>;
+  const originalSpawnPosition = definition.content.stages[0]!.timeline[0]!.action.position;
   const loaded = loadUnknown(definition);
   assert.equal(loaded.ok, true);
   if (!loaded.ok) {
@@ -217,6 +517,11 @@ test("keeps a validated content snapshot after load", () => {
   (definition.content.stages as unknown[]).length = 0;
   (definition.content.players as unknown[]).length = 0;
   definition.content.assetKeys.keys = [];
+  originalPlayerShot.id = "playerShot.mutated";
+  originalPlayerShot.damage = 999;
+  originalPlayerShot.collision = { radius: 99 };
+  (originalSpawnPosition as { x: number; y: number }).x = 999;
+  (originalSpawnPosition as { x: number; y: number }).y = 999;
   (definition.content.playerShots as unknown as Record<string, unknown>[])[0] = {
     id: "playerShot.mutated",
     version: 1,
@@ -230,6 +535,46 @@ test("keeps a validated content snapshot after load", () => {
     seed: "seed-1",
   });
   assert.equal(started.ok, true);
+  if (!started.ok) {
+    assert.fail("expected stage session");
+  }
+
+  const frame = started.value.tick(createShotInputFrame(0));
+  assert.equal(frame.ok, true);
+  if (!frame.ok) {
+    assert.fail("expected shot frame");
+  }
+  assert.deepEqual(frame.value.events[1], {
+    type: "playerShotsSpawnedBatch",
+    tick: 0,
+    shots: [
+      {
+        entityId: 2,
+        definitionId: "playerShot.basic",
+        position: { x: 192, y: 400 },
+      },
+    ],
+  });
+
+  for (let tick = 1; tick < 60; tick += 1) {
+    const emptyFrame = started.value.tick(createEmptyInputFrame(tick));
+    assert.equal(emptyFrame.ok, true);
+  }
+  const spawnFrame = started.value.tick(createEmptyInputFrame(60));
+  assert.equal(spawnFrame.ok, true);
+  if (!spawnFrame.ok) {
+    assert.fail("expected enemy spawn frame");
+  }
+  assert.deepEqual(spawnFrame.value.events[0], {
+    type: "entitySpawned",
+    tick: 60,
+    entityId: 3,
+    entityKind: "enemy",
+    definitionId: "enemy.scout",
+    path: "path.none",
+    pattern: "pattern.none",
+    position: { x: 192, y: -16 },
+  });
 });
 
 test("loads minimum content after crossing a JSON parse boundary", () => {
@@ -855,6 +1200,33 @@ test("canonicalizes input actions and accepts same-tick tap edges", () => {
     released: ["shot"],
   });
   assert.equal(crossed.ok, true);
+  if (!crossed.ok) {
+    assert.fail("expected crossed tap edge frame");
+  }
+  assert.deepEqual(crossed.ok && crossed.value.events.map((event) => event.type), [
+    "stageStarted",
+    "playerShotsSpawnedBatch",
+    "tickAdvanced",
+  ]);
+  assert.deepEqual(crossed.value.events[1], {
+    type: "playerShotsSpawnedBatch",
+    tick: 0,
+    shots: [
+      {
+        entityId: 2,
+        definitionId: "playerShot.basic",
+        position: { x: 192, y: 400 },
+      },
+    ],
+  });
+  assert.deepEqual(crossed.value.state.entities.filter((entity) => entity.kind === "playerShot"), [
+    {
+      id: 2,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 400 },
+    },
+  ]);
 
   const heldReleased = startMinimumStage().tick({
     tick: 0,
@@ -879,6 +1251,38 @@ test("rejects mismatch after a successful tick without duplicating pending event
   const frame1 = started.tick(createEmptyInputFrame(1));
   assert.equal(frame1.ok, true);
   assert.deepEqual(frame1.ok && frame1.value.events.map((event) => event.type), ["tickAdvanced"]);
+});
+
+test("recovers from a tick mismatch after spawning a player shot without duplicating ids", () => {
+  const started = startMinimumStage();
+
+  const frame0 = started.tick(createShotInputFrame(0));
+  assert.equal(frame0.ok, true);
+
+  const mismatch = started.tick(createShotInputFrame(2));
+  assert.equal(mismatch.ok, false);
+  assert.equal(!mismatch.ok && mismatch.errors[0]?.code, "input.tickMismatch");
+
+  const frame1 = started.tick(createShotInputFrame(1));
+  assert.equal(frame1.ok, true);
+  if (!frame1.ok) {
+    assert.fail("expected recovered shot frame");
+  }
+  assert.deepEqual(frame1.value.events, [
+    {
+      type: "playerShotsSpawnedBatch",
+      tick: 1,
+      shots: [
+        {
+          entityId: 3,
+          definitionId: "playerShot.basic",
+          position: { x: 192, y: 400 },
+        },
+      ],
+    },
+    { type: "tickAdvanced", tick: 1 },
+  ]);
+  assert.deepEqual(frame1.value.state.entities.map((entity) => entity.id), [1, 2, 3]);
 });
 
 test("returns immutable event frames and drains one-shot events", () => {
@@ -915,6 +1319,40 @@ function startMinimumStage() {
   }
 
   return started.value;
+}
+
+function createShotInputFrame(tick: number): InputFrame {
+  return createPressedShotInputFrame(tick);
+}
+
+function createHeldShotInputFrame(tick: number): InputFrame {
+  return Object.freeze({
+    tick,
+    axes: Object.freeze({ moveX: 0, moveY: 0 }),
+    held: Object.freeze(["shot"] as const),
+    pressed: Object.freeze([] as const),
+    released: Object.freeze([] as const),
+  });
+}
+
+function createPressedShotInputFrame(tick: number): InputFrame {
+  return Object.freeze({
+    tick,
+    axes: Object.freeze({ moveX: 0, moveY: 0 }),
+    held: Object.freeze([] as const),
+    pressed: Object.freeze(["shot"] as const),
+    released: Object.freeze([] as const),
+  });
+}
+
+function createHeldAndPressedShotInputFrame(tick: number): InputFrame {
+  return Object.freeze({
+    tick,
+    axes: Object.freeze({ moveX: 0, moveY: 0 }),
+    held: Object.freeze(["shot"] as const),
+    pressed: Object.freeze(["shot"] as const),
+    released: Object.freeze([] as const),
+  });
 }
 
 function loadUnknown(definition: unknown) {

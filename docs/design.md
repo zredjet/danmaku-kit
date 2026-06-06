@@ -929,9 +929,10 @@ Simulation は tick 中に event log を組み立て、tick 終了時に順序�
 
 | Event | 用途 |
 | --- | --- |
-| `entitySpawned` | Entity が生成された事実を通知 |
+| `entitySpawned` | 敵など少量 entity が生成された事実を通知 |
 | `entityDestroyed` | Entity が破棄された事実を通知 |
-| `bulletsSpawnedBatch` | 弾生成を batch で通知 |
+| `bulletsSpawnedBatch` | 敵弾生成を batch で通知 |
+| `playerShotsSpawnedBatch` | プレイヤーショット生成を batch で通知 |
 | `playerHit` | 被弾、残機処理、無敵演出 |
 | `bombUsed` | ボム演出、弾消し |
 | `bossPhaseChanged` | UI、BGM、背景演出 |
@@ -1489,6 +1490,8 @@ Phase 2B では `docs/content-authoring/examples/` を `validate-content` に通
 - immutable event log
 - PRNG
 - Player / Enemy / EnemyBullet / PlayerShot / Stage / Path / minimum Pattern schema
+- renderer 非依存の Player movement / shot movement / lifetime minimum
+- system order lock
 - fixed `scoreOnKill` scoring system
 - Collision minimum
 - Unit test
@@ -1501,7 +1504,7 @@ Phase 1A の完了条件は、Core minimum が renderer なしで deterministic 
 - replay metadata
 - state hash
 - golden test
-- system order lock
+- locked system order と state hash の互換性検証
 
 Phase 1B の完了条件は、同一 seed と入力列で state hash が一致し、restore 後も同じ tick 結果を返すこととする。
 
@@ -1523,15 +1526,15 @@ Phase 1C の完了条件は、content authoring と CI で最低限の validatio
 - Vite sample app セットアップ
 - Phaser セットアップ
 - Phaser adapter
-- Player 移動
-- 低速移動
+- Core `GameFrame` を読む Player 描画
+- Core `InputFrame` へ変換する keyboard adapter
+- 低速移動の入力 adapter / 表示確認
 - 自機判定表示
-- Bullet 発射
-- Collision
+- Core event / state からの bullet / shot 描画
+- Core collision event の HUD / 演出反映
 - Debug overlay
-- Stage timeline
-- Enemy definition
-- Bullet definition
+- Stage timeline の sample content 読み込み
+- Enemy / Bullet / PlayerShot definition の sample content 読み込み
 - 最小 pattern command subset
 - Asset manifest
 - サンプルステージ 1 つ

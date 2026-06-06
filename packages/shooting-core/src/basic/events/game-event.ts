@@ -1,6 +1,15 @@
 import { deepFreezeClone } from "../internal/immutable.ts";
-import type { EnemyId, PathId, PatternId, StageId } from "../content/types.ts";
+import type { EnemyId, PathId, PatternId, PlayerShotId, StageId } from "../content/types.ts";
 import type { EntityId } from "../simulation/entity.ts";
+
+type PlayerShotSpawnedEventItem = Readonly<{
+  entityId: EntityId;
+  definitionId: PlayerShotId;
+  position: Readonly<{
+    x: number;
+    y: number;
+  }>;
+}>;
 
 /**
  * Core が生成する gameplay event。
@@ -29,6 +38,11 @@ export type GameEvent =
       x: number;
       y: number;
     }>;
+  }>
+  | Readonly<{
+    type: "playerShotsSpawnedBatch";
+    tick: number;
+    shots: readonly [PlayerShotSpawnedEventItem, ...PlayerShotSpawnedEventItem[]];
   }>;
 
 /**

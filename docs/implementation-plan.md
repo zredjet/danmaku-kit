@@ -34,12 +34,16 @@ Done:
 - stage start 時に player runtime entity を生成し、公開 `GameFrame.state.entities` に投影する
 - Enemy runtime entity に path / pattern / hp / scoreOnKill を保持し、後続 system が参照できるようにする
 - Enemy / EnemyBullet / PlayerShot の collision radius を content schema から runtime entity へ流す
+- Phase 1A 暫定として `pressed` の shot 入力から deterministic な PlayerShot entity と `playerShotsSpawnedBatch` event を生成する
 
 Next:
 
-- player shot runtime entity の生成を入れる
-- enemy bullet runtime entity の生成を入れる
 - tick 内 system order と id 昇順 tie-breaker を固定する
+- PlayerShotDefinition に最小 projectile velocity / lifetime schema と validation を追加する
+- content 定義に基づく player shot movement / lifetime / cleanup を入れる
+- `fire.intervalTicks` と lifetime / cleanup 実装後に `held` 連射を有効化する
+- enemy bullet runtime entity の生成を入れる
+- player input intent と自機 movement 更新を入れる
 - player shot と enemy の最小 collision を入れる
 - enemy bullet と player の最小 collision を入れる
 - fixed `scoreOnKill` を event と state に接続する
@@ -80,11 +84,16 @@ Next:
    - Done: Player、Enemy、EnemyBullet、PlayerShot の runtime entity component 型を作る
    - Done: stage start 時に Player entity を生成する
    - Done: Stage timeline の spawnEnemy から Enemy entity と `entitySpawned` event を生成する
+   - Done: Phase 1A 暫定として `pressed` の shot 入力から PlayerShot entity と `playerShotsSpawnedBatch` event を生成する
    - Done: entity id は monotonic に採番する
-   - Next: PlayerShot / EnemyBullet entity の生成経路を作る
    - Next: tick 内 system order と id 昇順 tie-breaker を固定する
 
 4. Phase 1A-4: Movement and collision minimum
+   - Next: PlayerShotDefinition の最小 projectile velocity / lifetime schema と validation
+   - Next: content 定義に基づく player shot movement / lifetime / cleanup
+   - Next: `fire.intervalTicks` と lifetime / cleanup 実装後に `held` 連射を有効化
+   - Next: EnemyBullet entity の生成経路を作る
+   - Next: player input intent と自機 movement 更新
    - Next: player shot と enemy の hit
    - Next: enemy bullet と player の hit
    - Next: fixed `scoreOnKill`
@@ -105,7 +114,7 @@ Next:
 ## Phase 1B へ進む条件
 
 - renderer なしで `StageSession.tick()` が 1 tick 単位で成功する
-- minimum content fixture から player / enemy を生成でき、bullet / shot の runtime entity 型境界が用意されている
+- minimum content fixture から player / enemy / player shot を生成でき、bullet の runtime entity 型境界が用意されている
 - collision と score の最小 event が deterministic に並ぶ
 - `npm install` 後の `npm test` が通る
 - `npm run typecheck` が通る
