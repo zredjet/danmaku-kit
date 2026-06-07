@@ -92,6 +92,41 @@ const stageDefinition: StageDefinition = definition.content.stages[0]!;
 const enemyDefinition: EnemyDefinition = definition.content.enemies[0]!;
 const bulletDefinition: BulletDefinition = definition.content.bullets[0]!;
 const playerShotDefinition: PlayerShotDefinition = definition.content.playerShots[0]!;
+// @ts-expect-error player shot definitions require projectile runtime settings.
+const invalidPlayerShotWithoutProjectile: PlayerShotDefinition = {
+  id: "playerShot.basic",
+  version: 1,
+  asset: "shot.player_basic",
+  collision: { radius: 5 },
+  damage: 5,
+};
+const invalidPlayerShotVelocity: PlayerShotDefinition = {
+  id: "playerShot.basic",
+  version: 1,
+  asset: "shot.player_basic",
+  collision: { radius: 5 },
+  damage: 5,
+  projectile: {
+    velocity: {
+      // @ts-expect-error player shot velocity must be numeric.
+      x: "fast",
+      y: -8,
+    },
+    lifetimeTicks: 3,
+  },
+};
+const invalidPlayerShotLifetime: PlayerShotDefinition = {
+  id: "playerShot.basic",
+  version: 1,
+  asset: "shot.player_basic",
+  collision: { radius: 5 },
+  damage: 5,
+  projectile: {
+    velocity: { x: 0, y: -8 },
+    // @ts-expect-error player shot lifetime must be numeric.
+    lifetimeTicks: "3",
+  },
+};
 const patternDefinition: PatternDefinition = definition.content.patterns[0]!;
 const pathDefinition: PathDefinition = definition.content.paths[0]!;
 const contentRegistry: ContentRegistry = definition.content;
@@ -295,6 +330,9 @@ void stageDefinition;
 void enemyDefinition;
 void bulletDefinition;
 void playerShotDefinition;
+void invalidPlayerShotWithoutProjectile;
+void invalidPlayerShotVelocity;
+void invalidPlayerShotLifetime;
 void patternDefinition;
 void pathDefinition;
 void contentRegistry;

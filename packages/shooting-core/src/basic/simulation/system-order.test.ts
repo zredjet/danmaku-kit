@@ -31,8 +31,10 @@ test("freezes runtime entities in id order without mutating the source order", (
       kind: "playerShot",
       definitionId: "playerShot.basic",
       position: { x: 192, y: 400 },
+      velocity: { x: 0, y: -8 },
       collisionRadius: 5,
       damage: 5,
+      remainingLifetimeTicks: 3,
     },
     {
       id: 1,
@@ -83,8 +85,10 @@ test("keeps already ordered runtime entities in id order", () => {
       kind: "playerShot",
       definitionId: "playerShot.basic",
       position: { x: 192, y: 400 },
+      velocity: { x: 0, y: -8 },
       collisionRadius: 5,
       damage: 5,
+      remainingLifetimeTicks: 3,
     },
   ];
 

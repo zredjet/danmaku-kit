@@ -125,6 +125,13 @@ export type PlayerShotDefinition = {
     radius: number;
   };
   damage: number;
+  projectile: {
+    velocity: {
+      x: number;
+      y: number;
+    };
+    lifetimeTicks: number;
+  };
 };
 
 /** 弾幕・移動命令の参照先。命令本体は Phase 2A 以降で追加する。 */

@@ -14,6 +14,10 @@ type PlayerShotSpawnedEventItem = Readonly<{
 /**
  * Core が生成する gameplay event。
  *
+ * event payload は各 system step で発生した時点の事実を表す。`GameFrame.state` は
+ * tick 終了時点の snapshot なので、同じ entity の position が event と state で
+ * 異なる場合がある。
+ *
  * 描画・音声・DOM の都合で発生する runtime event はここに混ぜない。
  */
 export type GameEvent =

@@ -102,7 +102,7 @@ test("spawns player shot entities from shot input deterministically", () => {
       id: 2,
       kind: "playerShot",
       definitionId: "playerShot.basic",
-      position: { x: 192, y: 400 },
+      position: { x: 192, y: 392 },
     },
   ]);
   assert.equal(Object.isFrozen(frame.value.events), true);
@@ -120,9 +120,76 @@ test("spawns player shot entities from shot input deterministically", () => {
   assert.equal(nextFrame.ok, true);
   assert.deepEqual(nextFrame.ok && nextFrame.value.events.map((event) => event.type), ["playerShotsSpawnedBatch", "tickAdvanced"]);
   assert.deepEqual(nextFrame.ok && nextFrame.value.state.entities.map((entity) => entity.id), [1, 2, 3]);
+  assert.deepEqual(nextFrame.ok && nextFrame.value.state.entities.filter((entity) => entity.kind === "playerShot"), [
+    {
+      id: 2,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 384 },
+    },
+    {
+      id: 3,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 392 },
+    },
+  ]);
 });
 
-test("does not auto-fire from held-only shot input before shot lifetime is implemented", () => {
+test("moves player shots by content velocity and cleans them up after lifetime", () => {
+  const started = startMinimumStage();
+
+  const frame0 = started.tick(createShotInputFrame(0));
+  assert.equal(frame0.ok, true);
+  if (!frame0.ok) {
+    assert.fail("expected first shot frame");
+  }
+  assert.deepEqual(frame0.value.state.entities.filter((entity) => entity.kind === "playerShot"), [
+    {
+      id: 2,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 392 },
+    },
+  ]);
+
+  const frame1 = started.tick(createEmptyInputFrame(1));
+  assert.equal(frame1.ok, true);
+  if (!frame1.ok) {
+    assert.fail("expected moved shot frame");
+  }
+  assert.deepEqual(frame1.value.state.entities.filter((entity) => entity.kind === "playerShot"), [
+    {
+      id: 2,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 384 },
+    },
+  ]);
+
+  const frame2 = started.tick(createEmptyInputFrame(2));
+  assert.equal(frame2.ok, true);
+  if (!frame2.ok) {
+    assert.fail("expected last visible shot frame");
+  }
+  assert.deepEqual(frame2.value.state.entities.filter((entity) => entity.kind === "playerShot"), [
+    {
+      id: 2,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 376 },
+    },
+  ]);
+
+  const frame3 = started.tick(createEmptyInputFrame(3));
+  assert.equal(frame3.ok, true);
+  if (!frame3.ok) {
+    assert.fail("expected cleanup frame");
+  }
+  assert.deepEqual(frame3.value.state.entities.map((entity) => entity.kind), ["player"]);
+});
+
+test("does not auto-fire from held-only shot input before fire interval is implemented", () => {
   const started = startMinimumStage();
 
   const frame = started.tick(createHeldShotInputFrame(0));
@@ -133,6 +200,55 @@ test("does not auto-fire from held-only shot input before shot lifetime is imple
 
   assert.deepEqual(frame.value.events.map((event) => event.type), ["stageStarted", "tickAdvanced"]);
   assert.deepEqual(frame.value.state.entities.map((entity) => entity.kind), ["player"]);
+});
+
+test("keeps a lifetime one player shot visible on its spawn frame", () => {
+  const definition = createMinimumDefinition();
+  const loaded = createShootingCore("0.0.0").load({
+    ...definition,
+    content: {
+      ...definition.content,
+      playerShots: [{
+        ...definition.content.playerShots[0]!,
+        projectile: { velocity: { x: 0, y: -8 }, lifetimeTicks: 1 },
+      }],
+    },
+  });
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected lifetime one content to load");
+  }
+
+  const started = loaded.value.startStage({
+    stageId: "stage.stage_01",
+    difficulty: "normal",
+    seed: "seed-1",
+  });
+  assert.equal(started.ok, true);
+  if (!started.ok) {
+    assert.fail("expected lifetime one stage session");
+  }
+
+  const frame0 = started.value.tick(createShotInputFrame(0));
+  assert.equal(frame0.ok, true);
+  if (!frame0.ok) {
+    assert.fail("expected lifetime one spawn frame");
+  }
+  assert.deepEqual(frame0.value.state.entities.filter((entity) => entity.kind === "playerShot"), [
+    {
+      id: 2,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 392 },
+    },
+  ]);
+
+  const frame1 = started.value.tick(createEmptyInputFrame(1));
+  assert.equal(frame1.ok, true);
+  if (!frame1.ok) {
+    assert.fail("expected lifetime one cleanup frame");
+  }
+  assert.deepEqual(frame1.value.state.entities.map((entity) => entity.kind), ["player"]);
 });
 
 test("spawns one player shot batch from pressed-only shot input", () => {
@@ -193,7 +309,7 @@ test("spawns one player shot batch when shot is both held and pressed", () => {
       id: 2,
       kind: "playerShot",
       definitionId: "playerShot.basic",
-      position: { x: 192, y: 400 },
+      position: { x: 192, y: 392 },
     },
   ]);
 });
@@ -229,6 +345,7 @@ test("uses the selected player's shot definition when spawning player shots", ()
           asset: "shot.player_alt",
           collision: { radius: 7 },
           damage: 9,
+          projectile: { velocity: { x: 0, y: -12 }, lifetimeTicks: 3 },
         },
       ],
     },
@@ -277,7 +394,7 @@ test("uses the selected player's shot definition when spawning player shots", ()
       id: 2,
       kind: "playerShot",
       definitionId: "playerShot.alt",
-      position: { x: 192, y: 400 },
+      position: { x: 192, y: 388 },
     },
   ]);
 });
@@ -359,7 +476,7 @@ test("orders timeline enemy spawn before player shot batch on the same tick", ()
   })), [
     { id: 1, kind: "player", definitionId: "player.default", position: { x: 192, y: 400 } },
     { id: 2, kind: "enemy", definitionId: "enemy.scout", position: { x: 192, y: -16 } },
-    { id: 3, kind: "playerShot", definitionId: "playerShot.basic", position: { x: 192, y: 400 } },
+    { id: 3, kind: "playerShot", definitionId: "playerShot.basic", position: { x: 192, y: 392 } },
   ]);
 });
 
@@ -839,12 +956,94 @@ test("rejects invalid numeric content constraints", () => {
       ],
       enemies: [{ ...definition.content.enemies[0], collision: { radius: -2 }, hp: -10 }],
       bullets: [{ ...definition.content.bullets[0], collision: { radius: 0 } }],
-      playerShots: [{ ...definition.content.playerShots[0], collision: { radius: -1 } }],
+      playerShots: [{
+        ...definition.content.playerShots[0],
+        collision: { radius: -1 },
+        projectile: { velocity: { x: Number.NaN, y: -8 }, lifetimeTicks: 0 },
+      }],
     },
   });
 
   assert.equal(loaded.ok, false);
   assert.equal(!loaded.ok && loaded.errors.every((error) => error.code === "definition.invalidShape"), true);
+});
+
+test("rejects invalid player shot projectile constraints in otherwise valid content", () => {
+  const definition = createMinimumDefinition();
+  const loaded = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      playerShots: [{
+        ...definition.content.playerShots[0],
+        projectile: { velocity: { x: "fast", y: -8 }, lifetimeTicks: 0 },
+      }],
+    },
+  });
+
+  assert.equal(loaded.ok, false);
+  assert.deepEqual(!loaded.ok && loaded.errors.map((error) => error.message), [
+    "playerShot.projectile.velocity.x must be a finite number",
+    "playerShot.projectile.lifetimeTicks must be a positive integer",
+  ]);
+});
+
+test("rejects missing player shot projectile objects in otherwise valid content", () => {
+  const definition = createMinimumDefinition();
+  const playerShotWithoutProjectile = { ...definition.content.playerShots[0] } as Record<string, unknown>;
+  delete playerShotWithoutProjectile.projectile;
+  const loaded = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      playerShots: [playerShotWithoutProjectile],
+    },
+  });
+
+  assert.equal(loaded.ok, false);
+  assert.deepEqual(!loaded.ok && loaded.errors.map((error) => error.message), [
+    "playerShot.projectile must be an object",
+  ]);
+});
+
+test("rejects missing player shot projectile velocity in otherwise valid content", () => {
+  const definition = createMinimumDefinition();
+  const loaded = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      playerShots: [{
+        ...definition.content.playerShots[0],
+        projectile: { lifetimeTicks: 3 },
+      }],
+    },
+  });
+
+  assert.equal(loaded.ok, false);
+  assert.deepEqual(!loaded.ok && loaded.errors.map((error) => error.message), [
+    "playerShot.projectile.velocity must be an object",
+  ]);
+});
+
+test("rejects player shot projectile values that exceed runtime budgets", () => {
+  const definition = createMinimumDefinition();
+  const loaded = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      playerShots: [{
+        ...definition.content.playerShots[0],
+        projectile: { velocity: { x: 65, y: -65 }, lifetimeTicks: 301 },
+      }],
+    },
+  });
+
+  assert.equal(loaded.ok, false);
+  assert.deepEqual(!loaded.ok && loaded.errors.map((error) => error.message), [
+    "playerShot.projectile.velocity.x must be between -64 and 64",
+    "playerShot.projectile.velocity.y must be between -64 and 64",
+    "playerShot.projectile.lifetimeTicks must be at most 300",
+  ]);
 });
 
 test("rejects empty asset keys and duplicate difficulties", () => {
@@ -1224,7 +1423,7 @@ test("canonicalizes input actions and accepts same-tick tap edges", () => {
       id: 2,
       kind: "playerShot",
       definitionId: "playerShot.basic",
-      position: { x: 192, y: 400 },
+      position: { x: 192, y: 392 },
     },
   ]);
 
@@ -1282,7 +1481,26 @@ test("recovers from a tick mismatch after spawning a player shot without duplica
     },
     { type: "tickAdvanced", tick: 1 },
   ]);
-  assert.deepEqual(frame1.value.state.entities.map((entity) => entity.id), [1, 2, 3]);
+  assert.deepEqual(frame1.value.state.entities, [
+    {
+      id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: { x: 192, y: 400 },
+    },
+    {
+      id: 2,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 384 },
+    },
+    {
+      id: 3,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 392 },
+    },
+  ]);
 });
 
 test("returns immutable event frames and drains one-shot events", () => {

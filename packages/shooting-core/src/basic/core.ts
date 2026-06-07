@@ -18,6 +18,7 @@ import { deepFreezeClone, deepFreezePlainData } from "./internal/immutable.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
 import type { CoreErrorCode, CoreResult } from "./result.ts";
 import { EntityAllocator } from "./simulation/entity.ts";
+import { advancePlayerShotLifecycle } from "./simulation/player-shot-lifecycle-system.ts";
 import { spawnPlayerShotFromInput } from "./simulation/player-shot-system.ts";
 import {
   createEnemyRuntimeEntity,
@@ -299,6 +300,7 @@ function createStageSession(options: StageSessionContext): StageSession {
       }
 
       // system order の spawnBulletsPlayerShots。MVP は shot 押下 edge ごとに 1 発だけ生成する。
+      const spawnedPlayerShotEntityIds = new Set<number>();
       const playerEntity = findPlayerEntity(workingEntities, options.player.id);
       if (!playerEntity) {
         return error("player.notFound", `Player entity not found: ${options.player.id}`);
@@ -318,15 +320,23 @@ function createStageSession(options: StageSessionContext): StageSession {
       }
       if (playerShotSpawn.value) {
         workingEntities.push(...playerShotSpawn.value.entities);
+        for (const entity of playerShotSpawn.value.entities) {
+          spawnedPlayerShotEntityIds.add(entity.id);
+        }
         eventLog.push(playerShotSpawn.value.event);
       }
+
+      // system order の updateMovement / updateLifetime。生成直後の shot は移動だけ行い、寿命減算は次 tick から始める。
+      const advancedEntities = advancePlayerShotLifecycle(workingEntities, {
+        spawnedThisTickEntityIds: spawnedPlayerShotEntityIds,
+      });
 
       // PRNG はまだ event payload に出していないが、tick ごとの消費順を先に固定しておく。
       workingPrng.nextUint32();
       eventLog.push({ type: "tickAdvanced", tick: expectedTick });
 
       // frame に載せる state は renderer が保持しても安全な immutable snapshot にする。
-      const orderedEntities = freezeEntitiesInIdOrder(workingEntities);
+      const orderedEntities = freezeEntitiesInIdOrder(advancedEntities);
       const state: ReadonlyGameState = Object.freeze({
         tick: expectedTick,
         stageId: options.stage.id,

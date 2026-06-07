@@ -84,8 +84,10 @@ test("creates bullet and player shot runtime components from content hitboxes", 
     kind: "playerShot",
     definitionId: "playerShot.basic",
     position: { x: 200, y: 360 },
+    velocity: { x: 0, y: -8 },
     collisionRadius: 5,
     damage: 5,
+    remainingLifetimeTicks: 3,
   });
 });
 

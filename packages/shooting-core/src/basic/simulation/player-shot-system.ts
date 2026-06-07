@@ -23,8 +23,8 @@ export type PlayerShotSpawnResult = Readonly<{
 /**
  * 入力に応じて自機ショットを 1 batch 生成する。
  *
- * Phase 1A では押下 edge ごとの単発だけを扱う。held 連射は shot movement /
- * lifetime / runtime budget を入れるスライスで有効化する。
+ * Phase 1A では押下 edge ごとの単発だけを扱う。held 連射は fire interval と
+ * runtime budget を固定するスライスで有効化する。
  */
 export function spawnPlayerShotFromInput(
   allocator: EntityAllocator,

@@ -8,6 +8,8 @@ const SUPPORTED_SCHEMA_VERSION = "1";
 const KNOWN_FEATURE_SET = new Set<string>(KNOWN_ENABLED_FEATURES);
 const MAX_STAGE_TIMELINE_STEPS = 4_096;
 const MAX_SPAWNS_PER_TICK = 100;
+const MAX_PLAYER_SHOT_LIFETIME_TICKS = 300;
+const MAX_PLAYER_SHOT_SPEED_PER_AXIS = 64;
 
 /**
  * `GameDefinition` 全体の validation pipeline。
@@ -152,12 +154,13 @@ function validateDefinitionShape(definition: unknown, errors: CoreError[]): Game
     validateCollisionShape("bullet.collision", bullet.collision, errors);
   }
   for (const playerShot of playerShots) {
-    validateAllowedKeys("playerShot", playerShot, ["id", "version", "asset", "collision", "damage"], errors);
+    validateAllowedKeys("playerShot", playerShot, ["id", "version", "asset", "collision", "damage", "projectile"], errors);
     validateNonEmptyString("playerShot.id", playerShot.id, errors);
     validatePositiveInteger("playerShot.version", playerShot.version, errors);
     validateNonEmptyString("playerShot.asset", playerShot.asset, errors);
     validateCollisionShape("playerShot.collision", playerShot.collision, errors);
     validatePositiveNumber("playerShot.damage", playerShot.damage, errors);
+    validatePlayerShotProjectileShape(playerShot.projectile, errors);
   }
   for (const pattern of patterns) {
     validateAllowedKeys("pattern", pattern, ["id", "version"], errors);
@@ -185,6 +188,42 @@ function validateCollisionShape(path: string, value: unknown, errors: CoreError[
   }
   validateAllowedKeys(path, collision, ["radius"], errors);
   validatePositiveNumber(`${path}.radius`, collision.radius, errors);
+}
+
+/** player shot の最小 projectile 定義を検証する。 */
+function validatePlayerShotProjectileShape(value: unknown, errors: CoreError[]): void {
+  const projectile = asRecord(value);
+  if (!projectile) {
+    errors.push({ code: "definition.invalidShape", message: "playerShot.projectile must be an object" });
+    return;
+  }
+  validateAllowedKeys("playerShot.projectile", projectile, ["velocity", "lifetimeTicks"], errors);
+
+  const velocity = asRecord(projectile.velocity);
+  if (!velocity) {
+    errors.push({ code: "definition.invalidShape", message: "playerShot.projectile.velocity must be an object" });
+  } else {
+    validateAllowedKeys("playerShot.projectile.velocity", velocity, ["x", "y"], errors);
+    validateFiniteNumberWithinAbs(
+      "playerShot.projectile.velocity.x",
+      velocity.x,
+      MAX_PLAYER_SHOT_SPEED_PER_AXIS,
+      errors,
+    );
+    validateFiniteNumberWithinAbs(
+      "playerShot.projectile.velocity.y",
+      velocity.y,
+      MAX_PLAYER_SHOT_SPEED_PER_AXIS,
+      errors,
+    );
+  }
+
+  validatePositiveIntegerAtMost(
+    "playerShot.projectile.lifetimeTicks",
+    projectile.lifetimeTicks,
+    MAX_PLAYER_SHOT_LIFETIME_TICKS,
+    errors,
+  );
 }
 
 /** PlayerDefinition の shape validation。 */
@@ -519,6 +558,14 @@ function validateFiniteNumber(path: string, value: unknown, errors: CoreError[])
   }
 }
 
+/** unknown value が有限数であり、絶対値上限内であることを検証する。 */
+function validateFiniteNumberWithinAbs(path: string, value: unknown, maxAbs: number, errors: CoreError[]): void {
+  validateFiniteNumber(path, value, errors);
+  if (typeof value === "number" && Number.isFinite(value) && Math.abs(value) > maxAbs) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must be between ${-maxAbs} and ${maxAbs}` });
+  }
+}
+
 /** unknown value が 0 以上の整数であることを検証する。 */
 function validateNonNegativeInteger(path: string, value: unknown, errors: CoreError[]): void {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
@@ -530,6 +577,14 @@ function validateNonNegativeInteger(path: string, value: unknown, errors: CoreEr
 function validatePositiveInteger(path: string, value: unknown, errors: CoreError[]): void {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
     errors.push({ code: "definition.invalidShape", message: `${path} must be a positive integer` });
+  }
+}
+
+/** unknown value が 1 以上 max 以下の整数であることを検証する。 */
+function validatePositiveIntegerAtMost(path: string, value: unknown, max: number, errors: CoreError[]): void {
+  validatePositiveInteger(path, value, errors);
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > max) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must be at most ${max}` });
   }
 }
 

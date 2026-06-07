@@ -96,14 +96,16 @@ export type EnemyBulletRuntimeEntity = Readonly<{
   collisionRadius: number;
 }>;
 
-/** 自機ショットの runtime component。movement / lifetime / cleanup は後続 system で拡張する。 */
+/** 自機ショットの runtime component。projectile movement と lifetime cleanup に必要な値を保持する。 */
 export type PlayerShotRuntimeEntity = Readonly<{
   id: EntityId;
   kind: "playerShot";
   definitionId: PlayerShotId;
   position: Vector2;
+  velocity: Vector2;
   collisionRadius: number;
   damage: number;
+  remainingLifetimeTicks: number;
 }>;
 
 /** Core basic が扱う runtime entity の union。 */
@@ -202,8 +204,13 @@ export function createPlayerShotRuntimeEntity(
     kind: "playerShot",
     definitionId: playerShot.id,
     position: Object.freeze({ x: position.x, y: position.y }),
+    velocity: Object.freeze({
+      x: playerShot.projectile.velocity.x,
+      y: playerShot.projectile.velocity.y,
+    }),
     collisionRadius: playerShot.collision.radius,
     damage: playerShot.damage,
+    remainingLifetimeTicks: playerShot.projectile.lifetimeTicks,
   }));
 }
 
