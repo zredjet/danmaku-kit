@@ -439,6 +439,8 @@ bomb:
 
 `graze` と `bomb.definition` は optional である。MVP では `graze` field を持たず、`bomb.definition: null` を許可する。Graze module を有効にした title だけ `graze.radius` / `graze.oncePerBullet` を定義し、Bomb module を有効にした title だけ `bomb.default` などの定義を参照する。
 
+Player movement は `InputFrame.axes` を intent として扱い、`focus` held 中は `focusSpeed`、それ以外は `speed` を使う。低速移動の意味を守るため `focusSpeed <= speed` を content validation で要求し、MVP では `speed` / `focusSpeed` ともに `16` 以下に制限する。斜め入力は通常移動より速くならないよう正規化し、自機中心は playfield の `x=0..384`、`y=0..448` 内へ clamp する。Shot 生成は system order に従って movement 前の player position を使い、同じ tick の `GameFrame.state` では player が movement 後の position になる。
+
 ### 9.3 PlayerShot 定義例
 
 敵弾と自機弾は同じ `BulletDefinition` に寄せず、発射元と用途を分ける。敵弾は `content/bullets/`、自機ショットは `content/player-shots/` で管理する。

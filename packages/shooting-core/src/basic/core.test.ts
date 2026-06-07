@@ -70,6 +70,91 @@ test("returns identical frames for identical seed and input sequence", () => {
   }
 });
 
+test("moves player by input axes and clamps the center inside the playfield", () => {
+  const started = startMinimumStage();
+
+  const frame0 = started.tick(createMoveInputFrame(0, 1, -1, []));
+  assert.equal(frame0.ok, true);
+  if (!frame0.ok) {
+    assert.fail("expected moved player frame");
+  }
+  assert.deepEqual(frame0.value.state.entities, [
+    {
+      id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: { x: 192 + 4 * Math.SQRT1_2, y: 400 - 4 * Math.SQRT1_2 },
+    },
+  ]);
+
+  const frame1 = started.tick(createMoveInputFrame(1, -1, 1, ["focus"]));
+  assert.equal(frame1.ok, true);
+  if (!frame1.ok) {
+    assert.fail("expected focus moved player frame");
+  }
+  assert.deepEqual(frame1.value.state.entities, [
+    {
+      id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: {
+        x: 192 + 4 * Math.SQRT1_2 - 1.8 * Math.SQRT1_2,
+        y: 400 - 4 * Math.SQRT1_2 + 1.8 * Math.SQRT1_2,
+      },
+    },
+  ]);
+
+  let lastFrame: ReturnType<StageSession["tick"]> = frame1;
+  for (let tick = 2; tick <= 20; tick += 1) {
+    lastFrame = started.tick(createMoveInputFrame(tick, 1, 1, []));
+    assert.equal(lastFrame.ok, true);
+  }
+  const playerAfterClamp = lastFrame.ok && lastFrame.value.state.entities[0];
+  assert.equal(playerAfterClamp && playerAfterClamp.kind, "player");
+  assert.equal(playerAfterClamp && playerAfterClamp.definitionId, "player.default");
+  assert.equal(playerAfterClamp && playerAfterClamp.position.y, 448);
+  assert.equal(
+    playerAfterClamp && Math.abs(playerAfterClamp.position.x - (192 + 4 * Math.SQRT1_2 - 1.8 * Math.SQRT1_2 + 19 * 4 * Math.SQRT1_2)) < 1e-12,
+    true,
+  );
+});
+
+test("spawns player shots from the pre-movement player position on the same tick", () => {
+  const started = startMinimumStage();
+
+  const frame = started.tick(createMoveAndPressedShotInputFrame(0, 1, 0));
+  assert.equal(frame.ok, true);
+  if (!frame.ok) {
+    assert.fail("expected moving shot frame");
+  }
+
+  assert.deepEqual(frame.value.events[1], {
+    type: "playerShotsSpawnedBatch",
+    tick: 0,
+    shots: [
+      {
+        entityId: 2,
+        definitionId: "playerShot.basic",
+        position: { x: 192, y: 400 },
+      },
+    ],
+  });
+  assert.deepEqual(frame.value.state.entities, [
+    {
+      id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: { x: 196, y: 400 },
+    },
+    {
+      id: 2,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 392 },
+    },
+  ]);
+});
+
 test("spawns player shot entities from shot input deterministically", () => {
   const started = startMinimumStage();
 
@@ -968,6 +1053,49 @@ test("rejects invalid numeric content constraints", () => {
   assert.equal(!loaded.ok && loaded.errors.every((error) => error.code === "definition.invalidShape"), true);
 });
 
+test("rejects player focus speed that exceeds normal movement speed", () => {
+  const definition = createMinimumDefinition();
+  const loaded = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      players: [
+        {
+          ...definition.content.players[0],
+          movement: { speed: 4, focusSpeed: 8 },
+        },
+      ],
+    },
+  });
+
+  assert.equal(loaded.ok, false);
+  assert.deepEqual(!loaded.ok && loaded.errors.map((error) => error.message), [
+    "player.movement.focusSpeed must be less than or equal to player.movement.speed",
+  ]);
+});
+
+test("rejects player movement speeds that exceed runtime budgets", () => {
+  const definition = createMinimumDefinition();
+  const loaded = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      players: [
+        {
+          ...definition.content.players[0],
+          movement: { speed: 17, focusSpeed: 16.5 },
+        },
+      ],
+    },
+  });
+
+  assert.equal(loaded.ok, false);
+  assert.deepEqual(!loaded.ok && loaded.errors.map((error) => error.message), [
+    "player.movement.speed must be less than or equal to 16",
+    "player.movement.focusSpeed must be less than or equal to 16",
+  ]);
+});
+
 test("rejects invalid player shot projectile constraints in otherwise valid content", () => {
   const definition = createMinimumDefinition();
   const loaded = loadUnknown({
@@ -1553,10 +1681,35 @@ function createHeldShotInputFrame(tick: number): InputFrame {
   });
 }
 
+function createMoveInputFrame(
+  tick: number,
+  moveX: -1 | 0 | 1,
+  moveY: -1 | 0 | 1,
+  held: InputFrame["held"],
+): InputFrame {
+  return Object.freeze({
+    tick,
+    axes: Object.freeze({ moveX, moveY }),
+    held: Object.freeze([...held]),
+    pressed: Object.freeze([] as const),
+    released: Object.freeze([] as const),
+  });
+}
+
 function createPressedShotInputFrame(tick: number): InputFrame {
   return Object.freeze({
     tick,
     axes: Object.freeze({ moveX: 0, moveY: 0 }),
+    held: Object.freeze([] as const),
+    pressed: Object.freeze(["shot"] as const),
+    released: Object.freeze([] as const),
+  });
+}
+
+function createMoveAndPressedShotInputFrame(tick: number, moveX: -1 | 0 | 1, moveY: -1 | 0 | 1): InputFrame {
+  return Object.freeze({
+    tick,
+    axes: Object.freeze({ moveX, moveY }),
     held: Object.freeze([] as const),
     pressed: Object.freeze(["shot"] as const),
     released: Object.freeze([] as const),

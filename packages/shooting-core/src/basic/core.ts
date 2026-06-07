@@ -18,6 +18,7 @@ import { deepFreezeClone, deepFreezePlainData } from "./internal/immutable.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
 import type { CoreErrorCode, CoreResult } from "./result.ts";
 import { EntityAllocator } from "./simulation/entity.ts";
+import { advancePlayerMovement } from "./simulation/player-movement-system.ts";
 import { advancePlayerShotLifecycle } from "./simulation/player-shot-lifecycle-system.ts";
 import { spawnPlayerShotFromInput } from "./simulation/player-shot-system.ts";
 import {
@@ -225,8 +226,8 @@ function createLoadedGame(content: LoadedContentIndex): LoadedGame {
 /**
  * 1 stage の simulation session を作る。
  *
- * movement / collision / lifetime update は後続スライスで追加するが、timeline spawn
- * だけはここで state mutation として扱い、ID 採番と event 順序を固定する。
+ * collision / scoring は後続スライスで追加するが、ここで tick 中の working state と
+ * 成功時 commit の境界を固定し、ID 採番と event 順序を deterministic に保つ。
  */
 function createStageSession(options: StageSessionContext): StageSession {
   let expectedTick = 0;
@@ -326,8 +327,9 @@ function createStageSession(options: StageSessionContext): StageSession {
         eventLog.push(playerShotSpawn.value.event);
       }
 
-      // system order の updateMovement / updateLifetime。生成直後の shot は移動だけ行い、寿命減算は次 tick から始める。
-      const advancedEntities = advancePlayerShotLifecycle(workingEntities, {
+      // system order の updateMovement / updateLifetime。player は入力で、player shot は projectile 定義で進める。
+      const movedEntities = advancePlayerMovement(workingEntities, input.value);
+      const advancedEntities = advancePlayerShotLifecycle(movedEntities, {
         spawnedThisTickEntityIds: spawnedPlayerShotEntityIds,
       });
 

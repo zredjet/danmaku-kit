@@ -8,6 +8,7 @@ const SUPPORTED_SCHEMA_VERSION = "1";
 const KNOWN_FEATURE_SET = new Set<string>(KNOWN_ENABLED_FEATURES);
 const MAX_STAGE_TIMELINE_STEPS = 4_096;
 const MAX_SPAWNS_PER_TICK = 100;
+const MAX_PLAYER_MOVEMENT_SPEED = 16;
 const MAX_PLAYER_SHOT_LIFETIME_TICKS = 300;
 const MAX_PLAYER_SHOT_SPEED_PER_AXIS = 64;
 
@@ -245,6 +246,9 @@ function validatePlayerShape(player: Record<string, unknown>, errors: CoreError[
     validateAllowedKeys("player.movement", movement, ["speed", "focusSpeed"], errors);
     validatePositiveNumber("player.movement.speed", movement.speed, errors);
     validatePositiveNumber("player.movement.focusSpeed", movement.focusSpeed, errors);
+    validateNumberAtMost("player.movement.speed", movement.speed, MAX_PLAYER_MOVEMENT_SPEED, String(MAX_PLAYER_MOVEMENT_SPEED), errors);
+    validateNumberAtMost("player.movement.focusSpeed", movement.focusSpeed, MAX_PLAYER_MOVEMENT_SPEED, String(MAX_PLAYER_MOVEMENT_SPEED), errors);
+    validateNumberAtMost("player.movement.focusSpeed", movement.focusSpeed, movement.speed, "player.movement.speed", errors);
   }
 
   validateCollisionShape("player.collision", player.collision, errors);
@@ -592,6 +596,25 @@ function validatePositiveIntegerAtMost(path: string, value: unknown, max: number
 function validatePositiveNumber(path: string, value: unknown, errors: CoreError[]): void {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     errors.push({ code: "definition.invalidShape", message: `${path} must be a positive number` });
+  }
+}
+
+/** unknown value が比較対象の number 以下であることを検証する。 */
+function validateNumberAtMost(
+  path: string,
+  value: unknown,
+  maxValue: unknown,
+  maxPath: string,
+  errors: CoreError[],
+): void {
+  if (
+    typeof value === "number"
+    && Number.isFinite(value)
+    && typeof maxValue === "number"
+    && Number.isFinite(maxValue)
+    && value > maxValue
+  ) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must be less than or equal to ${maxPath}` });
   }
 }
 
