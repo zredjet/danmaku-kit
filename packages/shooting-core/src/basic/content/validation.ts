@@ -9,6 +9,7 @@ const KNOWN_FEATURE_SET = new Set<string>(KNOWN_ENABLED_FEATURES);
 const MAX_STAGE_TIMELINE_STEPS = 4_096;
 const MAX_SPAWNS_PER_TICK = 100;
 const MAX_PLAYER_MOVEMENT_SPEED = 16;
+const MAX_PLAYER_SHOT_FIRE_INTERVAL_TICKS = 60;
 const MAX_PLAYER_SHOT_LIFETIME_TICKS = 300;
 const MAX_PLAYER_SHOT_SPEED_PER_AXIS = 64;
 
@@ -155,12 +156,13 @@ function validateDefinitionShape(definition: unknown, errors: CoreError[]): Game
     validateCollisionShape("bullet.collision", bullet.collision, errors);
   }
   for (const playerShot of playerShots) {
-    validateAllowedKeys("playerShot", playerShot, ["id", "version", "asset", "collision", "damage", "projectile"], errors);
+    validateAllowedKeys("playerShot", playerShot, ["id", "version", "asset", "collision", "damage", "fire", "projectile"], errors);
     validateNonEmptyString("playerShot.id", playerShot.id, errors);
     validatePositiveInteger("playerShot.version", playerShot.version, errors);
     validateNonEmptyString("playerShot.asset", playerShot.asset, errors);
     validateCollisionShape("playerShot.collision", playerShot.collision, errors);
     validatePositiveNumber("playerShot.damage", playerShot.damage, errors);
+    validatePlayerShotFireShape(playerShot.fire, errors);
     validatePlayerShotProjectileShape(playerShot.projectile, errors);
   }
   for (const pattern of patterns) {
@@ -189,6 +191,22 @@ function validateCollisionShape(path: string, value: unknown, errors: CoreError[
   }
   validateAllowedKeys(path, collision, ["radius"], errors);
   validatePositiveNumber(`${path}.radius`, collision.radius, errors);
+}
+
+/** player shot の最小 fire 定義を検証する。 */
+function validatePlayerShotFireShape(value: unknown, errors: CoreError[]): void {
+  const fire = asRecord(value);
+  if (!fire) {
+    errors.push({ code: "definition.invalidShape", message: "playerShot.fire must be an object" });
+    return;
+  }
+  validateAllowedKeys("playerShot.fire", fire, ["intervalTicks"], errors);
+  validatePositiveIntegerAtMost(
+    "playerShot.fire.intervalTicks",
+    fire.intervalTicks,
+    MAX_PLAYER_SHOT_FIRE_INTERVAL_TICKS,
+    errors,
+  );
 }
 
 /** player shot の最小 projectile 定義を検証する。 */

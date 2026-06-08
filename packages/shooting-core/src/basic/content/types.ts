@@ -125,6 +125,9 @@ export type PlayerShotDefinition = {
     radius: number;
   };
   damage: number;
+  fire: {
+    intervalTicks: number;
+  };
   projectile: {
     velocity: {
       x: number;

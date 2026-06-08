@@ -30,6 +30,7 @@ test("creates player runtime components from player content", () => {
     lives: 3,
     invincibleTicksRemaining: 0,
     shotDefinitionId: "playerShot.basic",
+    nextShotAllowedTick: 0,
   });
   assert.equal(Object.isFrozen(entity.value), true);
   assert.equal(Object.isFrozen(entity.value.position), true);
@@ -93,16 +94,31 @@ test("creates bullet and player shot runtime components from content hitboxes", 
 
 test("projects runtime components to public readonly snapshots without leaking internals", () => {
   const definition = createMinimumDefinition();
+  const player = createPlayerRuntimeEntity(new EntityAllocator(), definition.content.players[0]!);
   const runtime = createEnemyRuntimeEntity(
     new EntityAllocator(),
     definition.content.enemies[0]!,
     definition.content.stages[0]!.timeline[0]!.action,
   );
 
+  assert.equal(player.ok, true);
   assert.equal(runtime.ok, true);
-  if (!runtime.ok) {
-    assert.fail("expected enemy entity");
+  if (!player.ok || !runtime.ok) {
+    assert.fail("expected runtime entities");
   }
+  const playerSnapshot = toReadonlyEntityState(player.value);
+  assert.deepEqual(playerSnapshot, {
+    id: 1,
+    kind: "player",
+    definitionId: "player.default",
+    position: { x: 192, y: 400 },
+  });
+  assert.equal("nextShotAllowedTick" in playerSnapshot, false);
+  assert.equal("shotDefinitionId" in playerSnapshot, false);
+  assert.equal("collisionRadius" in playerSnapshot, false);
+  assert.equal(Object.isFrozen(playerSnapshot), true);
+  assert.equal(Object.isFrozen(playerSnapshot.position), true);
+
   const snapshot = toReadonlyEntityState(runtime.value);
   assert.deepEqual(snapshot, {
     id: 1,

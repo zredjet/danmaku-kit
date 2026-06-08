@@ -91,6 +91,7 @@ function createPlayer(): RuntimeEntityState {
     lives: 3,
     invincibleTicksRemaining: 0,
     shotDefinitionId: "playerShot.basic",
+    nextShotAllowedTick: 0,
   };
 }
 

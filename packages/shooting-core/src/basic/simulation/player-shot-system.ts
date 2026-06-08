@@ -16,6 +16,7 @@ type PlayerShotSpawnEventItem = Readonly<{
 /** 自機ショット生成 system が tick へ返す差分。 */
 export type PlayerShotSpawnResult = Readonly<{
   entities: readonly [PlayerShotRuntimeEntity, ...PlayerShotRuntimeEntity[]];
+  player: PlayerRuntimeEntity;
   spawnedShots: readonly [PlayerShotSpawnEventItem, ...PlayerShotSpawnEventItem[]];
   event: GameEvent;
 }>;
@@ -23,8 +24,8 @@ export type PlayerShotSpawnResult = Readonly<{
 /**
  * 入力に応じて自機ショットを 1 batch 生成する。
  *
- * Phase 1A では押下 edge ごとの単発だけを扱う。held 連射は fire interval と
- * runtime budget を固定するスライスで有効化する。
+ * `pressed` は初弾を落とさないための edge、`held` は interval に従う連射 intent として扱う。
+ * 生成後は player の `nextShotAllowedTick` を進め、将来の replay / restore 対象になる cooldown を残す。
  */
 export function spawnPlayerShotFromInput(
   allocator: EntityAllocator,
@@ -32,7 +33,7 @@ export function spawnPlayerShotFromInput(
   player: PlayerRuntimeEntity,
   shot: PlayerShotDefinition,
 ): CoreResult<PlayerShotSpawnResult | null> {
-  if (!isShotRequested(input)) {
+  if (!isShotRequested(input) || input.tick < player.nextShotAllowedTick) {
     return okResult(null);
   }
 
@@ -42,6 +43,18 @@ export function spawnPlayerShotFromInput(
   }
 
   const entities = Object.freeze([entity.value]) as readonly [PlayerShotRuntimeEntity];
+  const updatedPlayer = Object.freeze({
+    ...player,
+    movement: Object.freeze({
+      speed: player.movement.speed,
+      focusSpeed: player.movement.focusSpeed,
+    }),
+    position: Object.freeze({
+      x: player.position.x,
+      y: player.position.y,
+    }),
+    nextShotAllowedTick: input.tick + shot.fire.intervalTicks,
+  });
   const spawnedShots = Object.freeze([Object.freeze({
     entityId: entity.value.id,
     definitionId: shot.id,
@@ -50,6 +63,7 @@ export function spawnPlayerShotFromInput(
 
   return okResult(Object.freeze({
     entities,
+    player: updatedPlayer,
     spawnedShots,
     event: buildPlayerShotsSpawnedBatchEvent(input.tick, spawnedShots),
   }));
@@ -69,5 +83,5 @@ function buildPlayerShotsSpawnedBatchEvent(
 
 /** 入力 frame がこの tick で通常ショット生成を要求しているか判定する。 */
 function isShotRequested(input: InputFrame): boolean {
-  return input.pressed.includes("shot");
+  return input.pressed.includes("shot") || input.held.includes("shot");
 }

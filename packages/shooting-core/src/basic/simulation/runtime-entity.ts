@@ -58,7 +58,7 @@ export type ReadonlyEntityState =
     position: Vector2;
   }>;
 
-/** 自機の runtime component。移動と被弾に必要な最小値だけを保持する。 */
+/** 自機の runtime component。移動、被弾、shot cooldown に必要な最小値を保持する。 */
 export type PlayerRuntimeEntity = Readonly<{
   id: EntityId;
   kind: "player";
@@ -72,6 +72,7 @@ export type PlayerRuntimeEntity = Readonly<{
   lives: number;
   invincibleTicksRemaining: number;
   shotDefinitionId: PlayerShotId;
+  nextShotAllowedTick: number;
 }>;
 
 /** 敵の runtime component。今後の movement / pattern / score 解決に必要な参照を保持する。 */
@@ -138,6 +139,7 @@ export function createPlayerRuntimeEntity(
     lives: player.life.initialLives,
     invincibleTicksRemaining: 0,
     shotDefinitionId: player.shot.definition,
+    nextShotAllowedTick: 0,
   }));
 }
 

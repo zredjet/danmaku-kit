@@ -16,6 +16,7 @@ test("moves player shots by velocity and decrements lifetime", () => {
       lives: 3,
       invincibleTicksRemaining: 0,
       shotDefinitionId: "playerShot.basic",
+      nextShotAllowedTick: 0,
     },
     {
       id: 2,

@@ -452,16 +452,20 @@ asset: shot.player_basic
 collision:
   radius: 3
 damage: 8
+fire:
+  intervalTicks: 3
 projectile:
   velocity: { x: 0, y: -9.0 }
   lifetimeTicks: 90
 ```
 
-Phase 1A の validator が受け付ける PlayerShot schema は上記の最小形である。`lifetimeTicks` は生成 tick を含めて `GameFrame.state.entities` に残る tick 数を表す。生成 tick でも `velocity` による movement は適用するが、lifetime decrement は次 tick から開始する。MVP では active player shot budget を守るため `lifetimeTicks <= 300`、`velocity.x/y` は `-64` から `64` の範囲に制限する。
+Phase 1A の validator が受け付ける PlayerShot schema は上記の最小形である。`fire.intervalTicks` は同じ shot definition から次に発射できるまでの tick 間隔であり、`pressed` は初弾の edge、`held` は interval に従う連射 intent として扱う。発射可能条件は `input.tick >= nextShotAllowedTick` とし、発射後は `nextShotAllowedTick = firedTick + fire.intervalTicks` に更新する。同一 tick で `pressed` と `held` の両方に `shot` が含まれていても生成する batch は 1 つだけとする。発射後は Player runtime component に `nextShotAllowedTick` を保持し、public snapshot には出さず、将来の serialize / restore と state hash 対象になる内部状態として扱う。MVP では過剰な entity 生成を避けるため `1 <= fire.intervalTicks <= 60` に制限する。
+
+`lifetimeTicks` は生成 tick を含めて `GameFrame.state.entities` に残る tick 数を表す。生成 tick でも `velocity` による movement は適用するが、lifetime decrement は次 tick から開始する。MVP では active player shot budget を守るため `lifetimeTicks <= 300`、`velocity.x/y` は `-64` から `64` の範囲に制限する。
 
 レーザー、貫通弾、オプション弾は `PlayerShotDefinition` の `type` と `projectile` 拡張で扱う。Core は `owner: player` / `owner: enemy` を entity component に持たせ、collision pair で判定対象を分ける。高速な player shot は `collisionMode: swept` または laser/beam 用の segment 判定を使う。`collisionMode: discrete` を許す場合は content validation で 1 tick の移動量上限を検証し、敵 hitbox をすり抜ける速度を禁止する。
 
-将来拡張の `fire.intervalTicks`、`fire.origins`、`projectile.pierce`、`collisionMode` は Phase 1A の schema には含めない。`pierce` は追加貫通回数である。`pierce: 0` は 1 体に命中したら destroyed、`pierce: 1` は 2 体目まで命中できる。Player shot は 1 tick 内で同一 enemy に 1 回だけ damage を与える。命中後、remaining pierce を 1 減らし、命中前の remaining pierce が 0 だった場合はその命中解決後に destroyed とする。Laser / beam は segment ごとの hit set を持ち、同一 tick の同一 enemy 多段 hit を禁止する。
+将来拡張の `fire.origins`、`projectile.pierce`、`collisionMode` は Phase 1A の schema には含めない。`pierce` は追加貫通回数である。`pierce: 0` は 1 体に命中したら destroyed、`pierce: 1` は 2 体目まで命中できる。Player shot は 1 tick 内で同一 enemy に 1 回だけ damage を与える。命中後、remaining pierce を 1 減らし、命中前の remaining pierce が 0 だった場合はその命中解決後に destroyed とする。Laser / beam は segment ごとの hit set を持ち、同一 tick の同一 enemy 多段 hit を禁止する。
 
 ### 9.4 Bomb 定義例
 
@@ -1308,7 +1312,7 @@ Hash 対象:
 - tick
 - nextEntityId
 - entity ids
-- component values
+- component values（Player runtime component の `nextShotAllowedTick` を含む）
 - active pattern runner states
 - active stage timeline cursor
 - score、lives
@@ -1316,7 +1320,6 @@ Hash 対象:
 - enabled feature states
 - PRNG state
 - next tick に持ち越す pending deterministic event queue
-- input-derived cooldowns
 
 Hash 対象外:
 
@@ -1488,7 +1491,7 @@ Phase 2B では `docs/content-authoring/examples/` を `validate-content` に通
 - immutable event log
 - PRNG
 - Player / Enemy / EnemyBullet / PlayerShot / Stage / Path / minimum Pattern schema
-- renderer 非依存の Player movement / shot movement / lifetime minimum
+- renderer 非依存の Player movement / shot movement / lifetime / fire interval minimum
 - system order lock
 - fixed `scoreOnKill` scoring system
 - Collision minimum

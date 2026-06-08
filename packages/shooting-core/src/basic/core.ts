@@ -300,7 +300,7 @@ function createStageSession(options: StageSessionContext): StageSession {
         workingTimelineCursor += 1;
       }
 
-      // system order の spawnBulletsPlayerShots。MVP は shot 押下 edge ごとに 1 発だけ生成する。
+      // system order の spawnBulletsPlayerShots。pressed / held の shot intent を fire interval で間引く。
       const spawnedPlayerShotEntityIds = new Set<number>();
       const playerEntity = findPlayerEntity(workingEntities, options.player.id);
       if (!playerEntity) {
@@ -320,6 +320,9 @@ function createStageSession(options: StageSessionContext): StageSession {
         return playerShotSpawn;
       }
       if (playerShotSpawn.value) {
+        if (!replaceRuntimeEntity(workingEntities, playerShotSpawn.value.player)) {
+          return error("player.notFound", `Player entity not found: ${playerShotSpawn.value.player.definitionId}`);
+        }
         workingEntities.push(...playerShotSpawn.value.entities);
         for (const entity of playerShotSpawn.value.entities) {
           spawnedPlayerShotEntityIds.add(entity.id);
@@ -370,6 +373,16 @@ function findPlayerEntity(
 ): PlayerRuntimeEntity | null {
   const entity = entities.find((candidate) => candidate.kind === "player" && candidate.definitionId === playerId);
   return entity?.kind === "player" ? entity : null;
+}
+
+/** working entity list 内の同一 ID entity を、更新済み immutable entity へ差し替える。 */
+function replaceRuntimeEntity(entities: RuntimeEntityState[], replacement: RuntimeEntityState): boolean {
+  const index = entities.findIndex((entity) => entity.id === replacement.id);
+  if (index < 0) {
+    return false;
+  }
+  entities[index] = replacement;
+  return true;
 }
 
 /**

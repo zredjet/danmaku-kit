@@ -46,6 +46,7 @@ test("freezes runtime entities in id order without mutating the source order", (
       lives: 3,
       invincibleTicksRemaining: 0,
       shotDefinitionId: "playerShot.basic",
+      nextShotAllowedTick: 0,
     },
     {
       id: 2,
@@ -79,6 +80,7 @@ test("keeps already ordered runtime entities in id order", () => {
       lives: 3,
       invincibleTicksRemaining: 0,
       shotDefinitionId: "playerShot.basic",
+      nextShotAllowedTick: 0,
     },
     {
       id: 2,

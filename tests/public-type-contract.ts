@@ -99,6 +99,34 @@ const invalidPlayerShotWithoutProjectile: PlayerShotDefinition = {
   asset: "shot.player_basic",
   collision: { radius: 5 },
   damage: 5,
+  fire: { intervalTicks: 3 },
+};
+// @ts-expect-error player shot definitions require fire runtime settings.
+const invalidPlayerShotWithoutFire: PlayerShotDefinition = {
+  id: "playerShot.basic",
+  version: 1,
+  asset: "shot.player_basic",
+  collision: { radius: 5 },
+  damage: 5,
+  projectile: {
+    velocity: { x: 0, y: -8 },
+    lifetimeTicks: 3,
+  },
+};
+const invalidPlayerShotFireInterval: PlayerShotDefinition = {
+  id: "playerShot.basic",
+  version: 1,
+  asset: "shot.player_basic",
+  collision: { radius: 5 },
+  damage: 5,
+  fire: {
+    // @ts-expect-error player shot fire interval must be numeric.
+    intervalTicks: "3",
+  },
+  projectile: {
+    velocity: { x: 0, y: -8 },
+    lifetimeTicks: 3,
+  },
 };
 const invalidPlayerShotVelocity: PlayerShotDefinition = {
   id: "playerShot.basic",
@@ -106,6 +134,7 @@ const invalidPlayerShotVelocity: PlayerShotDefinition = {
   asset: "shot.player_basic",
   collision: { radius: 5 },
   damage: 5,
+  fire: { intervalTicks: 3 },
   projectile: {
     velocity: {
       // @ts-expect-error player shot velocity must be numeric.
@@ -121,6 +150,7 @@ const invalidPlayerShotLifetime: PlayerShotDefinition = {
   asset: "shot.player_basic",
   collision: { radius: 5 },
   damage: 5,
+  fire: { intervalTicks: 3 },
   projectile: {
     velocity: { x: 0, y: -8 },
     // @ts-expect-error player shot lifetime must be numeric.
@@ -141,6 +171,14 @@ const playerEntity: ReadonlyEntityState = {
   kind: "player",
   definitionId: "player.default",
   position: { x: 192, y: 400 },
+};
+const invalidPublicPlayerEntityWithCooldown: ReadonlyEntityState = {
+  id: 1,
+  kind: "player",
+  definitionId: "player.default",
+  position: { x: 192, y: 400 },
+  // @ts-expect-error shot cooldown is an internal runtime component field.
+  nextShotAllowedTick: 0,
 };
 const enemyBulletEntity: ReadonlyEntityState = {
   id: 2,

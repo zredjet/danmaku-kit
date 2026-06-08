@@ -203,8 +203,8 @@ test("spawns player shot entities from shot input deterministically", () => {
 
   const nextFrame = started.tick(createShotInputFrame(1));
   assert.equal(nextFrame.ok, true);
-  assert.deepEqual(nextFrame.ok && nextFrame.value.events.map((event) => event.type), ["playerShotsSpawnedBatch", "tickAdvanced"]);
-  assert.deepEqual(nextFrame.ok && nextFrame.value.state.entities.map((entity) => entity.id), [1, 2, 3]);
+  assert.deepEqual(nextFrame.ok && nextFrame.value.events.map((event) => event.type), ["tickAdvanced"]);
+  assert.deepEqual(nextFrame.ok && nextFrame.value.state.entities.map((entity) => entity.id), [1, 2]);
   assert.deepEqual(nextFrame.ok && nextFrame.value.state.entities.filter((entity) => entity.kind === "playerShot"), [
     {
       id: 2,
@@ -212,6 +212,19 @@ test("spawns player shot entities from shot input deterministically", () => {
       definitionId: "playerShot.basic",
       position: { x: 192, y: 384 },
     },
+  ]);
+
+  const intervalFrame2 = started.tick(createShotInputFrame(2));
+  assert.equal(intervalFrame2.ok, true);
+  assert.deepEqual(intervalFrame2.ok && intervalFrame2.value.events.map((event) => event.type), ["tickAdvanced"]);
+
+  const intervalFrame3 = started.tick(createShotInputFrame(3));
+  assert.equal(intervalFrame3.ok, true);
+  assert.deepEqual(intervalFrame3.ok && intervalFrame3.value.events.map((event) => event.type), [
+    "playerShotsSpawnedBatch",
+    "tickAdvanced",
+  ]);
+  assert.deepEqual(intervalFrame3.ok && intervalFrame3.value.state.entities.filter((entity) => entity.kind === "playerShot"), [
     {
       id: 3,
       kind: "playerShot",
@@ -274,17 +287,99 @@ test("moves player shots by content velocity and cleans them up after lifetime",
   assert.deepEqual(frame3.value.state.entities.map((entity) => entity.kind), ["player"]);
 });
 
-test("does not auto-fire from held-only shot input before fire interval is implemented", () => {
+test("auto-fires held shot input by content fire interval", () => {
   const started = startMinimumStage();
 
-  const frame = started.tick(createHeldShotInputFrame(0));
-  assert.equal(frame.ok, true);
-  if (!frame.ok) {
-    assert.fail("expected held-only shot frame");
+  const frames = [
+    started.tick(createHeldShotInputFrame(0)),
+    started.tick(createHeldShotInputFrame(1)),
+    started.tick(createHeldShotInputFrame(2)),
+    started.tick(createHeldShotInputFrame(3)),
+  ];
+  for (const frame of frames) {
+    assert.equal(frame.ok, true);
   }
 
-  assert.deepEqual(frame.value.events.map((event) => event.type), ["stageStarted", "tickAdvanced"]);
-  assert.deepEqual(frame.value.state.entities.map((entity) => entity.kind), ["player"]);
+  const [frame0, frame1, frame2, frame3] = frames;
+  if (!frame0?.ok || !frame1?.ok || !frame2?.ok || !frame3?.ok) {
+    assert.fail("expected held shot frames");
+  }
+  assert.deepEqual(frame0.value.events.map((event) => event.type), ["stageStarted", "playerShotsSpawnedBatch", "tickAdvanced"]);
+  assert.deepEqual(frame1.value.events.map((event) => event.type), ["tickAdvanced"]);
+  assert.deepEqual(frame2.value.events.map((event) => event.type), ["tickAdvanced"]);
+  assert.deepEqual(frame3.value.events.map((event) => event.type), ["playerShotsSpawnedBatch", "tickAdvanced"]);
+  assert.deepEqual(frame3.value.events[0], {
+    type: "playerShotsSpawnedBatch",
+    tick: 3,
+    shots: [
+      {
+        entityId: 3,
+        definitionId: "playerShot.basic",
+        position: { x: 192, y: 400 },
+      },
+    ],
+  });
+  assert.deepEqual(frame3.value.state.entities.filter((entity) => entity.kind === "playerShot"), [
+    {
+      id: 3,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 392 },
+    },
+  ]);
+});
+
+test("uses player shot content fire interval instead of a fixed cooldown", () => {
+  const definition = createMinimumDefinition();
+  const loaded = createShootingCore("0.0.0").load({
+    ...definition,
+    content: {
+      ...definition.content,
+      playerShots: [{
+        ...definition.content.playerShots[0]!,
+        fire: { intervalTicks: 2 },
+      }],
+    },
+  });
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game with interval two shot");
+  }
+
+  const started = loaded.value.startStage({
+    stageId: "stage.stage_01",
+    difficulty: "normal",
+    seed: "seed-1",
+  });
+  assert.equal(started.ok, true);
+  if (!started.ok) {
+    assert.fail("expected interval two stage session");
+  }
+
+  const frame0 = started.value.tick(createHeldShotInputFrame(0));
+  const frame1 = started.value.tick(createHeldShotInputFrame(1));
+  const frame2 = started.value.tick(createHeldShotInputFrame(2));
+  assert.equal(frame0.ok, true);
+  assert.equal(frame1.ok, true);
+  assert.equal(frame2.ok, true);
+  if (!frame0.ok || !frame1.ok || !frame2.ok) {
+    assert.fail("expected interval two held shot frames");
+  }
+
+  assert.deepEqual(frame0.value.events.map((event) => event.type), ["stageStarted", "playerShotsSpawnedBatch", "tickAdvanced"]);
+  assert.deepEqual(frame1.value.events.map((event) => event.type), ["tickAdvanced"]);
+  assert.deepEqual(frame2.value.events.map((event) => event.type), ["playerShotsSpawnedBatch", "tickAdvanced"]);
+  assert.deepEqual(frame2.value.events[0], {
+    type: "playerShotsSpawnedBatch",
+    tick: 2,
+    shots: [
+      {
+        entityId: 3,
+        definitionId: "playerShot.basic",
+        position: { x: 192, y: 400 },
+      },
+    ],
+  });
 });
 
 test("keeps a lifetime one player shot visible on its spawn frame", () => {
@@ -295,6 +390,7 @@ test("keeps a lifetime one player shot visible on its spawn frame", () => {
       ...definition.content,
       playerShots: [{
         ...definition.content.playerShots[0]!,
+        fire: { intervalTicks: 3 },
         projectile: { velocity: { x: 0, y: -8 }, lifetimeTicks: 1 },
       }],
     },
@@ -430,6 +526,7 @@ test("uses the selected player's shot definition when spawning player shots", ()
           asset: "shot.player_alt",
           collision: { radius: 7 },
           damage: 9,
+          fire: { intervalTicks: 3 },
           projectile: { velocity: { x: 0, y: -12 }, lifetimeTicks: 3 },
         },
       ],
@@ -1116,6 +1213,101 @@ test("rejects invalid player shot projectile constraints in otherwise valid cont
   ]);
 });
 
+test("rejects invalid player shot fire interval constraints in otherwise valid content", () => {
+  const definition = createMinimumDefinition();
+  for (const intervalTicks of [undefined, 0, 1.5, "3"] as const) {
+    const loaded = loadUnknown({
+      ...definition,
+      content: {
+        ...definition.content,
+        playerShots: [{
+          ...definition.content.playerShots[0],
+          fire: intervalTicks === undefined ? {} : { intervalTicks },
+        }],
+      },
+    });
+
+    assert.equal(loaded.ok, false);
+    assert.deepEqual(!loaded.ok && loaded.errors.map((error) => error.message), [
+      "playerShot.fire.intervalTicks must be a positive integer",
+    ]);
+  }
+});
+
+test("rejects unknown player shot fire fields in otherwise valid content", () => {
+  const definition = createMinimumDefinition();
+  const loaded = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      playerShots: [{
+        ...definition.content.playerShots[0],
+        fire: { intervalTicks: 3, extra: true },
+      }],
+    },
+  });
+
+  assert.equal(loaded.ok, false);
+  assert.deepEqual(!loaded.ok && loaded.errors.map((error) => error.message), [
+    "Unknown field at playerShot.fire.extra",
+  ]);
+});
+
+test("rejects player shot fire intervals that exceed runtime budgets", () => {
+  const definition = createMinimumDefinition();
+  const loaded = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      playerShots: [{
+        ...definition.content.playerShots[0],
+        fire: { intervalTicks: 61 },
+      }],
+    },
+  });
+
+  assert.equal(loaded.ok, false);
+  assert.deepEqual(!loaded.ok && loaded.errors.map((error) => error.message), [
+    "playerShot.fire.intervalTicks must be at most 60",
+  ]);
+});
+
+test("accepts player shot fire interval budget boundaries", () => {
+  const definition = createMinimumDefinition();
+  for (const intervalTicks of [1, 60] as const) {
+    const loaded = loadUnknown({
+      ...definition,
+      content: {
+        ...definition.content,
+        playerShots: [{
+          ...definition.content.playerShots[0],
+          fire: { intervalTicks },
+        }],
+      },
+    });
+
+    assert.equal(loaded.ok, true);
+  }
+});
+
+test("rejects missing player shot fire objects in otherwise valid content", () => {
+  const definition = createMinimumDefinition();
+  const playerShotWithoutFire = { ...definition.content.playerShots[0] } as Record<string, unknown>;
+  delete playerShotWithoutFire.fire;
+  const loaded = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      playerShots: [playerShotWithoutFire],
+    },
+  });
+
+  assert.equal(loaded.ok, false);
+  assert.deepEqual(!loaded.ok && loaded.errors.map((error) => error.message), [
+    "playerShot.fire must be an object",
+  ]);
+});
+
 test("rejects missing player shot projectile objects in otherwise valid content", () => {
   const definition = createMinimumDefinition();
   const playerShotWithoutProjectile = { ...definition.content.playerShots[0] } as Record<string, unknown>;
@@ -1586,19 +1778,25 @@ test("recovers from a tick mismatch after spawning a player shot without duplica
   const frame0 = started.tick(createShotInputFrame(0));
   assert.equal(frame0.ok, true);
 
-  const mismatch = started.tick(createShotInputFrame(2));
+  const frame1 = started.tick(createEmptyInputFrame(1));
+  assert.equal(frame1.ok, true);
+
+  const mismatch = started.tick(createShotInputFrame(3));
   assert.equal(mismatch.ok, false);
   assert.equal(!mismatch.ok && mismatch.errors[0]?.code, "input.tickMismatch");
 
-  const frame1 = started.tick(createShotInputFrame(1));
-  assert.equal(frame1.ok, true);
-  if (!frame1.ok) {
+  const frame2 = started.tick(createEmptyInputFrame(2));
+  assert.equal(frame2.ok, true);
+
+  const frame3 = started.tick(createShotInputFrame(3));
+  assert.equal(frame3.ok, true);
+  if (!frame3.ok) {
     assert.fail("expected recovered shot frame");
   }
-  assert.deepEqual(frame1.value.events, [
+  assert.deepEqual(frame3.value.events, [
     {
       type: "playerShotsSpawnedBatch",
-      tick: 1,
+      tick: 3,
       shots: [
         {
           entityId: 3,
@@ -1607,20 +1805,14 @@ test("recovers from a tick mismatch after spawning a player shot without duplica
         },
       ],
     },
-    { type: "tickAdvanced", tick: 1 },
+    { type: "tickAdvanced", tick: 3 },
   ]);
-  assert.deepEqual(frame1.value.state.entities, [
+  assert.deepEqual(frame3.value.state.entities, [
     {
       id: 1,
       kind: "player",
       definitionId: "player.default",
       position: { x: 192, y: 400 },
-    },
-    {
-      id: 2,
-      kind: "playerShot",
-      definitionId: "playerShot.basic",
-      position: { x: 192, y: 384 },
     },
     {
       id: 3,

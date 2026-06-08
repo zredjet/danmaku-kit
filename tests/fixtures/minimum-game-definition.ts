@@ -54,6 +54,7 @@ export function createMinimumDefinition(): GameDefinition {
         asset: "shot.player_basic",
         collision: { radius: 5 },
         damage: 5,
+        fire: { intervalTicks: 3 },
         projectile: { velocity: { x: 0, y: -8 }, lifetimeTicks: 3 },
       }],
       patterns: [{ id: "pattern.none", version: 1 }],
