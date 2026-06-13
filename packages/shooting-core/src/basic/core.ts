@@ -19,6 +19,7 @@ import type { InputFrame } from "./input/input-frame.ts";
 import { deepFreezeClone, deepFreezePlainData } from "./internal/immutable.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
 import type { CoreErrorCode, CoreResult } from "./result.ts";
+import { resolveCollisionAndScoring } from "./simulation/collision-system.ts";
 import { EntityAllocator } from "./simulation/entity.ts";
 import { spawnEnemyBulletsOnSpawn } from "./simulation/enemy-bullet-system.ts";
 import { advancePlayerMovement } from "./simulation/player-movement-system.ts";
@@ -58,8 +59,15 @@ export type ReadonlyGameState = Readonly<{
   tick: number;
   stageId: StageId;
   playerId: PlayerId;
+  player: ReadonlyPlayerState;
   score: number;
   entities: ReadonlyArray<ReadonlyEntityState>;
+}>;
+
+/** HUD / debug が event fold なしで参照できる自機の現在状態。 */
+export type ReadonlyPlayerState = Readonly<{
+  lives: number;
+  invincibleTicksRemaining: number;
 }>;
 
 /**
@@ -237,8 +245,8 @@ function createLoadedGame(content: LoadedContentIndex): LoadedGame {
 /**
  * 1 stage の simulation session を作る。
  *
- * collision / scoring は後続スライスで追加するが、ここで tick 中の working state と
- * 成功時 commit の境界を固定し、ID 採番と event 順序を deterministic に保つ。
+ * 各 system は working state 上で実行し、frame 構築直前に成功時だけ session state へ
+ * commit する。これにより ID 採番、collision、score、event 順序を deterministic に保つ。
  */
 function createStageSession(options: StageSessionContext): StageSession {
   let expectedTick = 0;
@@ -364,18 +372,33 @@ function createStageSession(options: StageSessionContext): StageSession {
       const advancedEntities = advancePlayerShotLifecycle(movedEntities, {
         spawnedThisTickEntityIds: spawnedPlayerShotEntityIds,
       });
+      const collision = resolveCollisionAndScoring(advancedEntities, {
+        playerInvincibleTicksAfterHit: options.player.life.invincibleTicksAfterHit,
+        score,
+        tick: expectedTick,
+      });
+      for (const event of collision.events) {
+        eventLog.push(event);
+      }
+      const resolvedEntities = collision.entities;
+      const resolvedScore = collision.score;
 
       // PRNG はまだ event payload に出していないが、tick ごとの消費順を先に固定しておく。
       workingPrng.nextUint32();
       eventLog.push({ type: "tickAdvanced", tick: expectedTick });
 
       // frame に載せる state は renderer が保持しても安全な immutable snapshot にする。
-      const orderedEntities = freezeEntitiesInIdOrder(advancedEntities);
+      const orderedEntities = freezeEntitiesInIdOrder(resolvedEntities);
+      const resolvedPlayer = findPlayerEntity(orderedEntities, options.player.id);
+      if (!resolvedPlayer) {
+        return error("player.notFound", `Player entity not found: ${options.player.id}`);
+      }
       const state: ReadonlyGameState = Object.freeze({
         tick: expectedTick,
         stageId: options.stage.id,
         playerId: options.player.id,
-        score,
+        player: toReadonlyPlayerState(resolvedPlayer),
+        score: resolvedScore,
         entities: Object.freeze(orderedEntities.map((entity) => toReadonlyEntityState(entity))),
       });
       const frame = Object.freeze({
@@ -388,6 +411,7 @@ function createStageSession(options: StageSessionContext): StageSession {
       entityAllocator = workingEntityAllocator;
       activeEntities = orderedEntities;
       pendingEvents = [];
+      score = resolvedScore;
       timelineCursor = workingTimelineCursor;
       expectedTick += 1;
       return okResult(frame);
@@ -402,6 +426,14 @@ function findPlayerEntity(
 ): PlayerRuntimeEntity | null {
   const entity = entities.find((candidate) => candidate.kind === "player" && candidate.definitionId === playerId);
   return entity?.kind === "player" ? entity : null;
+}
+
+/** runtime player component から公開 snapshot に出す状態だけを抜き出す。 */
+function toReadonlyPlayerState(player: PlayerRuntimeEntity): ReadonlyPlayerState {
+  return Object.freeze({
+    lives: player.lives,
+    invincibleTicksRemaining: player.invincibleTicksRemaining,
+  });
 }
 
 /** working entity list 内の同一 ID entity を、更新済み immutable entity へ差し替える。 */

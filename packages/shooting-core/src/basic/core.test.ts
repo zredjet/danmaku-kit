@@ -70,6 +70,20 @@ test("returns identical frames for identical seed and input sequence", () => {
   }
 });
 
+test("returns identical frames when collision and score occur", () => {
+  const first = startStageFromDefinition(createCollisionScoreDefinition());
+  const second = startStageFromDefinition(createCollisionScoreDefinition());
+
+  for (const input of [createShotInputFrame(0), createEmptyInputFrame(1)]) {
+    const firstFrame = first.tick(input);
+    const secondFrame = second.tick(input);
+
+    assert.equal(firstFrame.ok, true);
+    assert.equal(secondFrame.ok, true);
+    assert.deepEqual(firstFrame.ok && firstFrame.value, secondFrame.ok && secondFrame.value);
+  }
+});
+
 test("moves player by input axes and clamps the center inside the playfield", () => {
   const started = startMinimumStage();
 
@@ -963,6 +977,201 @@ test("orders multiple timeline enemy bullet batches before player shot batch on 
     { id: 5, kind: "enemyBullet", definitionId: "bullet.red_small", position: { x: 201, y: -8 } },
     { id: 6, kind: "playerShot", definitionId: "playerShot.basic", position: { x: 192, y: 392 } },
   ]);
+});
+
+test("resolves player shot enemy collision and score in the core tick", () => {
+  const definition = createMinimumDefinition();
+  const loaded = createShootingCore("0.0.0").load({
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        timeline: [{
+          tick: 0,
+          action: {
+            type: "spawnEnemy",
+            enemy: "enemy.scout",
+            path: "path.none",
+            pattern: "pattern.none",
+            position: { x: 192, y: 380 },
+          },
+        }],
+      }],
+      playerShots: [{
+        ...definition.content.playerShots[0]!,
+        damage: 10,
+      }],
+    },
+  });
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+
+  const started = loaded.value.startStage({
+    stageId: "stage.stage_01",
+    difficulty: "normal",
+    seed: "seed-1",
+  });
+  assert.equal(started.ok, true);
+  if (!started.ok) {
+    assert.fail("expected stage session");
+  }
+
+  const frame = started.value.tick(createShotInputFrame(0));
+  assert.equal(frame.ok, true);
+  if (!frame.ok) {
+    assert.fail("expected collision frame");
+  }
+
+  assert.deepEqual(frame.value.events.map((event) => event.type), [
+    "stageStarted",
+    "entitySpawned",
+    "playerShotsSpawnedBatch",
+    "entityDestroyed",
+    "entityDestroyed",
+    "scoreChanged",
+    "tickAdvanced",
+  ]);
+  assert.deepEqual(frame.value.events[3], {
+    type: "entityDestroyed",
+    tick: 0,
+    entityId: 3,
+    entityKind: "playerShot",
+    reason: "collision",
+  });
+  assert.deepEqual(frame.value.events[4], {
+    type: "entityDestroyed",
+    tick: 0,
+    entityId: 2,
+    entityKind: "enemy",
+    reason: "defeated",
+  });
+  assert.deepEqual(frame.value.events[5], {
+    type: "scoreChanged",
+    tick: 0,
+    delta: 100,
+    total: 100,
+    reason: "enemyDefeated",
+    enemyId: "enemy.scout",
+    entityId: 2,
+  });
+  assert.equal(frame.value.state.score, 100);
+  assert.deepEqual(frame.value.state.entities, [
+    {
+      id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: { x: 192, y: 400 },
+    },
+  ]);
+});
+
+test("resolves enemy bullet player collision in the core tick", () => {
+  const definition = createMinimumDefinition();
+  const loaded = createShootingCore("0.0.0").load({
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        timeline: [{
+          tick: 0,
+          action: {
+            type: "spawnEnemy",
+            enemy: "enemy.scout",
+            path: "path.none",
+            pattern: "pattern.spawn_bullet",
+            position: { x: 192, y: 392 },
+          },
+        }],
+      }],
+      patterns: [{
+        id: "pattern.spawn_bullet",
+        version: 1,
+        fireOnSpawn: {
+          bullet: "bullet.red_small",
+          offset: { x: 0, y: 8 },
+        },
+      }],
+    },
+  });
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+
+  const started = loaded.value.startStage({
+    stageId: "stage.stage_01",
+    difficulty: "normal",
+    seed: "seed-1",
+  });
+  assert.equal(started.ok, true);
+  if (!started.ok) {
+    assert.fail("expected stage session");
+  }
+
+  const frame = started.value.tick(createEmptyInputFrame(0));
+  assert.equal(frame.ok, true);
+  if (!frame.ok) {
+    assert.fail("expected player hit frame");
+  }
+
+  assert.deepEqual(frame.value.events.map((event) => event.type), [
+    "stageStarted",
+    "entitySpawned",
+    "enemyBulletsSpawnedBatch",
+    "playerHit",
+    "entityDestroyed",
+    "tickAdvanced",
+  ]);
+  assert.deepEqual(frame.value.events[3], {
+    type: "playerHit",
+    tick: 0,
+    playerId: "player.default",
+    sourceEntityId: 3,
+    sourceEntityKind: "enemyBullet",
+    livesRemaining: 2,
+    invincibleTicksRemaining: 120,
+  });
+  assert.deepEqual(frame.value.events[4], {
+    type: "entityDestroyed",
+    tick: 0,
+    entityId: 3,
+    entityKind: "enemyBullet",
+    reason: "collision",
+  });
+  assert.deepEqual(frame.value.state.player, {
+    lives: 2,
+    invincibleTicksRemaining: 120,
+  });
+  assert.deepEqual(frame.value.state.entities, [
+    {
+      id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: { x: 192, y: 400 },
+    },
+    {
+      id: 2,
+      kind: "enemy",
+      definitionId: "enemy.scout",
+      position: { x: 192, y: 392 },
+    },
+  ]);
+
+  const nextFrame = started.value.tick(createEmptyInputFrame(1));
+  assert.equal(nextFrame.ok, true);
+  if (!nextFrame.ok) {
+    assert.fail("expected committed player hit state");
+  }
+  assert.deepEqual(nextFrame.value.events.map((event) => event.type), ["tickAdvanced"]);
+  assert.deepEqual(nextFrame.value.state.player, {
+    lives: 2,
+    invincibleTicksRemaining: 119,
+  });
+  assert.deepEqual(nextFrame.value.state.entities.map((entity) => entity.kind), ["player", "enemy"]);
 });
 
 test("spawns enemy entities from the stage timeline deterministically", () => {
@@ -2392,7 +2601,11 @@ test("returns immutable event frames and drains one-shot events", () => {
 });
 
 function startMinimumStage() {
-  const loaded = createShootingCore("0.0.0").load(createMinimumDefinition());
+  return startStageFromDefinition(createMinimumDefinition());
+}
+
+function startStageFromDefinition(definition: GameDefinition) {
+  const loaded = createShootingCore("0.0.0").load(definition);
   assert.equal(loaded.ok, true);
   if (!loaded.ok) {
     assert.fail("expected loaded game");
@@ -2409,6 +2622,33 @@ function startMinimumStage() {
   }
 
   return started.value;
+}
+
+function createCollisionScoreDefinition(): GameDefinition {
+  const definition = createMinimumDefinition();
+  return {
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        timeline: [{
+          tick: 0,
+          action: {
+            type: "spawnEnemy",
+            enemy: "enemy.scout",
+            path: "path.none",
+            pattern: "pattern.none",
+            position: { x: 192, y: 380 },
+          },
+        }],
+      }],
+      playerShots: [{
+        ...definition.content.playerShots[0]!,
+        damage: 10,
+      }],
+    },
+  };
 }
 
 function createShotInputFrame(tick: number): InputFrame {

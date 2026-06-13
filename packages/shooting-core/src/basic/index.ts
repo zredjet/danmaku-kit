@@ -9,6 +9,7 @@ export type {
   GameFrame,
   LoadedGame,
   ReadonlyGameState,
+  ReadonlyPlayerState,
   ShootingCore,
   StageSession,
   StartStageOptions,

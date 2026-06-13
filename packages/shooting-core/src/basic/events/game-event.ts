@@ -1,5 +1,5 @@
 import { deepFreezeClone } from "../internal/immutable.ts";
-import type { BulletId, EnemyId, PathId, PatternId, PlayerShotId, StageId } from "../content/types.ts";
+import type { BulletId, EnemyId, PathId, PatternId, PlayerId, PlayerShotId, StageId } from "../content/types.ts";
 import type { EntityId } from "../simulation/entity.ts";
 
 type EnemyBulletSpawnedEventItem = Readonly<{
@@ -19,6 +19,22 @@ type PlayerShotSpawnedEventItem = Readonly<{
     y: number;
   }>;
 }>;
+
+type EntityDestroyedEvent =
+  | Readonly<{
+    type: "entityDestroyed";
+    tick: number;
+    entityId: EntityId;
+    entityKind: "enemy";
+    reason: "defeated";
+  }>
+  | Readonly<{
+    type: "entityDestroyed";
+    tick: number;
+    entityId: EntityId;
+    entityKind: "enemyBullet" | "playerShot";
+    reason: "collision";
+  }>;
 
 /**
  * Core が生成する gameplay event。
@@ -52,6 +68,16 @@ export type GameEvent =
       y: number;
     }>;
   }>
+  | EntityDestroyedEvent
+  | Readonly<{
+    type: "playerHit";
+    tick: number;
+    playerId: PlayerId;
+    sourceEntityId: EntityId;
+    sourceEntityKind: "enemy" | "enemyBullet";
+    livesRemaining: number;
+    invincibleTicksRemaining: number;
+  }>
   | Readonly<{
     type: "playerShotsSpawnedBatch";
     tick: number;
@@ -61,6 +87,15 @@ export type GameEvent =
     type: "enemyBulletsSpawnedBatch";
     tick: number;
     bullets: readonly [EnemyBulletSpawnedEventItem, ...EnemyBulletSpawnedEventItem[]];
+  }>
+  | Readonly<{
+    type: "scoreChanged";
+    tick: number;
+    delta: number;
+    total: number;
+    reason: "enemyDefeated";
+    enemyId: EnemyId;
+    entityId: EntityId;
   }>;
 
 /**

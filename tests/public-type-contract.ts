@@ -23,6 +23,7 @@ import type {
   PlayerShotId,
   ReadonlyEntityState,
   ReadonlyGameState,
+  ReadonlyPlayerState,
   ShootingCore,
   StageDefinition,
   StageId,
@@ -54,8 +55,14 @@ import type { PlayerShotSpawnResult } from "@shooting-sample/shooting-core";
 // @ts-expect-error internal enemy bullet system result is not part of the root public contract.
 import type { EnemyBulletSpawnResult } from "@shooting-sample/shooting-core";
 
+// @ts-expect-error internal collision system result is not part of the root public contract.
+import type { CollisionResolutionResult } from "@shooting-sample/shooting-core";
+
 // @ts-expect-error internal enemy bullet system is not importable through a deep package subpath.
 import type { EnemyBulletSpawnResult as DeepEnemyBulletSpawnResult } from "@shooting-sample/shooting-core/src/basic/simulation/enemy-bullet-system.ts";
+
+// @ts-expect-error internal collision system is not importable through a deep package subpath.
+import type { CollisionResolutionResult as DeepCollisionResolutionResult } from "@shooting-sample/shooting-core/src/basic/simulation/collision-system.ts";
 
 // @ts-expect-error internal core module is not importable through a deep package subpath.
 import type { HashableGameState as DeepHashableGameState } from "@shooting-sample/shooting-core/src/basic/core.ts";
@@ -267,7 +274,8 @@ const playerShotEntity: ReadonlyEntityState = {
   definitionId: "playerShot.basic",
   position: { x: 192, y: 360 },
 };
-const state: ReadonlyGameState = { tick: 0, stageId, playerId, score: 0, entities: [playerEntity, entity] };
+const playerState: ReadonlyPlayerState = { lives: 3, invincibleTicksRemaining: 0 };
+const state: ReadonlyGameState = { tick: 0, stageId, playerId, player: playerState, score: 0, entities: [playerEntity, entity] };
 const event: GameEvent = { type: "stageStarted", tick: 0, stageId };
 const tickedEvent: GameEvent = { type: "tickAdvanced", tick: 0 };
 const spawnedEvent: GameEvent = {
@@ -301,6 +309,38 @@ const enemyBulletsSpawnedEvent: GameEvent = {
       position: { x: 192, y: 80 },
     },
   ],
+};
+const destroyedEvent: GameEvent = {
+  type: "entityDestroyed",
+  tick: 0,
+  entityId: 2,
+  entityKind: "enemy",
+  reason: "defeated",
+};
+const shotDestroyedEvent: GameEvent = {
+  type: "entityDestroyed",
+  tick: 0,
+  entityId: 3,
+  entityKind: "playerShot",
+  reason: "collision",
+};
+const playerHitEvent: GameEvent = {
+  type: "playerHit",
+  tick: 0,
+  playerId: "player.default",
+  sourceEntityId: 3,
+  sourceEntityKind: "enemyBullet",
+  livesRemaining: 2,
+  invincibleTicksRemaining: 120,
+};
+const scoreChangedEvent: GameEvent = {
+  type: "scoreChanged",
+  tick: 0,
+  delta: 100,
+  total: 100,
+  reason: "enemyDefeated",
+  enemyId: "enemy.scout",
+  entityId: 2,
 };
 const startOptions: StartStageOptions = {
   stageId: "stage.stage_01",
@@ -362,6 +402,18 @@ enemyBulletsSpawnedEvent.bullets[0]!.position.x = 0;
 // @ts-expect-error enemy bullet batch event arrays are immutable through the public contract.
 enemyBulletsSpawnedEvent.bullets.push({ entityId: 3, definitionId: "bullet.red_small", position: { x: 192, y: 80 } });
 
+// @ts-expect-error collision event payloads are immutable through the public contract.
+destroyedEvent.reason = "collision";
+
+// @ts-expect-error player state payloads are immutable through the public contract.
+state.player.lives = 0;
+
+// @ts-expect-error player hit event payloads are immutable through the public contract.
+playerHitEvent.livesRemaining = 0;
+
+// @ts-expect-error score event payloads are immutable through the public contract.
+scoreChangedEvent.total = 0;
+
 // @ts-expect-error entity.notFound is an internal invariant, not a public CoreErrorCode.
 const invalidCoreErrorCode: CoreErrorCode = "entity.notFound";
 
@@ -370,6 +422,24 @@ const invalidEmptyPlayerShotsBatch: GameEvent = {
   tick: 0,
   // @ts-expect-error player shot batches must contain at least one shot.
   shots: [],
+};
+
+const invalidEnemyDestroyedByCollision: GameEvent = {
+  type: "entityDestroyed",
+  tick: 0,
+  entityId: 2,
+  entityKind: "enemy",
+  // @ts-expect-error enemy destruction is only emitted with the defeated reason.
+  reason: "collision",
+};
+
+const invalidEnemyBulletDefeated: GameEvent = {
+  type: "entityDestroyed",
+  tick: 0,
+  entityId: 3,
+  entityKind: "enemyBullet",
+  // @ts-expect-error enemy bullets are only destroyed by collision in the public event contract.
+  reason: "defeated",
 };
 
 const invalidPlayerShotBatchDefinition: GameEvent = {
@@ -453,10 +523,16 @@ function assertEventExhaustive(value: GameEvent): number {
       return value.tick;
     case "entitySpawned":
       return value.entityId;
+    case "entityDestroyed":
+      return value.entityId;
+    case "playerHit":
+      return value.livesRemaining;
     case "playerShotsSpawnedBatch":
       return value.shots.length;
     case "enemyBulletsSpawnedBatch":
       return value.bullets.length;
+    case "scoreChanged":
+      return value.total;
     default: {
       const neverEvent: never = value;
       return neverEvent;
@@ -505,6 +581,7 @@ void invalidFireOnSpawnPatternOffsetX;
 void invalidFireOnSpawnPatternOffsetY;
 void pathDefinition;
 void contentRegistry;
+void playerState;
 void state;
 void playerEntity;
 void enemyBulletEntity;
@@ -514,6 +591,10 @@ void tickedEvent;
 void spawnedEvent;
 void playerShotsSpawnedEvent;
 void enemyBulletsSpawnedEvent;
+void destroyedEvent;
+void shotDestroyedEvent;
+void playerHitEvent;
+void scoreChangedEvent;
 void invalidStartOptions;
 void invalidStageEvent;
 void invalidEnemyId;
@@ -523,6 +604,8 @@ void invalidEnemyBulletEntity;
 void invalidPlayerShotEntity;
 void invalidCoreErrorCode;
 void invalidEmptyPlayerShotsBatch;
+void invalidEnemyDestroyedByCollision;
+void invalidEnemyBulletDefeated;
 void invalidPlayerShotBatchDefinition;
 void invalidPlayerShotBatchPath;
 void invalidEmptyEnemyBulletsBatch;
@@ -539,7 +622,9 @@ void (undefined as unknown as EnemyBulletRuntimeEntity);
 void (undefined as unknown as RuntimeEntityState);
 void (undefined as unknown as PlayerShotSpawnResult);
 void (undefined as unknown as EnemyBulletSpawnResult);
+void (undefined as unknown as CollisionResolutionResult);
 void (undefined as unknown as DeepEnemyBulletSpawnResult);
+void (undefined as unknown as DeepCollisionResolutionResult);
 void (undefined as unknown as DeepHashableGameState);
 void (undefined as unknown as DeepValidateGameDefinition);
 void (undefined as unknown as DeepEventLog);

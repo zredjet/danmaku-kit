@@ -41,13 +41,13 @@ Done:
 - player input axes と focus held に基づく自機 movement / playfield clamp を入れる
 - PlayerShotDefinition の `fire.intervalTicks` に基づく held 連射を有効化する
 - PatternDefinition の `fireOnSpawn` から deterministic な EnemyBullet entity と `enemyBulletsSpawnedBatch` event を生成する
+- player shot と enemy、enemy bullet と player、player と enemy contact の最小 collision を入れる
+- enemy HP、player shot damage、enemy defeated、fixed `scoreOnKill` を event と state に接続する
 
 Next:
 
-- player shot と enemy の最小 collision を入れる
-- enemy bullet と player の最小 collision を入れる
-- player と enemy contact の最小 collision を入れる
-- fixed `scoreOnKill` を event と state に接続する
+- collision / score を含む deterministic smoke test を固める
+- Phase 1B の serialize / restore / state hash 設計を実装タスクへ分割する
 
 このスライスでは Phaser、Vite、DOM、asset loader、YAML parser、serialize / restore は扱わない。
 
@@ -64,7 +64,8 @@ Next:
 | `docs/design.md` PlayerShot fire interval | `fire.intervalTicks` と held 連射 cooldown | Done | `packages/shooting-core/src/basic/content/types.ts`, `packages/shooting-core/src/basic/content/validation.ts`, `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/simulation/player-shot-system.ts`, `packages/shooting-core/src/basic/simulation/runtime-entity.ts` | `packages/shooting-core/src/basic/core.test.ts`, `packages/shooting-core/src/basic/simulation/player-shot-system.test.ts`, `packages/shooting-core/src/basic/simulation/runtime-entity.test.ts`, `tests/public-type-contract.ts` | `npm test`, `npm run typecheck` |
 | `docs/design.md` Player movement | player input axes / focus movement / playfield clamp | Done | `packages/shooting-core/src/basic/simulation/player-movement-system.ts`, `packages/shooting-core/src/basic/core.ts` | `packages/shooting-core/src/basic/simulation/player-movement-system.test.ts`, `packages/shooting-core/src/basic/core.test.ts` | `npm test` |
 | `docs/design.md` Enemy bullet fireOnSpawn | PatternDefinition の最小敵弾生成経路、複数 enemy と player shot の同 tick order 固定 | Done | `packages/shooting-core/src/basic/content/types.ts`, `packages/shooting-core/src/basic/content/validation.ts`, `packages/shooting-core/src/basic/events/game-event.ts`, `packages/shooting-core/src/basic/result.ts`, `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/simulation/entity.ts`, `packages/shooting-core/src/basic/simulation/runtime-entity.ts`, `packages/shooting-core/src/basic/simulation/enemy-bullet-system.ts` | `packages/shooting-core/src/basic/core.test.ts`, `packages/shooting-core/src/basic/simulation/entity.test.ts`, `packages/shooting-core/src/basic/simulation/runtime-entity.test.ts`, `packages/shooting-core/src/basic/simulation/enemy-bullet-system.test.ts`, `tests/public-type-contract.ts` | `npm test`, `npm run typecheck` |
-| `docs/design.md` Transactional tick contract | fatal state、serialize / restore 失敗契約、汎用 working / committed state 境界 | Later | 未実装 | Phase 1B / collision / score 導入時に追加 | `npm test` |
+| `docs/design.md` Collision / score minimum | MVP collision pair と fixed `scoreOnKill` | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/events/game-event.ts`, `packages/shooting-core/src/basic/simulation/collision-system.ts` | `packages/shooting-core/src/basic/core.test.ts`, `packages/shooting-core/src/basic/simulation/collision-system.test.ts`, `tests/public-type-contract.ts` | `npm test`, `npm run typecheck` |
+| `docs/design.md` Transactional tick contract | fatal state、serialize / restore 失敗契約、汎用 working / committed state 境界 | Later | 未実装 | Phase 1B で明示型へ整理 | `npm test` |
 | `docs/design.md` Replay determinism | serialize / restore / state hash（Player runtime component の `nextShotAllowedTick` を含む） | Later | 未実装 | Phase 1B golden test で追加 | `npm test`, `npm run typecheck` |
 
 ## 次の作業順
@@ -100,14 +101,14 @@ Next:
    - Done: player input intent と自機 movement / playfield clamp
    - Done: `fire.intervalTicks` と lifetime / cleanup 実装後に `held` 連射を有効化
    - Done: `fireOnSpawn` による EnemyBullet entity の生成経路を作る
-   - Next: player shot と enemy の hit
-   - Next: enemy bullet と player の hit
-   - Next: player と enemy contact
-   - Next: fixed `scoreOnKill`
+   - Done: player shot と enemy の hit
+   - Done: enemy bullet と player の hit
+   - Done: player と enemy contact
+   - Done: fixed `scoreOnKill`
 
 5. Phase 1A-5: Core minimum completion test
    - Done: 同一 seed と入力で同じ frame event を返す smoke test を追加する
-   - Next: collision と score を含む deterministic smoke test へ拡張する
+   - Done: collision と score を含む deterministic smoke test へ拡張する
    - Next: object pool や renderer state を Core minimum へ入れないことを確認する
 
 ## 後続で明示対応するレビュー指摘

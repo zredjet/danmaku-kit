@@ -334,7 +334,7 @@ system order は replay determinism の一部として扱い、Core の major ve
 1. Stage timeline で同 tick に生成された enemy の `fireOnSpawn` を timeline order に従って解決し、`enemyBulletsSpawnedBatch` を生成する。
 2. player の `pressed` / `held` shot intent を `fire.intervalTicks` で間引き、`playerShotsSpawnedBatch` を生成する。
 
-したがって同 tick に enemy spawn、enemy bullet、player shot が重なる場合の event order は `entitySpawned`、`enemyBulletsSpawnedBatch`、`playerShotsSpawnedBatch`、`tickAdvanced` とする。
+したがって同 tick に enemy spawn、enemy bullet、player shot が重なる場合の spawn substep 内 event order は `entitySpawned`、`enemyBulletsSpawnedBatch`、`playerShotsSpawnedBatch` とする。collision / scoring が発生する場合は、その後に `playerHit`、`entityDestroyed`、`scoreChanged` を collision resolution order で追加し、最後に `tickAdvanced` を出す。
 tick 0 の `stageStarted` は system order 外の pending lifecycle event として frame 先頭に drain される。
 
 Rank feature が有効な場合だけ step 12 に rank update、Phase 2B の Pickup feature が有効な場合だけ step 6 に pickup spawn、step 12 に pickup score / collect processing を追加する。feature 追加分も登録順と entity id 昇順で安定化し、Core minimum の system order を暗黙に変更しない。
@@ -856,7 +856,7 @@ MVP の内部解像度は `384x448` とする。ブラウザ表示は integer sc
 
 高速弾のすり抜けを避けるため、敵弾と自機判定は tick 間の移動線分に対する swept circle collision を基本とする。player shot と enemy hitbox も、shot の `collisionMode` に応じて swept circle または segment 判定を使う。実装初期は、1 tick の移動量が判定半径合計を大きく超える entity について collision sampling を追加するか、content validation で最大速度を制限する。
 
-collision broad phase は playfield を固定サイズ grid に分割し、layer 別 collision pair で候補を絞り込む。総当たり判定は禁止する。高速移動 entity は current position だけで grid 登録せず、previous-to-current の swept AABB を collider 半径で膨らませた範囲で grid 登録/検索する。
+collision broad phase は playfield を固定サイズ grid に分割し、layer 別 collision pair で候補を絞り込む。総当たり判定は禁止する。高速移動 entity は current position だけで grid 登録せず、previous-to-current の swept AABB を collider 半径で膨らませた範囲で grid 登録/検索する。Phase 1A の Core minimum 実装だけは契約固定用の小規模 content に限定し、id 昇順の provisional full scan を許可する。高密度 bullet を扱う playable runtime へ進む前に broad phase grid へ置き換える。
 
 MVP の collision pair:
 
@@ -1231,6 +1231,18 @@ type GameFrame = {
   tick: number;
   state: ReadonlyGameState;
   events: ReadonlyArray<GameEvent>;
+};
+
+type ReadonlyGameState = {
+  tick: number;
+  stageId: StageId;
+  playerId: PlayerId;
+  player: {
+    lives: number;
+    invincibleTicksRemaining: number;
+  };
+  score: number;
+  entities: ReadonlyArray<ReadonlyEntityState>;
 };
 
 type CoreResult<T> =
@@ -1648,14 +1660,13 @@ MVP では対象外だが、再利用基盤として以下を追跡する。
 
 ## 26. 次に作るもの
 
-Phase 1A の Core minimum contract は、TypeScript package、最小 content schema、registry validation、fixed tick、InputFrame、immutable event log、Entity/Component、seed/PRNG、Player / Enemy / EnemyBullet / PlayerShot、minimum Pattern `fireOnSpawn`、package boundary test まで実装済みである。
+Phase 1A の Core minimum contract は、TypeScript package、最小 content schema、registry validation、fixed tick、InputFrame、immutable event log、Entity/Component、seed/PRNG、Player / Enemy / EnemyBullet / PlayerShot、minimum Pattern `fireOnSpawn`、MVP collision resolution pair、fixed `scoreOnKill`、package boundary test まで実装済みである。collision broad phase は Phase 1A 完了条件ではなく、playable runtime へ向けた後続性能タスクとして残す。
 
-次の作業では、Phase 1A の残りとして以下を作る。
+次の作業では、Phase 1A の締めと Phase 1B の入口として以下を作る。
 
-1. EnemyBullet と Player / PlayerShot / Enemy の collision minimum
-2. enemy HP、player shot damage、enemy defeated event
-3. fixed `scoreOnKill` scoring system
-4. collision / scoring の deterministic system order test
-5. collision / scoring 結果を含む public snapshot の更新
+1. object pool や renderer state を Core minimum へ入れないことを最終確認する。
+2. collision / scoring event を含む deterministic smoke の期待値を golden 化するか判断する。
+3. Phase 1B の serialize / restore / state hash を小さな実装タスクへ分割する。
+4. `CommittedStageState` / `WorkingStageState` の明示型を導入するか判断する。
 
 state hash 対象の更新は Phase 1B の replay determinism 作業で扱う。
