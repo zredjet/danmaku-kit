@@ -49,6 +49,7 @@ export function validateGameDefinition(definition: unknown): CoreError[] {
 
   validateAssetReferences(validated.content, errors);
   validatePlayerShotReferences(validated.content, errors);
+  validatePatternBulletReferences(validated.content, errors);
   validateStageTimelineReferences(validated.content, errors);
   return errors;
 }
@@ -166,9 +167,12 @@ function validateDefinitionShape(definition: unknown, errors: CoreError[]): Game
     validatePlayerShotProjectileShape(playerShot.projectile, errors);
   }
   for (const pattern of patterns) {
-    validateAllowedKeys("pattern", pattern, ["id", "version"], errors);
+    validateAllowedKeys("pattern", pattern, ["id", "version", "fireOnSpawn"], errors);
     validateNonEmptyString("pattern.id", pattern.id, errors);
     validatePositiveInteger("pattern.version", pattern.version, errors);
+    if (pattern.fireOnSpawn !== undefined) {
+      validatePatternFireOnSpawnShape(pattern.fireOnSpawn, errors);
+    }
   }
   for (const path of paths) {
     validateAllowedKeys("path", path, ["id", "version"], errors);
@@ -243,6 +247,26 @@ function validatePlayerShotProjectileShape(value: unknown, errors: CoreError[]):
     MAX_PLAYER_SHOT_LIFETIME_TICKS,
     errors,
   );
+}
+
+/** pattern.fireOnSpawn の最小弾生成定義を検証する。 */
+function validatePatternFireOnSpawnShape(value: unknown, errors: CoreError[]): void {
+  const fireOnSpawn = asRecord(value);
+  if (!fireOnSpawn) {
+    errors.push({ code: "definition.invalidShape", message: "pattern.fireOnSpawn must be an object" });
+    return;
+  }
+  validateAllowedKeys("pattern.fireOnSpawn", fireOnSpawn, ["bullet", "offset"], errors);
+  validateNonEmptyString("pattern.fireOnSpawn.bullet", fireOnSpawn.bullet, errors);
+
+  const offset = asRecord(fireOnSpawn.offset);
+  if (!offset) {
+    errors.push({ code: "definition.invalidShape", message: "pattern.fireOnSpawn.offset must be an object" });
+    return;
+  }
+  validateAllowedKeys("pattern.fireOnSpawn.offset", offset, ["x", "y"], errors);
+  validateFiniteNumber("pattern.fireOnSpawn.offset.x", offset.x, errors);
+  validateFiniteNumber("pattern.fireOnSpawn.offset.y", offset.y, errors);
 }
 
 /** PlayerDefinition の shape validation。 */
@@ -420,10 +444,27 @@ function validatePlayerShotReferences(registry: ContentRegistry, errors: CoreErr
   }
 }
 
+/** PatternDefinition から参照される enemy bullet が registry に存在するか検証する。 */
+function validatePatternBulletReferences(registry: ContentRegistry, errors: CoreError[]): void {
+  const bulletIds = new Set(registry.bullets.map((definition) => definition.id));
+  for (const pattern of registry.patterns) {
+    const bulletId = pattern.fireOnSpawn?.bullet;
+    if (bulletId === undefined) {
+      continue;
+    }
+    if (!validateNamespacedReference("pattern.fireOnSpawn.bullet", "bullet", bulletId, errors)) {
+      continue;
+    }
+    if (!bulletIds.has(bulletId)) {
+      errors.push({ code: "bullet.notFound", message: `Bullet not found: ${bulletId}` });
+    }
+  }
+}
+
 /** Stage timeline 内の enemy / pattern / path 参照を検証する。 */
 function validateStageTimelineReferences(registry: ContentRegistry, errors: CoreError[]): void {
   const enemyIds = new Set(registry.enemies.map((definition) => definition.id));
-  const patternIds = new Set(registry.patterns.map((definition) => definition.id));
+  const patternsById = new Map(registry.patterns.map((definition) => [definition.id, definition]));
   const pathIds = new Set(registry.paths.map((definition) => definition.id));
 
   for (const stage of registry.stages) {
@@ -449,13 +490,31 @@ function validateStageTimelineReferences(registry: ContentRegistry, errors: Core
       if (enemyReferenceIsValid && !enemyIds.has(step.action.enemy)) {
         errors.push({ code: "enemy.notFound", message: `Enemy not found: ${step.action.enemy}` });
       }
-      if (patternReferenceIsValid && !patternIds.has(step.action.pattern)) {
+      const pattern = patternsById.get(step.action.pattern);
+      if (patternReferenceIsValid && !pattern) {
         errors.push({ code: "pattern.notFound", message: `Pattern not found: ${step.action.pattern}` });
+      }
+      if (patternReferenceIsValid && pattern?.fireOnSpawn) {
+        validateFireOnSpawnPosition("stage.timeline[].action.position + pattern.fireOnSpawn.offset", step.action.position, pattern.fireOnSpawn, errors);
       }
       if (pathReferenceIsValid && !pathIds.has(step.action.path)) {
         errors.push({ code: "path.notFound", message: `Path not found: ${step.action.path}` });
       }
     }
+  }
+}
+
+/** timeline spawn 位置と fireOnSpawn offset の合成結果が有限座標になるか検証する。 */
+function validateFireOnSpawnPosition(
+  path: string,
+  position: { x: number; y: number },
+  fireOnSpawn: NonNullable<ContentRegistry["patterns"][number]["fireOnSpawn"]>,
+  errors: CoreError[],
+): void {
+  const x = position.x + fireOnSpawn.offset.x;
+  const y = position.y + fireOnSpawn.offset.y;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    errors.push({ code: "definition.invalidConstraint", message: `${path} must produce a finite position` });
   }
 }
 

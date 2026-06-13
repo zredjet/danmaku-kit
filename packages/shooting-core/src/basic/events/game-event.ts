@@ -1,6 +1,15 @@
 import { deepFreezeClone } from "../internal/immutable.ts";
-import type { EnemyId, PathId, PatternId, PlayerShotId, StageId } from "../content/types.ts";
+import type { BulletId, EnemyId, PathId, PatternId, PlayerShotId, StageId } from "../content/types.ts";
 import type { EntityId } from "../simulation/entity.ts";
+
+type EnemyBulletSpawnedEventItem = Readonly<{
+  entityId: EntityId;
+  definitionId: BulletId;
+  position: Readonly<{
+    x: number;
+    y: number;
+  }>;
+}>;
 
 type PlayerShotSpawnedEventItem = Readonly<{
   entityId: EntityId;
@@ -47,6 +56,11 @@ export type GameEvent =
     type: "playerShotsSpawnedBatch";
     tick: number;
     shots: readonly [PlayerShotSpawnedEventItem, ...PlayerShotSpawnedEventItem[]];
+  }>
+  | Readonly<{
+    type: "enemyBulletsSpawnedBatch";
+    tick: number;
+    bullets: readonly [EnemyBulletSpawnedEventItem, ...EnemyBulletSpawnedEventItem[]];
   }>;
 
 /**

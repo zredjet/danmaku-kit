@@ -40,12 +40,13 @@ Done:
 - content 定義に基づく player shot movement / lifetime / cleanup を入れる
 - player input axes と focus held に基づく自機 movement / playfield clamp を入れる
 - PlayerShotDefinition の `fire.intervalTicks` に基づく held 連射を有効化する
+- PatternDefinition の `fireOnSpawn` から deterministic な EnemyBullet entity と `enemyBulletsSpawnedBatch` event を生成する
 
 Next:
 
-- enemy bullet runtime entity の生成を入れる
 - player shot と enemy の最小 collision を入れる
 - enemy bullet と player の最小 collision を入れる
+- player と enemy contact の最小 collision を入れる
 - fixed `scoreOnKill` を event と state に接続する
 
 このスライスでは Phaser、Vite、DOM、asset loader、YAML parser、serialize / restore は扱わない。
@@ -62,6 +63,7 @@ Next:
 | `docs/design.md` PlayerShot definition | PlayerShot projectile / lifetime と cleanup | Done | `packages/shooting-core/src/basic/content/types.ts`, `packages/shooting-core/src/basic/content/validation.ts`, `packages/shooting-core/src/basic/simulation/player-shot-lifecycle-system.ts` | `packages/shooting-core/src/basic/core.test.ts`, `packages/shooting-core/src/basic/simulation/player-shot-lifecycle-system.test.ts` | `npm test` |
 | `docs/design.md` PlayerShot fire interval | `fire.intervalTicks` と held 連射 cooldown | Done | `packages/shooting-core/src/basic/content/types.ts`, `packages/shooting-core/src/basic/content/validation.ts`, `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/simulation/player-shot-system.ts`, `packages/shooting-core/src/basic/simulation/runtime-entity.ts` | `packages/shooting-core/src/basic/core.test.ts`, `packages/shooting-core/src/basic/simulation/player-shot-system.test.ts`, `packages/shooting-core/src/basic/simulation/runtime-entity.test.ts`, `tests/public-type-contract.ts` | `npm test`, `npm run typecheck` |
 | `docs/design.md` Player movement | player input axes / focus movement / playfield clamp | Done | `packages/shooting-core/src/basic/simulation/player-movement-system.ts`, `packages/shooting-core/src/basic/core.ts` | `packages/shooting-core/src/basic/simulation/player-movement-system.test.ts`, `packages/shooting-core/src/basic/core.test.ts` | `npm test` |
+| `docs/design.md` Enemy bullet fireOnSpawn | PatternDefinition の最小敵弾生成経路、複数 enemy と player shot の同 tick order 固定 | Done | `packages/shooting-core/src/basic/content/types.ts`, `packages/shooting-core/src/basic/content/validation.ts`, `packages/shooting-core/src/basic/events/game-event.ts`, `packages/shooting-core/src/basic/result.ts`, `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/simulation/entity.ts`, `packages/shooting-core/src/basic/simulation/runtime-entity.ts`, `packages/shooting-core/src/basic/simulation/enemy-bullet-system.ts` | `packages/shooting-core/src/basic/core.test.ts`, `packages/shooting-core/src/basic/simulation/entity.test.ts`, `packages/shooting-core/src/basic/simulation/runtime-entity.test.ts`, `packages/shooting-core/src/basic/simulation/enemy-bullet-system.test.ts`, `tests/public-type-contract.ts` | `npm test`, `npm run typecheck` |
 | `docs/design.md` Transactional tick contract | fatal state、serialize / restore 失敗契約、汎用 working / committed state 境界 | Later | 未実装 | Phase 1B / collision / score 導入時に追加 | `npm test` |
 | `docs/design.md` Replay determinism | serialize / restore / state hash（Player runtime component の `nextShotAllowedTick` を含む） | Later | 未実装 | Phase 1B golden test で追加 | `npm test`, `npm run typecheck` |
 
@@ -97,9 +99,10 @@ Next:
    - Done: content 定義に基づく player shot movement / lifetime / cleanup
    - Done: player input intent と自機 movement / playfield clamp
    - Done: `fire.intervalTicks` と lifetime / cleanup 実装後に `held` 連射を有効化
-   - Next: EnemyBullet entity の生成経路を作る
+   - Done: `fireOnSpawn` による EnemyBullet entity の生成経路を作る
    - Next: player shot と enemy の hit
    - Next: enemy bullet と player の hit
+   - Next: player と enemy contact
    - Next: fixed `scoreOnKill`
 
 5. Phase 1A-5: Core minimum completion test
@@ -118,7 +121,7 @@ Next:
 ## Phase 1B へ進む条件
 
 - renderer なしで `StageSession.tick()` が 1 tick 単位で成功する
-- minimum content fixture から player / enemy / player shot を生成でき、bullet の runtime entity 型境界が用意されている
+- minimum content fixture から player / enemy / player shot / `fireOnSpawn` enemy bullet を生成でき、`enemyBulletsSpawnedBatch` event と bullet の runtime entity 型境界が用意されている
 - collision と score の最小 event が deterministic に並ぶ
 - `npm install` 後の `npm test` が通る
 - `npm run typecheck` が通る

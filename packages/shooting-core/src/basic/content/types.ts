@@ -137,10 +137,22 @@ export type PlayerShotDefinition = {
   };
 };
 
-/** 弾幕・移動命令の参照先。命令本体は Phase 2A 以降で追加する。 */
+/**
+ * 敵 pattern の最小 content 定義。
+ *
+ * Phase 1A では full DSL ではなく、spawn 直後に 1 batch だけ敵弾を生成する
+ * `fireOnSpawn` を扱う。wait / loop / aim / fan は Phase 2A 以降で追加する。
+ */
 export type PatternDefinition = {
   id: PatternId;
   version: number;
+  fireOnSpawn?: {
+    bullet: BulletId;
+    offset: {
+      x: number;
+      y: number;
+    };
+  };
 };
 
 /** enemy spawn 時に使う path の参照先。path 本体は後続スライスで追加する。 */

@@ -581,7 +581,156 @@ test("uses the selected player's shot definition when spawning player shots", ()
   ]);
 });
 
-test("orders timeline enemy spawn before player shot batch on the same tick", () => {
+test("spawns enemy bullets from fireOnSpawn patterns deterministically", () => {
+  const definition = createMinimumDefinition();
+  const loaded = createShootingCore("0.0.0").load({
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        timeline: [{
+          tick: 0,
+          action: {
+            type: "spawnEnemy",
+            enemy: "enemy.scout",
+            path: "path.none",
+            pattern: "pattern.spawn_bullet",
+            position: { x: 192, y: 80 },
+          },
+        }],
+      }],
+      patterns: [{
+        id: "pattern.spawn_bullet",
+        version: 1,
+        fireOnSpawn: {
+          bullet: "bullet.red_small",
+          offset: { x: 4, y: 8 },
+        },
+      }],
+    },
+  });
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game with fireOnSpawn pattern");
+  }
+
+  const started = loaded.value.startStage({
+    stageId: "stage.stage_01",
+    difficulty: "normal",
+    seed: "seed-1",
+  });
+  assert.equal(started.ok, true);
+  if (!started.ok) {
+    assert.fail("expected fireOnSpawn stage session");
+  }
+
+  const frame = started.value.tick(createEmptyInputFrame(0));
+  assert.equal(frame.ok, true);
+  if (!frame.ok) {
+    assert.fail("expected fireOnSpawn frame");
+  }
+
+  assert.deepEqual(frame.value.events.map((event) => event.type), [
+    "stageStarted",
+    "entitySpawned",
+    "enemyBulletsSpawnedBatch",
+    "tickAdvanced",
+  ]);
+  assert.deepEqual(frame.value.events[2], {
+    type: "enemyBulletsSpawnedBatch",
+    tick: 0,
+    bullets: [
+      {
+        entityId: 3,
+        definitionId: "bullet.red_small",
+        position: { x: 196, y: 88 },
+      },
+    ],
+  });
+  assert.deepEqual(frame.value.state.entities, [
+    {
+      id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: { x: 192, y: 400 },
+    },
+    {
+      id: 2,
+      kind: "enemy",
+      definitionId: "enemy.scout",
+      position: { x: 192, y: 80 },
+    },
+    {
+      id: 3,
+      kind: "enemyBullet",
+      definitionId: "bullet.red_small",
+      position: { x: 196, y: 88 },
+    },
+  ]);
+  assert.equal(Object.isFrozen(frame.value.events[2]), true);
+  if (frame.value.events[2]?.type !== "enemyBulletsSpawnedBatch") {
+    assert.fail("expected enemyBulletsSpawnedBatch event");
+  }
+  assert.equal(Object.isFrozen(frame.value.events[2].bullets), true);
+  assert.equal(Object.isFrozen(frame.value.events[2].bullets[0]), true);
+  assert.equal(Object.isFrozen(frame.value.events[2].bullets[0]?.position), true);
+
+  const nextFrame = started.value.tick(createEmptyInputFrame(1));
+  assert.equal(nextFrame.ok, true);
+  if (!nextFrame.ok) {
+    assert.fail("expected next frame without repeated fireOnSpawn");
+  }
+  assert.deepEqual(nextFrame.value.events.map((event) => event.type), ["tickAdvanced"]);
+  assert.deepEqual(nextFrame.value.state.entities.filter((entity) => entity.kind === "enemyBullet"), [
+    {
+      id: 3,
+      kind: "enemyBullet",
+      definitionId: "bullet.red_small",
+      position: { x: 196, y: 88 },
+    },
+  ]);
+});
+
+test("rejects non-finite enemy bullet positions during load", () => {
+  const definition = createMinimumDefinition();
+  const loaded = createShootingCore("0.0.0").load({
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        timeline: [{
+          tick: 0,
+          action: {
+            type: "spawnEnemy",
+            enemy: "enemy.scout",
+            path: "path.none",
+            pattern: "pattern.overflow",
+            position: { x: Number.MAX_VALUE, y: 80 },
+          },
+        }],
+      }],
+      patterns: [{
+        id: "pattern.overflow",
+        version: 1,
+        fireOnSpawn: {
+          bullet: "bullet.red_small",
+          offset: { x: Number.MAX_VALUE, y: 8 },
+        },
+      }],
+    },
+  });
+  assert.equal(loaded.ok, false);
+  assert.deepEqual(!loaded.ok && loaded.errors.map((error) => error.code), [
+    "definition.invalidConstraint",
+  ]);
+  assert.deepEqual(!loaded.ok && loaded.errors.map((error) => error.message), [
+    "stage.timeline[].action.position + pattern.fireOnSpawn.offset must produce a finite position",
+  ]);
+});
+
+test("orders timeline enemy spawn and enemy bullet batch before player shot batch on the same tick", () => {
   const definition = createMinimumDefinition();
   const baseStage = definition.content.stages[0]!;
   const spawnStep = baseStage.timeline[0]!;
@@ -596,8 +745,23 @@ test("orders timeline enemy spawn before player shot batch on the same tick", ()
             {
               ...spawnStep,
               tick: 0,
+              action: {
+                ...spawnStep.action,
+                pattern: "pattern.spawn_bullet",
+              },
             },
           ],
+        },
+      ],
+      patterns: [
+        ...definition.content.patterns,
+        {
+          id: "pattern.spawn_bullet",
+          version: 1,
+          fireOnSpawn: {
+            bullet: "bullet.red_small",
+            offset: { x: 0, y: 8 },
+          },
         },
       ],
     },
@@ -626,6 +790,7 @@ test("orders timeline enemy spawn before player shot batch on the same tick", ()
   assert.deepEqual(frame.value.events.map((event) => event.type), [
     "stageStarted",
     "entitySpawned",
+    "enemyBulletsSpawnedBatch",
     "playerShotsSpawnedBatch",
     "tickAdvanced",
   ]);
@@ -636,15 +801,26 @@ test("orders timeline enemy spawn before player shot batch on the same tick", ()
     entityKind: "enemy",
     definitionId: "enemy.scout",
     path: "path.none",
-    pattern: "pattern.none",
+    pattern: "pattern.spawn_bullet",
     position: { x: 192, y: -16 },
   });
   assert.deepEqual(frame.value.events[2], {
+    type: "enemyBulletsSpawnedBatch",
+    tick: 0,
+    bullets: [
+      {
+        entityId: 3,
+        definitionId: "bullet.red_small",
+        position: { x: 192, y: -8 },
+      },
+    ],
+  });
+  assert.deepEqual(frame.value.events[3], {
     type: "playerShotsSpawnedBatch",
     tick: 0,
     shots: [
       {
-        entityId: 3,
+        entityId: 4,
         definitionId: "playerShot.basic",
         position: { x: 192, y: 400 },
       },
@@ -658,7 +834,134 @@ test("orders timeline enemy spawn before player shot batch on the same tick", ()
   })), [
     { id: 1, kind: "player", definitionId: "player.default", position: { x: 192, y: 400 } },
     { id: 2, kind: "enemy", definitionId: "enemy.scout", position: { x: 192, y: -16 } },
-    { id: 3, kind: "playerShot", definitionId: "playerShot.basic", position: { x: 192, y: 392 } },
+    { id: 3, kind: "enemyBullet", definitionId: "bullet.red_small", position: { x: 192, y: -8 } },
+    { id: 4, kind: "playerShot", definitionId: "playerShot.basic", position: { x: 192, y: 392 } },
+  ]);
+});
+
+test("orders multiple timeline enemy bullet batches before player shot batch on the same tick", () => {
+  const definition = createMinimumDefinition();
+  const baseStage = definition.content.stages[0]!;
+  const loaded = createShootingCore("0.0.0").load({
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [
+        {
+          ...baseStage,
+          timeline: [
+            {
+              tick: 0,
+              action: {
+                type: "spawnEnemy",
+                enemy: "enemy.scout",
+                path: "path.none",
+                pattern: "pattern.fire_a",
+                position: { x: 180, y: -16 },
+              },
+            },
+            {
+              tick: 0,
+              action: {
+                type: "spawnEnemy",
+                enemy: "enemy.scout",
+                path: "path.none",
+                pattern: "pattern.fire_b",
+                position: { x: 204, y: -12 },
+              },
+            },
+          ],
+        },
+      ],
+      patterns: [
+        ...definition.content.patterns,
+        {
+          id: "pattern.fire_a",
+          version: 1,
+          fireOnSpawn: {
+            bullet: "bullet.red_small",
+            offset: { x: 1, y: 2 },
+          },
+        },
+        {
+          id: "pattern.fire_b",
+          version: 1,
+          fireOnSpawn: {
+            bullet: "bullet.red_small",
+            offset: { x: -3, y: 4 },
+          },
+        },
+      ],
+    },
+  });
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+
+  const started = loaded.value.startStage({
+    stageId: "stage.stage_01",
+    difficulty: "normal",
+    seed: "seed-1",
+  });
+  assert.equal(started.ok, true);
+  if (!started.ok) {
+    assert.fail("expected stage session");
+  }
+
+  const frame = started.value.tick(createShotInputFrame(0));
+  assert.equal(frame.ok, true);
+  if (!frame.ok) {
+    assert.fail("expected frame");
+  }
+
+  assert.deepEqual(frame.value.events.map((event) => event.type), [
+    "stageStarted",
+    "entitySpawned",
+    "entitySpawned",
+    "enemyBulletsSpawnedBatch",
+    "playerShotsSpawnedBatch",
+    "tickAdvanced",
+  ]);
+  assert.deepEqual(frame.value.events[3], {
+    type: "enemyBulletsSpawnedBatch",
+    tick: 0,
+    bullets: [
+      {
+        entityId: 4,
+        definitionId: "bullet.red_small",
+        position: { x: 181, y: -14 },
+      },
+      {
+        entityId: 5,
+        definitionId: "bullet.red_small",
+        position: { x: 201, y: -8 },
+      },
+    ],
+  });
+  assert.deepEqual(frame.value.events[4], {
+    type: "playerShotsSpawnedBatch",
+    tick: 0,
+    shots: [
+      {
+        entityId: 6,
+        definitionId: "playerShot.basic",
+        position: { x: 192, y: 400 },
+      },
+    ],
+  });
+  assert.deepEqual(frame.value.state.entities.map((entity) => ({
+    id: entity.id,
+    kind: entity.kind,
+    definitionId: entity.definitionId,
+    position: entity.position,
+  })), [
+    { id: 1, kind: "player", definitionId: "player.default", position: { x: 192, y: 400 } },
+    { id: 2, kind: "enemy", definitionId: "enemy.scout", position: { x: 180, y: -16 } },
+    { id: 3, kind: "enemy", definitionId: "enemy.scout", position: { x: 204, y: -12 } },
+    { id: 4, kind: "enemyBullet", definitionId: "bullet.red_small", position: { x: 181, y: -14 } },
+    { id: 5, kind: "enemyBullet", definitionId: "bullet.red_small", position: { x: 201, y: -8 } },
+    { id: 6, kind: "playerShot", definitionId: "playerShot.basic", position: { x: 192, y: 392 } },
   ]);
 });
 
@@ -1054,6 +1357,255 @@ test("rejects missing player shot and stage timeline references", () => {
     !loaded.ok && loaded.errors.map((error) => error.code),
     ["playerShot.notFound", "enemy.notFound", "pattern.notFound", "path.notFound"],
   );
+});
+
+test("rejects missing pattern bullet references", () => {
+  const definition = createMinimumDefinition();
+  const loaded = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      patterns: [
+        ...definition.content.patterns,
+        {
+          id: "pattern.missing_bullet",
+          version: 1,
+          fireOnSpawn: {
+            bullet: "bullet.missing",
+            offset: { x: 0, y: 0 },
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(loaded.ok, false);
+  assert.deepEqual(!loaded.ok && loaded.errors.map((error) => error.code), ["bullet.notFound"]);
+});
+
+test("rejects malformed pattern fireOnSpawn definitions", () => {
+  const definition = createMinimumDefinition();
+  const shapeCases: Array<{
+    codes: readonly string[];
+    label: string;
+    fireOnSpawn: unknown;
+    messages: readonly string[];
+  }> = [
+    {
+      codes: ["definition.invalidShape"],
+      label: "non object fireOnSpawn",
+      fireOnSpawn: "bullet.red_small",
+      messages: ["pattern.fireOnSpawn must be an object"],
+    },
+    {
+      codes: ["definition.unknownField"],
+      label: "unknown fireOnSpawn field",
+      fireOnSpawn: {
+        bullet: "bullet.red_small",
+        offset: { x: 0, y: 0 },
+        extra: true,
+      },
+      messages: ["Unknown field at pattern.fireOnSpawn.extra"],
+    },
+    {
+      codes: ["definition.invalidShape"],
+      label: "missing bullet",
+      fireOnSpawn: {
+        offset: { x: 0, y: 0 },
+      },
+      messages: ["pattern.fireOnSpawn.bullet must be a string"],
+    },
+    {
+      codes: ["definition.invalidShape"],
+      label: "empty bullet",
+      fireOnSpawn: {
+        bullet: "",
+        offset: { x: 0, y: 0 },
+      },
+      messages: ["pattern.fireOnSpawn.bullet must be a string"],
+    },
+    {
+      codes: ["definition.invalidShape"],
+      label: "non string bullet",
+      fireOnSpawn: {
+        bullet: 1,
+        offset: { x: 0, y: 0 },
+      },
+      messages: ["pattern.fireOnSpawn.bullet must be a string"],
+    },
+    {
+      codes: ["definition.invalidShape"],
+      label: "missing offset",
+      fireOnSpawn: {
+        bullet: "bullet.red_small",
+      },
+      messages: ["pattern.fireOnSpawn.offset must be an object"],
+    },
+    {
+      codes: ["definition.invalidShape"],
+      label: "non object offset",
+      fireOnSpawn: {
+        bullet: "bullet.red_small",
+        offset: "0,0",
+      },
+      messages: ["pattern.fireOnSpawn.offset must be an object"],
+    },
+    {
+      codes: ["definition.invalidShape"],
+      label: "invalid offset y",
+      fireOnSpawn: {
+        bullet: "bullet.red_small",
+        offset: { x: 0, y: "0" },
+      },
+      messages: ["pattern.fireOnSpawn.offset.y must be a finite number"],
+    },
+    {
+      codes: ["definition.unknownField"],
+      label: "unknown offset field",
+      fireOnSpawn: {
+        bullet: "bullet.red_small",
+        offset: { x: 0, y: 0, extra: true },
+      },
+      messages: ["Unknown field at pattern.fireOnSpawn.offset.extra"],
+    },
+  ];
+
+  for (const shapeCase of shapeCases) {
+    const loaded = loadUnknown({
+      ...definition,
+      content: {
+        ...definition.content,
+        patterns: [
+          ...definition.content.patterns,
+          {
+            id: `pattern.bad_fire_${shapeCase.label.replaceAll(" ", "_")}`,
+            version: 1,
+            fireOnSpawn: shapeCase.fireOnSpawn,
+          },
+        ],
+      },
+    });
+
+    assert.equal(loaded.ok, false, shapeCase.label);
+    assert.deepEqual(
+      !loaded.ok && loaded.errors.map((error) => error.code),
+      shapeCase.codes,
+      shapeCase.label,
+    );
+    assert.deepEqual(
+      !loaded.ok && loaded.errors.map((error) => error.message),
+      shapeCase.messages,
+      shapeCase.label,
+    );
+  }
+
+  const malformedOffset = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      patterns: [
+        ...definition.content.patterns,
+        {
+          id: "pattern.bad_fire",
+          version: 1,
+          fireOnSpawn: {
+            bullet: "bullet.red_small",
+            offset: { x: "0", y: 0 },
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(malformedOffset.ok, false);
+  assert.deepEqual(!malformedOffset.ok && malformedOffset.errors.map((error) => error.code), [
+    "definition.invalidShape",
+  ]);
+  assert.deepEqual(!malformedOffset.ok && malformedOffset.errors.map((error) => error.message), [
+    "pattern.fireOnSpawn.offset.x must be a finite number",
+  ]);
+
+  for (const nonJsonNumber of [Number.POSITIVE_INFINITY, Number.NaN]) {
+    const malformedPlainData = loadUnknown({
+      ...definition,
+      content: {
+        ...definition.content,
+        patterns: [
+          ...definition.content.patterns,
+          {
+            id: "pattern.bad_fire_non_json_number",
+            version: 1,
+            fireOnSpawn: {
+              bullet: "bullet.red_small",
+              offset: { x: 0, y: nonJsonNumber },
+            },
+          },
+        ],
+      },
+    });
+
+    assert.equal(malformedPlainData.ok, false);
+    assert.deepEqual(!malformedPlainData.ok && malformedPlainData.errors.map((error) => error.code), [
+      "definition.invalidShape",
+    ]);
+    assert.deepEqual(!malformedPlainData.ok && malformedPlainData.errors.map((error) => error.message), [
+      "GameDefinition must be JSON-compatible plain data",
+    ]);
+  }
+
+  const malformedOffsetWithMissingBullet = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      patterns: [
+        ...definition.content.patterns,
+        {
+          id: "pattern.bad_fire",
+          version: 1,
+          fireOnSpawn: {
+            bullet: "bullet.missing",
+            offset: { x: "0", y: 0 },
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(malformedOffsetWithMissingBullet.ok, false);
+  assert.deepEqual(!malformedOffsetWithMissingBullet.ok && malformedOffsetWithMissingBullet.errors.map((error) => error.code), [
+    "definition.invalidShape",
+  ]);
+  assert.equal(
+    !malformedOffsetWithMissingBullet.ok
+      && malformedOffsetWithMissingBullet.errors.some((error) => error.code === "bullet.notFound"),
+    false,
+  );
+
+  const malformedBullet = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      patterns: [
+        ...definition.content.patterns,
+        {
+          id: "pattern.bad_fire",
+          version: 1,
+          fireOnSpawn: {
+            bullet: "enemy.scout",
+            offset: { x: 0, y: 0 },
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(malformedBullet.ok, false);
+  assert.deepEqual(!malformedBullet.ok && malformedBullet.errors.map((error) => error.code), [
+    "id.invalidNamespace",
+  ]);
+  assert.deepEqual(!malformedBullet.ok && malformedBullet.errors.map((error) => error.message), [
+    "pattern.fireOnSpawn.bullet must reference a bullet.* id: enemy.scout",
+  ]);
 });
 
 test("rejects malformed default player id before lookup", () => {

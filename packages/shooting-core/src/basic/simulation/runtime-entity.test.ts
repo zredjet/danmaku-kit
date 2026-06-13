@@ -92,6 +92,20 @@ test("creates bullet and player shot runtime components from content hitboxes", 
   });
 });
 
+test("rejects non-finite enemy bullet positions before consuming ids", () => {
+  const definition = createMinimumDefinition();
+  const allocator = new EntityAllocator();
+  const bullet = createEnemyBulletRuntimeEntity(
+    allocator,
+    definition.content.bullets[0]!,
+    { x: Number.POSITIVE_INFINITY, y: 120 },
+  );
+
+  assert.equal(bullet.ok, false);
+  assert.equal(!bullet.ok && bullet.errors[0]?.code, "definition.invalidConstraint");
+  assert.equal(allocator.snapshot(), 1);
+});
+
 test("projects runtime components to public readonly snapshots without leaking internals", () => {
   const definition = createMinimumDefinition();
   const player = createPlayerRuntimeEntity(new EntityAllocator(), definition.content.players[0]!);
@@ -131,4 +145,20 @@ test("projects runtime components to public readonly snapshots without leaking i
   assert.equal("collisionRadius" in snapshot, false);
   assert.equal(Object.isFrozen(snapshot), true);
   assert.equal(Object.isFrozen(snapshot.position), true);
+
+  const bullet = createEnemyBulletRuntimeEntity(new EntityAllocator(), definition.content.bullets[0]!, { x: 100, y: 120 });
+  assert.equal(bullet.ok, true);
+  if (!bullet.ok) {
+    assert.fail("expected enemy bullet entity");
+  }
+  const bulletSnapshot = toReadonlyEntityState(bullet.value);
+  assert.deepEqual(bulletSnapshot, {
+    id: 1,
+    kind: "enemyBullet",
+    definitionId: "bullet.red_small",
+    position: { x: 100, y: 120 },
+  });
+  assert.equal("collisionRadius" in bulletSnapshot, false);
+  assert.equal(Object.isFrozen(bulletSnapshot), true);
+  assert.equal(Object.isFrozen(bulletSnapshot.position), true);
 });

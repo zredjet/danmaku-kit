@@ -11,7 +11,7 @@ import type {
   PlayerShotId,
   StageTimelineAction,
 } from "../content/types.ts";
-import { okResult } from "../result.ts";
+import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
 import { EntityAllocator } from "./entity.ts";
 import type { EntityId } from "./entity.ts";
@@ -176,6 +176,10 @@ export function createEnemyBulletRuntimeEntity(
   bullet: BulletDefinition,
   position: Vector2,
 ): CoreResult<EnemyBulletRuntimeEntity> {
+  if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+    return coreError("definition.invalidConstraint", `Enemy bullet position must be finite: ${bullet.id}`);
+  }
+
   const entity = allocator.create();
   if (!entity.ok) {
     return entity;

@@ -195,7 +195,8 @@ YAML の読み込み、ファイル探索、行番号付きエラー整形は `a
 
 主な責務:
 
-- Phase 2A: 最小 pattern command subset の実行
+- Phase 1A: `fireOnSpawn` schema / registry reference contract（生成処理は simulation system 側）
+- Phase 2A: `PatternProgram` command subset の実行
 - Phase 2B: DSL parser と semantic validation
 - 時間指定、ループ、条件分岐
 - 自機狙い、全方位、扇形、列、属性切替などの発射ロジック
@@ -327,6 +328,14 @@ catch-up 方針は以下に固定する。
 ```
 
 system order は replay determinism の一部として扱い、Core の major version が変わらない限り変更しない。変更が必要な場合は replay compatibility policy に従う。
+
+`spawn bullets / player shots` の内訳は以下に固定する。
+
+1. Stage timeline で同 tick に生成された enemy の `fireOnSpawn` を timeline order に従って解決し、`enemyBulletsSpawnedBatch` を生成する。
+2. player の `pressed` / `held` shot intent を `fire.intervalTicks` で間引き、`playerShotsSpawnedBatch` を生成する。
+
+したがって同 tick に enemy spawn、enemy bullet、player shot が重なる場合の event order は `entitySpawned`、`enemyBulletsSpawnedBatch`、`playerShotsSpawnedBatch`、`tickAdvanced` とする。
+tick 0 の `stageStarted` は system order 外の pending lifecycle event として frame 先頭に drain される。
 
 Rank feature が有効な場合だけ step 12 に rank update、Phase 2B の Pickup feature が有効な場合だけ step 6 に pickup spawn、step 12 に pickup score / collect processing を追加する。feature 追加分も登録順と entity id 昇順で安定化し、Core minimum の system order を暗黙に変更しない。
 
@@ -552,6 +561,20 @@ HP が 0 以下になった場合、同 tick の phase change は発生させず
 Boss phase validation では、phase id の一意性、`hpTo` の単調減少、`0 <= hpTo < boss.hp` の範囲、最後の phase が `hpTo: 0` へ到達すること、初期 HP から一意に初期 phase を選べることを検証する。`timeoutTicks` を持つ Boss は `timeoutResult: clear | fail`、または stage 側の `failCondition` / `clearCondition` で timeout の扱いを明示する。
 
 ### 9.6 Pattern 定義例
+
+Phase 1A の Core minimum では full DSL をまだ実装せず、敵 spawn tick に 1 回だけ敵弾を出す `fireOnSpawn` を最小形として扱う。
+
+```yaml
+id: pattern.spawn_bullet
+version: 1
+fireOnSpawn:
+  bullet: bullet.red_small
+  offset: { x: 0, y: 8 }
+```
+
+`fireOnSpawn` は Stage timeline で enemy が生成された tick の `spawn bullets / player shots` step 内で player shot より先に解決し、`enemyBulletsSpawnedBatch` event と `EnemyBulletRuntimeEntity` を生成する。`offset` は enemy の spawn position からの相対座標である。`wait`、`loop`、`aim`、`fan`、speed を含む本来の Pattern DSL は Phase 2A 以降で `PatternProgram` として追加する。
+
+将来の DSL 例:
 
 ```yaml
 id: pattern.scout_three_way
@@ -893,9 +916,9 @@ Phase 2B 追加 budget:
 | --- | --- |
 | pickup | 300 |
 
-Core は bullet、shot と event builder に object pool を使い、tick 中の一時 allocation を避ける。Pickup feature は pickup pool を feature module 側で持つ。ただし `GameFrame.events` として返す event はコピー済み immutable value とし、次 tick の pool 再利用で過去 frame が変化しないようにする。上限超過時は dev では hard error、本番では stage load error または content error として扱い、無音で entity を落とさない。
+Phase 1A では object pool はまだ実装せず、deterministic な ID 採番、batch 上限、immutable snapshot の契約を先に固定する。`fireOnSpawn` で保証する budget は同 tick の spawn 数と batch allocation の失敗時 rollback までとし、active enemy bullet 2,000 の上限、移動、cleanup、上限超過時の runtime policy は collision / lifetime system 導入時に固定する。Phase 2B 以降で負荷が見えた段階で、Core は bullet、shot と event builder に object pool を導入し、tick 中の一時 allocation を避ける。Pickup feature は pickup pool を feature module 側で持つ。ただし `GameFrame.events` として返す event はコピー済み immutable value とし、次 tick の pool 再利用で過去 frame が変化しないようにする。上限超過時は dev では hard error、本番では stage load error または content error として扱い、無音で entity を落とさない。
 
-大量発生する弾生成は per-bullet の simulation event にしない。Simulation event では `bulletsSpawnedBatch` のような batch event を使い、render 用には別 stream の render event を生成する。Render event は budget 超過時に集約 event へ畳めるが、Simulation event と replay/state hash は変化させない。
+大量発生する弾生成は per-bullet の simulation event にしない。Simulation event では `enemyBulletsSpawnedBatch` のような batch event を使い、render 用には別 stream の render event を生成する。Render event は budget 超過時に集約 event へ畳めるが、Simulation event と replay/state hash は変化させない。
 
 ## 15. プレイフィール仕様
 
@@ -933,7 +956,7 @@ Event payload は各 system step で発生した時点の事実を表し、`Game
 | --- | --- |
 | `entitySpawned` | 敵など少量 entity が生成された事実を通知 |
 | `entityDestroyed` | Entity が破棄された事実を通知 |
-| `bulletsSpawnedBatch` | 敵弾生成を batch で通知 |
+| `enemyBulletsSpawnedBatch` | 敵弾生成を batch で通知 |
 | `playerShotsSpawnedBatch` | プレイヤーショット生成を batch で通知 |
 | `playerHit` | 被弾、残機処理、無敵演出 |
 | `bombUsed` | ボム演出、弾消し |
@@ -1241,7 +1264,7 @@ Runtime は `tick()` の戻り値に含まれる `GameFrame.events` を読んで
 
 Core API は transactional とする。`load()`、`startStage()`、`restore()`、`createReplayPlayback()`、`restoreReplayPlayback()` は成功時だけ新しい handle を返し、失敗時に既存の `LoadedGame` / `StageSession` を部分更新しない。Core version は `ShootingCore.coreVersion` が持ち、content が申告する値ではない。`StageSession.tick()` は session 内の `expectedTick` を持ち、`input.tick !== expectedTick`、重複 tick、欠番 tick を caller precondition error として返すが、session を fatal にしない。Runtime は dropped tick を replay 入力として補完せず、実際に Simulation へ渡した `InputFrame` だけを保存する。
 
-`ContentRegistry` は外部データの参照関係を検証する境界でもある。Stage の `music`、`background`、timeline 内の `enemy` と `path`、`clearCondition.bossDefeated.enemy`、Enemy の `asset`、`behavior.pattern`、Boss phase の `phases[].pattern`、Pattern の `fire.bullet`、Bullet/Player/PlayerShot の `asset` はすべて registry 経由で解決し、未定義 ID を schema test で検出する。Feature registry が登録された場合だけ、Pickup、Bomb、Affinity、Rank、advanced scoring の参照を追加検証する。
+`ContentRegistry` は外部データの参照関係を検証する境界でもある。Stage の `music`、`background`、timeline 内の `enemy` と `path`、`clearCondition.bossDefeated.enemy`、Enemy の `asset`、`behavior.pattern`、Boss phase の `phases[].pattern`、Pattern の `fireOnSpawn.bullet`、Bullet/Player/PlayerShot の `asset` はすべて registry 経由で解決し、未定義 ID を schema test で検出する。Feature registry が登録された場合だけ、Pickup、Bomb、Affinity、Rank、advanced scoring の参照を追加検証する。
 
 `load()` は registry index を生成する時点で、namespace ごとの `id` 一意性を検証する。同一 namespace 内で重複 ID があれば失敗する。別 namespace 間で同じ suffix を使うことはできるが、完全な ID は `enemy.scout`、`bullet.red_small` のように namespace prefix を含める。参照解決は配列順に依存させず、検証済み index だけを使う。
 
@@ -1340,23 +1363,28 @@ State hash は canonical encoding を固定する。hash input は `stateHashVer
 
 - Phase 2B: Pattern DSL の解釈
 - Stage timeline の spawn 順
+- Phase 1A: `fireOnSpawn` による enemy bullet 生成、次 tick での非再発火、`enemyBulletsSpawnedBatch` と player shot の event order
 - Collision
 - Score
 - Difficulty modifier
 - Replay determinism
 - PathRunner の合成式
+- public frame snapshot に runtime-only field が漏れないこと
 
 ### 21.2 Schema Test
 
 - `content/` 以下の全 YAML をスキーマ検証する。
 - namespace ごとの重複 ID を検出する。
 - 未定義 asset key、stage id、player id、enemy id、boss enemy id、enemy bullet id、player shot id、pattern id、path id を検出する。
+- `PatternDefinition.fireOnSpawn.bullet` の namespace と存在確認、`offset` の数値制約、timeline spawn 位置との合成結果が有限座標になることを検証する。
 - feature 有効時だけ、bomb id、pickup id、scoring rule id、rank rule id、affinity rules id を検出する。
 - `defaultPlayerId`、`defaultAffinityRulesId`、`defaultScoringRuleId`、`defaultRankRuleId`、`startStage()` に渡す `stageId`、`playerId`、`difficulty` を registry と stage definition に対して検証する。
 - Bullet、Enemy、Player、PlayerShot、Pattern の `affinity` 値が `none` または選択された `AffinityRules.values` に含まれることを検証する。
 - `enabledFeatures` の matrix test を持つ。各 feature について、disabled で未使用定義だけがある場合は warning、disabled で参照された場合は error、enabled で valid reference の場合は pass、enabled で不正 reference の場合は error になることを検証する。
 - feature 間依存の matrix test を持つ。`advancedScoring + graze`、`advancedScoring + pickup`、`rank + bomb`、`bomb + pickup refill` は依存 feature が揃う場合だけ pass し、片方だけ有効な参照は error にする。
 - settings migration は旧 `settingsVersion`、破損 JSON、未知 action、重複 binding の fixture を持ち、Runtime が default fallback または migration 済み settings を返すことを検証する。
+- package boundary test では root export 以外の runtime / type-only deep import を拒否し、public type contract は内部 runtime component や system result が漏れないことを検証する。
+- public API 境界は getter、Proxy、prototype 継承 property、巨大 input、非 JSON 互換値を validation 前に拒否し、例外を漏らさないことを検証する。
 
 ### 21.3 DSL Semantic Test
 
@@ -1491,7 +1519,7 @@ Phase 2B では `docs/content-authoring/examples/` を `validate-content` に通
 - immutable event log
 - PRNG
 - Player / Enemy / EnemyBullet / PlayerShot / Stage / Path / minimum Pattern schema
-- renderer 非依存の Player movement / shot movement / lifetime / fire interval minimum
+- renderer 非依存の Player movement / shot movement / lifetime / fire interval / enemy bullet fireOnSpawn minimum
 - system order lock
 - fixed `scoreOnKill` scoring system
 - Collision minimum
@@ -1620,16 +1648,14 @@ MVP では対象外だが、再利用基盤として以下を追跡する。
 
 ## 26. 次に作るもの
 
-次の作業では、Phase 1A の Core minimum contract として以下を作る。
+Phase 1A の Core minimum contract は、TypeScript package、最小 content schema、registry validation、fixed tick、InputFrame、immutable event log、Entity/Component、seed/PRNG、Player / Enemy / EnemyBullet / PlayerShot、minimum Pattern `fireOnSpawn`、package boundary test まで実装済みである。
 
-1. TypeScript package セットアップ
-2. `packages/shooting-core` の最小型定義
-3. Content schema minimum
-4. Registry validation minimum
-5. Fixed tick loop
-6. `InputFrame` と immutable event log
-7. Entity/Component、seed/PRNG
-8. Player / Enemy / EnemyBullet / PlayerShot / Stage / Path / minimum Pattern schema
-9. fixed `scoreOnKill` scoring system
-10. Collision minimum
-11. Unit test
+次の作業では、Phase 1A の残りとして以下を作る。
+
+1. EnemyBullet と Player / PlayerShot / Enemy の collision minimum
+2. enemy HP、player shot damage、enemy defeated event
+3. fixed `scoreOnKill` scoring system
+4. collision / scoring の deterministic system order test
+5. collision / scoring 結果を含む public snapshot の更新
+
+state hash 対象の更新は Phase 1B の replay determinism 作業で扱う。

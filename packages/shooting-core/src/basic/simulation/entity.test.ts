@@ -38,3 +38,54 @@ test("restores the post-max snapshot without allocating duplicate ids", () => {
   assert.equal(allocated.ok, false);
   assert.equal(!allocated.ok && allocated.errors[0]?.code, "entityAllocator.invalidState");
 });
+
+test("checks batch allocation capacity without consuming ids", () => {
+  const allocator = new EntityAllocator();
+
+  const canAllocate = allocator.canAllocate(2);
+  const canAllocateZero = allocator.canAllocate(0);
+
+  assert.equal(canAllocate.ok, true);
+  assert.equal(canAllocateZero.ok, true);
+  assert.equal(allocator.snapshot(), 1);
+});
+
+test("accepts an exact remaining batch allocation without consuming ids", () => {
+  const restored = EntityAllocator.restore(Number.MAX_SAFE_INTEGER - 1);
+
+  assert.equal(restored.ok, true);
+  if (!restored.ok) {
+    assert.fail("expected allocator with exactly one remaining id");
+  }
+
+  const canAllocate = restored.value.canAllocate(1);
+
+  assert.equal(canAllocate.ok, true);
+  assert.equal(restored.value.snapshot(), Number.MAX_SAFE_INTEGER - 1);
+});
+
+test("rejects impossible batch allocation without consuming ids", () => {
+  const restored = EntityAllocator.restore(Number.MAX_SAFE_INTEGER - 1);
+
+  assert.equal(restored.ok, true);
+  if (!restored.ok) {
+    assert.fail("expected allocator near max id");
+  }
+
+  const canAllocate = restored.value.canAllocate(2);
+
+  assert.equal(canAllocate.ok, false);
+  assert.equal(!canAllocate.ok && canAllocate.errors[0]?.code, "entityAllocator.invalidState");
+  assert.equal(restored.value.snapshot(), Number.MAX_SAFE_INTEGER - 1);
+});
+
+test("rejects invalid batch allocation counts", () => {
+  const allocator = new EntityAllocator();
+
+  for (const count of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+    const result = allocator.canAllocate(count);
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.errors[0]?.code, "entityAllocator.invalidState");
+  }
+  assert.equal(allocator.snapshot(), 1);
+});

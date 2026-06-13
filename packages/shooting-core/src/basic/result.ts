@@ -8,6 +8,8 @@ export type CoreErrorCode =
   | "asset.duplicate"
   | "asset.invalidKey"
   | "asset.notFound"
+  | "bullet.notFound"
+  | "definition.invalidConstraint"
   | "definition.invalidShape"
   | "definition.unknownField"
   | "difficulty.notSupported"

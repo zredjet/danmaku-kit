@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile, readdir } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { createMinimumDefinition } from "./fixtures/minimum-game-definition.ts";
+
+const packageRoot = fileURLToPath(new URL("../packages/shooting-core", import.meta.url));
 
 test("imports shooting core through the workspace package export", async () => {
   const core = await import("@shooting-sample/shooting-core");
@@ -10,19 +15,16 @@ test("imports shooting core through the workspace package export", async () => {
   assert.equal(typeof core.createShootingCore, "function");
 });
 
+test("exposes only the root package export", async () => {
+  const packageJson = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8"));
+
+  assert.deepEqual(Object.keys(packageJson.exports).sort(), ["."]);
+});
+
 test("rejects deep package imports outside the public export map", async () => {
   const forbiddenSubpaths = [
     "package.json",
-    "src/basic/core.ts",
-    "src/basic/content/types.ts",
-    "src/basic/input/input-frame.ts",
-    "src/basic/simulation/entity.ts",
-    "src/basic/simulation/player-movement-system.ts",
-    "src/basic/simulation/player-shot-lifecycle-system.ts",
-    "src/basic/simulation/player-shot-system.ts",
-    "src/basic/simulation/prng.ts",
-    "src/basic/simulation/runtime-entity.ts",
-    "src/basic/simulation/system-order.ts",
+    ...await listBasicSourceSubpaths(),
   ];
 
   for (const subpath of forbiddenSubpaths) {
@@ -36,6 +38,30 @@ test("rejects deep package imports outside the public export map", async () => {
     );
   }
 });
+
+async function listBasicSourceSubpaths() {
+  const sourceRoot = path.join(packageRoot, "src", "basic");
+  const files = await collectTypeScriptFiles(sourceRoot);
+  return files.map((file) => path.relative(packageRoot, file).split(path.sep).join("/")).sort();
+}
+
+async function collectTypeScriptFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await collectTypeScriptFiles(entryPath));
+      continue;
+    }
+    if (entry.isFile() && entry.name.endsWith(".ts")) {
+      files.push(entryPath);
+    }
+  }
+
+  return files;
+}
 
 test("runs the minimum gameplay flow through the workspace package export", async () => {
   const { createShootingCore } = await import("@shooting-sample/shooting-core");

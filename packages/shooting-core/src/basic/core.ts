@@ -1,8 +1,10 @@
 import { isNamespacedId } from "./content/identifier.ts";
 import type {
+  BulletDefinition,
   Difficulty,
   EnemyDefinition,
   GameDefinition,
+  PatternDefinition,
   PlayerDefinition,
   PlayerId,
   PlayerShotDefinition,
@@ -18,6 +20,7 @@ import { deepFreezeClone, deepFreezePlainData } from "./internal/immutable.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
 import type { CoreErrorCode, CoreResult } from "./result.ts";
 import { EntityAllocator } from "./simulation/entity.ts";
+import { spawnEnemyBulletsOnSpawn } from "./simulation/enemy-bullet-system.ts";
 import { advancePlayerMovement } from "./simulation/player-movement-system.ts";
 import { advancePlayerShotLifecycle } from "./simulation/player-shot-lifecycle-system.ts";
 import { spawnPlayerShotFromInput } from "./simulation/player-shot-system.ts";
@@ -26,7 +29,7 @@ import {
   createPlayerRuntimeEntity,
   toReadonlyEntityState,
 } from "./simulation/runtime-entity.ts";
-import type { PlayerRuntimeEntity, ReadonlyEntityState, RuntimeEntityState } from "./simulation/runtime-entity.ts";
+import type { EnemyRuntimeEntity, PlayerRuntimeEntity, ReadonlyEntityState, RuntimeEntityState } from "./simulation/runtime-entity.ts";
 import { freezeEntitiesInIdOrder } from "./simulation/system-order.ts";
 import { XorShift32 } from "./simulation/prng.ts";
 
@@ -142,7 +145,9 @@ export function createShootingCore(coreVersion = "0.0.0"): ShootingCore {
 
 type LoadedContentIndex = Readonly<{
   definition: GameDefinition;
+  bulletsById: ReadonlyMap<string, BulletDefinition>;
   enemiesById: ReadonlyMap<string, EnemyDefinition>;
+  patternsById: ReadonlyMap<string, PatternDefinition>;
   playerShotsById: ReadonlyMap<string, PlayerShotDefinition>;
   playersById: ReadonlyMap<string, PlayerDefinition>;
   stagesById: ReadonlyMap<string, StageDefinition>;
@@ -152,7 +157,9 @@ type StageSessionContext = {
   initialEntities: readonly RuntimeEntityState[];
   pendingEvents: readonly GameEvent[];
   entityAllocator: EntityAllocator;
+  bulletsById: ReadonlyMap<string, BulletDefinition>;
   enemiesById: ReadonlyMap<string, EnemyDefinition>;
+  patternsById: ReadonlyMap<string, PatternDefinition>;
   playerShotsById: ReadonlyMap<string, PlayerShotDefinition>;
   prng: XorShift32;
   stage: StageDefinition;
@@ -163,7 +170,9 @@ type StageSessionContext = {
 function createLoadedContentIndex(definition: GameDefinition): LoadedContentIndex {
   return {
     definition,
+    bulletsById: new Map(definition.content.bullets.map((bullet) => [bullet.id, bullet])),
     enemiesById: new Map(definition.content.enemies.map((enemy) => [enemy.id, enemy])),
+    patternsById: new Map(definition.content.patterns.map((pattern) => [pattern.id, pattern])),
     playerShotsById: new Map(definition.content.playerShots.map((playerShot) => [playerShot.id, playerShot])),
     playersById: new Map(definition.content.players.map((player) => [player.id, player])),
     stagesById: new Map(definition.content.stages.map((stage) => [stage.id, stage])),
@@ -210,9 +219,11 @@ function createLoadedGame(content: LoadedContentIndex): LoadedGame {
 
       // stageStarted は最初の GameFrame で renderer/debug が初期状態を同期するための event。
       return okResult(createStageSession({
+        bulletsById: content.bulletsById,
         entityAllocator,
         enemiesById: content.enemiesById,
         initialEntities: [playerEntity.value],
+        patternsById: content.patternsById,
         pendingEvents: [{ type: "stageStarted", tick: 0, stageId: stage.id }],
         playerShotsById: content.playerShotsById,
         prng: new XorShift32(options.value.seed),
@@ -269,6 +280,7 @@ function createStageSession(options: StageSessionContext): StageSession {
       }
       const workingEntities = [...activeEntities];
       let workingTimelineCursor = timelineCursor;
+      const spawnedEnemyEntities: EnemyRuntimeEntity[] = [];
 
       // system order の updateStageTimeline。timeline 順に spawn event を生成する。
       while (
@@ -286,6 +298,7 @@ function createStageSession(options: StageSessionContext): StageSession {
             return entity;
           }
           workingEntities.push(entity.value);
+          spawnedEnemyEntities.push(entity.value);
           eventLog.push({
             type: "entitySpawned",
             tick: expectedTick,
@@ -298,6 +311,22 @@ function createStageSession(options: StageSessionContext): StageSession {
           });
         }
         workingTimelineCursor += 1;
+      }
+
+      // system order の spawnBulletsPlayerShots。enemy pattern の弾生成を player shot より先に確定する。
+      const enemyBulletSpawn = spawnEnemyBulletsOnSpawn(
+        workingEntityAllocator,
+        expectedTick,
+        spawnedEnemyEntities,
+        options.patternsById,
+        options.bulletsById,
+      );
+      if (!enemyBulletSpawn.ok) {
+        return enemyBulletSpawn;
+      }
+      if (enemyBulletSpawn.value) {
+        workingEntities.push(...enemyBulletSpawn.value.entities);
+        eventLog.push(enemyBulletSpawn.value.event);
       }
 
       // system order の spawnBulletsPlayerShots。pressed / held の shot intent を fire interval で間引く。
