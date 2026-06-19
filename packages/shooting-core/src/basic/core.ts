@@ -18,7 +18,7 @@ import { GAMEPLAY_ACTION_ORDER } from "./input/input-frame.ts";
 import type { InputFrame } from "./input/input-frame.ts";
 import { deepFreezeClone, deepFreezePlainData } from "./internal/immutable.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
-import type { CoreErrorCode, CoreResult } from "./result.ts";
+import type { CoreError, CoreErrorCode, CoreResult } from "./result.ts";
 import { resolveCollisionAndScoring } from "./simulation/collision-system.ts";
 import { EntityAllocator } from "./simulation/entity.ts";
 import { spawnEnemyBulletsOnSpawn } from "./simulation/enemy-bullet-system.ts";
@@ -33,8 +33,10 @@ import {
 import type { EnemyRuntimeEntity, PlayerRuntimeEntity, ReadonlyEntityState, RuntimeEntityState } from "./simulation/runtime-entity.ts";
 import { freezeEntitiesInIdOrder } from "./simulation/system-order.ts";
 import { XorShift32 } from "./simulation/prng.ts";
+import type { SerializedPrngState } from "./simulation/prng.ts";
 
 const MAX_SEED_LENGTH = 128;
+const INTERNAL_TEST_HOOKS_ENV = "SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS";
 
 /**
  * ステージ開始時に runtime adapter から渡すオプション。
@@ -135,6 +137,26 @@ export type StageSession = {
  * load / startStage / tick を検証できることを優先している。
  */
 export function createShootingCore(coreVersion = "0.0.0"): ShootingCore {
+  return createShootingCoreInternal(coreVersion, {});
+}
+
+/**
+ * Core の fault-injection 付きインスタンスを作る内部テスト専用 API。
+ *
+ * root package export には出さず、通常 runtime からは参照できない形に留める。
+ */
+export function createShootingCoreWithTestingHooksForInternalTest(
+  coreVersion = "0.0.0",
+  testingHooks: StageSessionTestingHookOptions = {},
+): ShootingCore {
+  assertInternalTestHooksEnabled();
+  return createShootingCoreInternal(coreVersion, testingHooks);
+}
+
+function createShootingCoreInternal(
+  coreVersion: string,
+  testingHooks: StageSessionTestingHookOptions,
+): ShootingCore {
   return Object.freeze({
     coreVersion,
     load(definition) {
@@ -146,7 +168,7 @@ export function createShootingCore(coreVersion = "0.0.0"): ShootingCore {
       if (errors.length > 0) {
         return errorResult(errors);
       }
-      return okResult(createLoadedGame(createLoadedContentIndex(plainDefinition as GameDefinition)));
+      return okResult(createLoadedGame(createLoadedContentIndex(plainDefinition as GameDefinition), testingHooks));
     },
   });
 }
@@ -162,17 +184,52 @@ type LoadedContentIndex = Readonly<{
 }>;
 
 type StageSessionContext = {
-  initialEntities: readonly RuntimeEntityState[];
-  pendingEvents: readonly GameEvent[];
-  entityAllocator: EntityAllocator;
+  initialState: CommittedStageState;
   bulletsById: ReadonlyMap<string, BulletDefinition>;
   enemiesById: ReadonlyMap<string, EnemyDefinition>;
   patternsById: ReadonlyMap<string, PatternDefinition>;
   playerShotsById: ReadonlyMap<string, PlayerShotDefinition>;
-  prng: XorShift32;
   stage: StageDefinition;
   player: PlayerDefinition;
+  testingHooks: ActiveStageSessionTestingHooks;
 };
+
+type CommittedStageState = Readonly<{
+  expectedTick: number;
+  activeEntities: readonly RuntimeEntityState[];
+  nextEntityId: number;
+  pendingEvents: readonly GameEvent[];
+  prngState: SerializedPrngState;
+  score: number;
+  timelineCursor: number;
+}>;
+
+type WorkingStageState = {
+  expectedTick: number;
+  activeEntities: RuntimeEntityState[];
+  entityAllocator: EntityAllocator;
+  eventLog: EventLog;
+  prng: XorShift32;
+  score: number;
+  timelineCursor: number;
+};
+
+type StageSessionTestingHookOptions = Readonly<{
+  corruptCommittedPrngStateTicks?: readonly number[];
+  failAfterWorkingMutationTicks?: readonly number[];
+  overrideCommittedNextEntityIdTicks?: ReadonlyArray<Readonly<{
+    tick: number;
+    nextEntityId: number;
+  }>>;
+  recordCommittedStateOnFatal?: (state: CommittedStageState) => void;
+}>;
+
+type ActiveStageSessionTestingHooks = Readonly<{
+  corruptCommittedPrngStateTicks: Set<number>;
+  failAfterWorkingMutationTicks: Set<number>;
+  overrideCommittedNextEntityIdByTick: Map<number, number>;
+  recordCommittedStateOnFatal?: (state: CommittedStageState) => void;
+}>;
 
 /** validated content を runtime lookup しやすい形へまとめる。 */
 function createLoadedContentIndex(definition: GameDefinition): LoadedContentIndex {
@@ -193,7 +250,10 @@ function createLoadedContentIndex(definition: GameDefinition): LoadedContentInde
  * この関数へ渡る `definition` は `load()` 済みで freeze されている前提。
  * そのため startStage ごとに再 validation せず、ID 解決と session 初期化だけを行う。
  */
-function createLoadedGame(content: LoadedContentIndex): LoadedGame {
+function createLoadedGame(
+  content: LoadedContentIndex,
+  testingHooks: StageSessionTestingHookOptions,
+): LoadedGame {
   return Object.freeze({
     startStage(rawOptions) {
       const plainOptions = deepFreezePlainData(rawOptions);
@@ -228,15 +288,21 @@ function createLoadedGame(content: LoadedContentIndex): LoadedGame {
       // stageStarted は最初の GameFrame で renderer/debug が初期状態を同期するための event。
       return okResult(createStageSession({
         bulletsById: content.bulletsById,
-        entityAllocator,
         enemiesById: content.enemiesById,
-        initialEntities: [playerEntity.value],
+        initialState: createCommittedStageState({
+          activeEntities: [playerEntity.value],
+          expectedTick: 0,
+          nextEntityId: entityAllocator.snapshot(),
+          pendingEvents: [{ type: "stageStarted", tick: 0, stageId: stage.id }],
+          prngState: new XorShift32(options.value.seed).snapshot(),
+          score: 0,
+          timelineCursor: 0,
+        }),
         patternsById: content.patternsById,
-        pendingEvents: [{ type: "stageStarted", tick: 0, stageId: stage.id }],
         playerShotsById: content.playerShotsById,
-        prng: new XorShift32(options.value.seed),
         stage,
         player,
+        testingHooks: createActiveStageSessionTestingHooks(testingHooks),
       }));
     },
   });
@@ -249,16 +315,19 @@ function createLoadedGame(content: LoadedContentIndex): LoadedGame {
  * commit する。これにより ID 採番、collision、score、event 順序を deterministic に保つ。
  */
 function createStageSession(options: StageSessionContext): StageSession {
-  let expectedTick = 0;
-  let activeEntities: readonly RuntimeEntityState[] = options.initialEntities;
-  let entityAllocator = options.entityAllocator;
-  let pendingEvents = options.pendingEvents;
-  let prng = options.prng;
-  let score = 0;
-  let timelineCursor = 0;
+  let committedState = options.initialState;
+  let fatalErrors: readonly CoreError[] | null = null;
+  const latchFatalErrors = <T>(errors: readonly CoreError[]): CoreResult<T> => {
+    options.testingHooks.recordCommittedStateOnFatal?.(deepFreezeClone(committedState));
+    fatalErrors = freezeFatalErrors(errors);
+    return errorResult(fatalErrors);
+  };
 
   return Object.freeze({
     tick(rawInput) {
+      if (fatalErrors) {
+        return errorResult(fatalErrors);
+      }
       const plainInput = deepFreezePlainData(rawInput);
       if (!plainInput) {
         return error("input.invalidShape", "InputFrame must be JSON-compatible plain data");
@@ -268,48 +337,51 @@ function createStageSession(options: StageSessionContext): StageSession {
         return input;
       }
       // system order の applyInput。入力 tick のズレは状態を進める前に拒否する。
-      if (input.value.tick !== expectedTick) {
-        return error("input.tickMismatch", `Expected tick ${expectedTick}, got ${input.value.tick}`);
+      if (input.value.tick !== committedState.expectedTick) {
+        return error("input.tickMismatch", `Expected tick ${committedState.expectedTick}, got ${input.value.tick}`);
       }
 
-      const restoredPrng = XorShift32.restore(prng.snapshot());
-      if (!restoredPrng.ok) {
-        return restoredPrng;
+      if (options.testingHooks.corruptCommittedPrngStateTicks.delete(committedState.expectedTick)) {
+        committedState = {
+          ...committedState,
+          prngState: Object.freeze({ state: 0 }),
+        };
       }
-      const workingPrng = restoredPrng.value;
-      const restoredAllocator = EntityAllocator.restore(entityAllocator.snapshot());
-      if (!restoredAllocator.ok) {
-        return restoredAllocator;
+      if (options.testingHooks.overrideCommittedNextEntityIdByTick.has(committedState.expectedTick)) {
+        const nextEntityId = options.testingHooks.overrideCommittedNextEntityIdByTick.get(committedState.expectedTick)!;
+        options.testingHooks.overrideCommittedNextEntityIdByTick.delete(committedState.expectedTick);
+        committedState = {
+          ...committedState,
+          nextEntityId,
+        };
       }
-      const workingEntityAllocator = restoredAllocator.value;
-      const eventLog = new EventLog();
-      for (const event of pendingEvents) {
-        eventLog.push(event);
+
+      const working = createWorkingStageState(committedState);
+      if (!working.ok) {
+        return latchFatalErrors(working.errors);
       }
-      const workingEntities = [...activeEntities];
-      let workingTimelineCursor = timelineCursor;
       const spawnedEnemyEntities: EnemyRuntimeEntity[] = [];
 
       // system order の updateStageTimeline。timeline 順に spawn event を生成する。
       while (
-        workingTimelineCursor < options.stage.timeline.length
-        && options.stage.timeline[workingTimelineCursor]!.tick === expectedTick
+        working.value.timelineCursor < options.stage.timeline.length
+        && options.stage.timeline[working.value.timelineCursor]!.tick === working.value.expectedTick
       ) {
-        const step = options.stage.timeline[workingTimelineCursor]!;
+        const step = options.stage.timeline[working.value.timelineCursor]!;
         if (step.action.type === "spawnEnemy") {
           const enemyDefinition = options.enemiesById.get(step.action.enemy);
           if (!enemyDefinition) {
-            return error("enemy.notFound", `Enemy not found: ${step.action.enemy}`);
+            return latchFatalErrors([{ code: "enemy.notFound", message: `Enemy not found: ${step.action.enemy}` }]);
           }
-          const entity = createEnemyRuntimeEntity(workingEntityAllocator, enemyDefinition, step.action);
+          const entity = createEnemyRuntimeEntity(working.value.entityAllocator, enemyDefinition, step.action);
           if (!entity.ok) {
-            return entity;
+            return latchFatalErrors(entity.errors);
           }
-          workingEntities.push(entity.value);
+          working.value.activeEntities.push(entity.value);
           spawnedEnemyEntities.push(entity.value);
-          eventLog.push({
+          working.value.eventLog.push({
             type: "entitySpawned",
-            tick: expectedTick,
+            tick: working.value.expectedTick,
             entityId: entity.value.id,
             entityKind: "enemy",
             definitionId: step.action.enemy,
@@ -318,83 +390,91 @@ function createStageSession(options: StageSessionContext): StageSession {
             position: step.action.position,
           });
         }
-        workingTimelineCursor += 1;
+        working.value.timelineCursor += 1;
       }
 
       // system order の spawnBulletsPlayerShots。enemy pattern の弾生成を player shot より先に確定する。
       const enemyBulletSpawn = spawnEnemyBulletsOnSpawn(
-        workingEntityAllocator,
-        expectedTick,
+        working.value.entityAllocator,
+        working.value.expectedTick,
         spawnedEnemyEntities,
         options.patternsById,
         options.bulletsById,
       );
       if (!enemyBulletSpawn.ok) {
-        return enemyBulletSpawn;
+        return latchFatalErrors(enemyBulletSpawn.errors);
       }
       if (enemyBulletSpawn.value) {
-        workingEntities.push(...enemyBulletSpawn.value.entities);
-        eventLog.push(enemyBulletSpawn.value.event);
+        working.value.activeEntities.push(...enemyBulletSpawn.value.entities);
+        working.value.eventLog.push(enemyBulletSpawn.value.event);
       }
 
       // system order の spawnBulletsPlayerShots。pressed / held の shot intent を fire interval で間引く。
       const spawnedPlayerShotEntityIds = new Set<number>();
-      const playerEntity = findPlayerEntity(workingEntities, options.player.id);
+      const playerEntity = findPlayerEntity(working.value.activeEntities, options.player.id);
       if (!playerEntity) {
-        return error("player.notFound", `Player entity not found: ${options.player.id}`);
+        return latchFatalErrors([{ code: "player.notFound", message: `Player entity not found: ${options.player.id}` }]);
       }
       const playerShotDefinition = options.playerShotsById.get(playerEntity.shotDefinitionId);
       if (!playerShotDefinition) {
-        return error("playerShot.notFound", `Player shot not found: ${playerEntity.shotDefinitionId}`);
+        return latchFatalErrors([
+          { code: "playerShot.notFound", message: `Player shot not found: ${playerEntity.shotDefinitionId}` },
+        ]);
       }
       const playerShotSpawn = spawnPlayerShotFromInput(
-        workingEntityAllocator,
+        working.value.entityAllocator,
         input.value,
         playerEntity,
         playerShotDefinition,
       );
       if (!playerShotSpawn.ok) {
-        return playerShotSpawn;
+        return latchFatalErrors(playerShotSpawn.errors);
       }
       if (playerShotSpawn.value) {
-        if (!replaceRuntimeEntity(workingEntities, playerShotSpawn.value.player)) {
-          return error("player.notFound", `Player entity not found: ${playerShotSpawn.value.player.definitionId}`);
+        if (!replaceRuntimeEntity(working.value.activeEntities, playerShotSpawn.value.player)) {
+          return latchFatalErrors([
+            { code: "player.notFound", message: `Player entity not found: ${playerShotSpawn.value.player.definitionId}` },
+          ]);
         }
-        workingEntities.push(...playerShotSpawn.value.entities);
+        working.value.activeEntities.push(...playerShotSpawn.value.entities);
         for (const entity of playerShotSpawn.value.entities) {
           spawnedPlayerShotEntityIds.add(entity.id);
         }
-        eventLog.push(playerShotSpawn.value.event);
+        working.value.eventLog.push(playerShotSpawn.value.event);
+      }
+
+      if (options.testingHooks.failAfterWorkingMutationTicks.delete(working.value.expectedTick)) {
+        return failAfterWorkingMutationForTesting(working.value);
       }
 
       // system order の updateMovement / updateLifetime。player は入力で、player shot は projectile 定義で進める。
-      const movedEntities = advancePlayerMovement(workingEntities, input.value);
+      const movedEntities = advancePlayerMovement(working.value.activeEntities, input.value);
       const advancedEntities = advancePlayerShotLifecycle(movedEntities, {
         spawnedThisTickEntityIds: spawnedPlayerShotEntityIds,
       });
       const collision = resolveCollisionAndScoring(advancedEntities, {
         playerInvincibleTicksAfterHit: options.player.life.invincibleTicksAfterHit,
-        score,
-        tick: expectedTick,
+        score: working.value.score,
+        tick: working.value.expectedTick,
       });
       for (const event of collision.events) {
-        eventLog.push(event);
+        working.value.eventLog.push(event);
       }
       const resolvedEntities = collision.entities;
       const resolvedScore = collision.score;
 
       // PRNG はまだ event payload に出していないが、tick ごとの消費順を先に固定しておく。
-      workingPrng.nextUint32();
-      eventLog.push({ type: "tickAdvanced", tick: expectedTick });
+      working.value.prng.nextUint32();
+      working.value.eventLog.push({ type: "tickAdvanced", tick: working.value.expectedTick });
 
       // frame に載せる state は renderer が保持しても安全な immutable snapshot にする。
       const orderedEntities = freezeEntitiesInIdOrder(resolvedEntities);
       const resolvedPlayer = findPlayerEntity(orderedEntities, options.player.id);
       if (!resolvedPlayer) {
-        return error("player.notFound", `Player entity not found: ${options.player.id}`);
+        return latchFatalErrors([{ code: "player.notFound", message: `Player entity not found: ${options.player.id}` }]);
       }
       const state: ReadonlyGameState = Object.freeze({
-        tick: expectedTick,
+        tick: working.value.expectedTick,
         stageId: options.stage.id,
         playerId: options.player.id,
         player: toReadonlyPlayerState(resolvedPlayer),
@@ -402,21 +482,164 @@ function createStageSession(options: StageSessionContext): StageSession {
         entities: Object.freeze(orderedEntities.map((entity) => toReadonlyEntityState(entity))),
       });
       const frame = Object.freeze({
-        tick: expectedTick,
+        tick: working.value.expectedTick,
         state,
-        events: eventLog.drain(),
+        events: working.value.eventLog.drain(),
       });
 
-      prng = workingPrng;
-      entityAllocator = workingEntityAllocator;
-      activeEntities = orderedEntities;
-      pendingEvents = [];
-      score = resolvedScore;
-      timelineCursor = workingTimelineCursor;
-      expectedTick += 1;
+      committedState = createCommittedStageState({
+        activeEntities: orderedEntities,
+        expectedTick: working.value.expectedTick + 1,
+        nextEntityId: working.value.entityAllocator.snapshot(),
+        pendingEvents: [],
+        prngState: working.value.prng.snapshot(),
+        score: resolvedScore,
+        timelineCursor: working.value.timelineCursor,
+      });
       return okResult(frame);
     },
   });
+}
+
+/** committed 側で保持する値を mutable handle なしの immutable snapshot に正規化する。 */
+function createCommittedStageState(state: {
+  expectedTick: number;
+  activeEntities: readonly RuntimeEntityState[];
+  nextEntityId: number;
+  pendingEvents: readonly GameEvent[];
+  prngState: SerializedPrngState;
+  score: number;
+  timelineCursor: number;
+}): CommittedStageState {
+  const orderedEntities = freezeEntitiesInIdOrder(state.activeEntities);
+  return Object.freeze({
+    expectedTick: state.expectedTick,
+    activeEntities: deepFreezeClone(orderedEntities),
+    nextEntityId: state.nextEntityId,
+    pendingEvents: deepFreezeClone(state.pendingEvents),
+    prngState: deepFreezeClone(state.prngState),
+    score: state.score,
+    timelineCursor: state.timelineCursor,
+  });
+}
+
+/** 1 tick 分の作業領域を committed snapshot から復元する。 */
+function createWorkingStageState(committedState: CommittedStageState): CoreResult<WorkingStageState> {
+  const restoredPrng = XorShift32.restore(committedState.prngState);
+  if (!restoredPrng.ok) {
+    return restoredPrng;
+  }
+  const restoredAllocator = EntityAllocator.restore(committedState.nextEntityId);
+  if (!restoredAllocator.ok) {
+    return restoredAllocator;
+  }
+  const entityInvariant = validateCommittedEntityInvariants(committedState);
+  if (!entityInvariant.ok) {
+    return entityInvariant;
+  }
+
+  const eventLog = new EventLog();
+  for (const event of committedState.pendingEvents) {
+    eventLog.push(event);
+  }
+
+  return okResult({
+    activeEntities: [...deepFreezeClone(committedState.activeEntities)],
+    entityAllocator: restoredAllocator.value,
+    eventLog,
+    expectedTick: committedState.expectedTick,
+    prng: restoredPrng.value,
+    score: committedState.score,
+    timelineCursor: committedState.timelineCursor,
+  });
+}
+
+/** 内部 invariant 破壊を fatal reason として latch できる public error に畳む。 */
+function freezeFatalErrors(errors: readonly CoreError[]): readonly CoreError[] {
+  const detail = errors.map((error) => `${error.code}: ${error.message}`).join("; ");
+  return Object.freeze([
+    Object.freeze({
+      code: "stageSession.fatal" as const,
+      message: `Stage session entered a fatal state: ${detail}`,
+    }),
+  ]);
+}
+
+/** 内部テスト用 hook を stage session ごとの消費状態へ変換する。 */
+function createActiveStageSessionTestingHooks(
+  testingHooks: StageSessionTestingHookOptions,
+): ActiveStageSessionTestingHooks {
+  return Object.freeze({
+    corruptCommittedPrngStateTicks: new Set(testingHooks.corruptCommittedPrngStateTicks ?? []),
+    failAfterWorkingMutationTicks: new Set(testingHooks.failAfterWorkingMutationTicks ?? []),
+    overrideCommittedNextEntityIdByTick: new Map(
+      (testingHooks.overrideCommittedNextEntityIdTicks ?? []).map((override) => [override.tick, override.nextEntityId]),
+    ),
+    recordCommittedStateOnFatal: testingHooks.recordCommittedStateOnFatal,
+  });
+}
+
+/** rollback regression 用に、working state を実際に汚してから失敗させる。 */
+function failAfterWorkingMutationForTesting(working: WorkingStageState): CoreResult<never> {
+  const beforeEntityCount = working.activeEntities.length;
+  const beforeExpectedTick = working.expectedTick;
+  const beforeNextEntityId = working.entityAllocator.snapshot();
+  const beforeScore = working.score;
+  const beforeTimelineCursor = working.timelineCursor;
+  const allocatedEntity = working.entityAllocator.create();
+  if (allocatedEntity.ok && working.activeEntities[0]) {
+    working.activeEntities.push({ ...working.activeEntities[0], id: allocatedEntity.value.id });
+  }
+  working.expectedTick += 1;
+  working.eventLog.push({ type: "tickAdvanced", tick: working.expectedTick });
+  working.prng.nextUint32();
+  working.score += 1;
+  working.timelineCursor += 1;
+  return error(
+    "testHook.failure",
+    [
+      "test hook failed after mutating working stage state",
+      `entities=${beforeEntityCount}->${working.activeEntities.length}`,
+      `expectedTick=${beforeExpectedTick}->${working.expectedTick}`,
+      `nextEntityId=${beforeNextEntityId}->${working.entityAllocator.snapshot()}`,
+      `score=${beforeScore}->${working.score}`,
+      `timelineCursor=${beforeTimelineCursor}->${working.timelineCursor}`,
+    ].join("; "),
+  );
+}
+
+/** committed snapshot の entity id と allocator snapshot の整合性を検証する。 */
+function validateCommittedEntityInvariants(committedState: CommittedStageState): CoreResult<null> {
+  const ids = new Set<number>();
+  let maxEntityId = 0;
+
+  for (const entity of committedState.activeEntities) {
+    if (!Number.isSafeInteger(entity.id) || entity.id < 1) {
+      return error("entityAllocator.invalidState", "active entity id must be a positive safe integer");
+    }
+    if (ids.has(entity.id)) {
+      return error("entityAllocator.invalidState", `active entity id must be unique: ${entity.id}`);
+    }
+    ids.add(entity.id);
+    maxEntityId = Math.max(maxEntityId, entity.id);
+  }
+
+  if (committedState.nextEntityId <= maxEntityId) {
+    return error(
+      "entityAllocator.invalidState",
+      `nextEntityId must be greater than active entity ids: nextEntityId=${committedState.nextEntityId}, maxEntityId=${maxEntityId}`,
+    );
+  }
+
+  return okResult(null);
+}
+
+/** source import から test hook を誤って有効化しないための最終ガード。 */
+function assertInternalTestHooksEnabled(): void {
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+  if (env?.[INTERNAL_TEST_HOOKS_ENV] !== "1") {
+    throw new Error(`${INTERNAL_TEST_HOOKS_ENV}=1 is required to create a hook-enabled shooting core`);
+  }
 }
 
 /** active entity list から現在の自機 runtime component を探す。 */

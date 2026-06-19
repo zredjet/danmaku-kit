@@ -29,8 +29,10 @@ export type CoreErrorCode =
   | "playerShot.notFound"
   | "prng.invalidState"
   | "schema.unsupportedVersion"
+  | "stageSession.fatal"
   | "stage.notFound"
   | "startStage.invalidShape"
+  | "testHook.failure"
   | "timeline.invalidOrder"
   | "timeline.tooManySpawnsPerTick"
   | "timeline.tooManySteps";

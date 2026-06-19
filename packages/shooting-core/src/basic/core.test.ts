@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createShootingCore } from "./core.ts";
-import type { LoadedGame, StageSession, StartStageOptions } from "./core.ts";
+import { createShootingCore, createShootingCoreWithTestingHooksForInternalTest } from "./core.ts";
+import type { LoadedGame, ShootingCore, StageSession, StartStageOptions } from "./core.ts";
 import type { GameDefinition } from "./content/types.ts";
 import { validateGameDefinition } from "./content/validation.ts";
 import { createEmptyInputFrame } from "./input/input-frame.ts";
 import type { InputFrame } from "./input/input-frame.ts";
+import { createShootingCoreWithTestingHooksForTest } from "./internal/testing-hooks.ts";
 import { createMinimumDefinition } from "../../../../tests/fixtures/minimum-game-definition.ts";
+
+const testEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+if (testEnv) {
+  testEnv.SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS = "1";
+}
 
 test("loads valid minimum content and advances deterministic ticks", () => {
   const loaded = createShootingCore("0.0.0").load(createMinimumDefinition());
@@ -2584,6 +2590,202 @@ test("recovers from a tick mismatch after spawning a player shot without duplica
   ]);
 });
 
+test("rolls back working state when a failure occurs after mutation", () => {
+  const definition = createRollbackCollisionDefinition();
+  const baseline = startStageFromDefinition(definition);
+  const hooked = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+    failAfterWorkingMutationTicks: [1],
+  }), definition);
+
+  const baselineFrame0 = baseline.tick(createEmptyInputFrame(0));
+  const hookedFrame0 = hooked.tick(createEmptyInputFrame(0));
+  assert.equal(baselineFrame0.ok, true);
+  assert.equal(hookedFrame0.ok, true);
+  assert.deepEqual(hookedFrame0.ok && hookedFrame0.value, baselineFrame0.ok && baselineFrame0.value);
+
+  const failed = hooked.tick(createPressedShotInputFrame(1));
+  assert.equal(failed.ok, false);
+  assert.equal(!failed.ok && failed.errors[0]?.code, "testHook.failure");
+  assert.match(!failed.ok ? failed.errors[0]?.message ?? "" : "", /entities=4->5/);
+  assert.match(!failed.ok ? failed.errors[0]?.message ?? "" : "", /expectedTick=1->2/);
+  assert.match(!failed.ok ? failed.errors[0]?.message ?? "" : "", /nextEntityId=5->6/);
+  assert.match(!failed.ok ? failed.errors[0]?.message ?? "" : "", /score=0->1/);
+  assert.match(!failed.ok ? failed.errors[0]?.message ?? "" : "", /timelineCursor=2->3/);
+
+  const baselineFrame1 = baseline.tick(createPressedShotInputFrame(1));
+  const recoveredFrame1 = hooked.tick(createPressedShotInputFrame(1));
+  assert.equal(baselineFrame1.ok, true);
+  assert.equal(recoveredFrame1.ok, true);
+  assert.deepEqual(recoveredFrame1.ok && recoveredFrame1.value, baselineFrame1.ok && baselineFrame1.value);
+  if (!recoveredFrame1.ok) {
+    assert.fail("expected recovered collision frame");
+  }
+  assert.deepEqual(recoveredFrame1.value.events.map((event) => event.type), [
+    "entitySpawned",
+    "entitySpawned",
+    "playerShotsSpawnedBatch",
+    "playerHit",
+    "entityDestroyed",
+    "entityDestroyed",
+    "scoreChanged",
+    "tickAdvanced",
+  ]);
+  assert.deepEqual(recoveredFrame1.value.state.entities.map((entity) => entity.id), [1, 3]);
+
+  const baselineFrame2 = baseline.tick(createEmptyInputFrame(2));
+  const recoveredFrame2 = hooked.tick(createEmptyInputFrame(2));
+  assert.equal(baselineFrame2.ok, true);
+  assert.equal(recoveredFrame2.ok, true);
+  assert.deepEqual(recoveredFrame2.ok && recoveredFrame2.value, baselineFrame2.ok && baselineFrame2.value);
+
+  const baselineFrame3 = baseline.tick(createPressedShotInputFrame(3));
+  const recoveredFrame3 = hooked.tick(createPressedShotInputFrame(3));
+  assert.equal(baselineFrame3.ok, true);
+  assert.equal(recoveredFrame3.ok, true);
+  assert.deepEqual(recoveredFrame3.ok && recoveredFrame3.value, baselineFrame3.ok && baselineFrame3.value);
+});
+
+test("rolls back pending startup events when a failure occurs before the first committed frame", () => {
+  const baseline = startMinimumStage();
+  const hooked = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+    failAfterWorkingMutationTicks: [0],
+  }), createMinimumDefinition());
+
+  const failed = hooked.tick(createEmptyInputFrame(0));
+  assert.equal(failed.ok, false);
+  assert.equal(!failed.ok && failed.errors[0]?.code, "testHook.failure");
+  assert.match(!failed.ok ? failed.errors[0]?.message ?? "" : "", /entities=1->2/);
+  assert.match(!failed.ok ? failed.errors[0]?.message ?? "" : "", /expectedTick=0->1/);
+
+  const baselineFrame0 = baseline.tick(createEmptyInputFrame(0));
+  const recoveredFrame0 = hooked.tick(createEmptyInputFrame(0));
+  assert.equal(baselineFrame0.ok, true);
+  assert.equal(recoveredFrame0.ok, true);
+  assert.deepEqual(recoveredFrame0.ok && recoveredFrame0.value, baselineFrame0.ok && baselineFrame0.value);
+  assert.deepEqual(recoveredFrame0.ok && recoveredFrame0.value.events.map((event) => event.type), [
+    "stageStarted",
+    "tickAdvanced",
+  ]);
+});
+
+test("latches committed snapshot restore failures as fatal stage session errors", () => {
+  const started = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+    corruptCommittedPrngStateTicks: [0],
+  }), createMinimumDefinition());
+
+  const fatal = started.tick(createEmptyInputFrame(0));
+  assert.equal(fatal.ok, false);
+  assert.equal(!fatal.ok && fatal.errors[0]?.code, "stageSession.fatal");
+  assert.match(!fatal.ok ? fatal.errors[0]?.message ?? "" : "", /prng\.invalidState/);
+
+  const malformedInputAfterFatal = tickUnknown(started, {
+    tick: "bad",
+    axes: { moveX: 0, moveY: 0 },
+    held: [],
+    pressed: [],
+    released: [],
+  });
+  assert.deepEqual(malformedInputAfterFatal, fatal);
+
+  const futureTickAfterFatal = started.tick(createEmptyInputFrame(1));
+  assert.deepEqual(futureTickAfterFatal, fatal);
+});
+
+test("latches runtime invariant failures after working state restore", () => {
+  const fatalCommittedStates: unknown[] = [];
+  const started = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+    overrideCommittedNextEntityIdTicks: [{
+      tick: 0,
+      nextEntityId: Number.MAX_SAFE_INTEGER - 1,
+    }],
+    recordCommittedStateOnFatal: (state) => fatalCommittedStates.push(state),
+  }), createFireOnSpawnAtZeroDefinition());
+
+  const fatal = started.tick(createEmptyInputFrame(0));
+  assert.equal(fatal.ok, false);
+  assert.equal(!fatal.ok && fatal.errors[0]?.code, "stageSession.fatal");
+  assert.match(!fatal.ok ? fatal.errors[0]?.message ?? "" : "", /entityAllocator\.invalidState/);
+
+  const repeated = started.tick(createEmptyInputFrame(1));
+  assert.deepEqual(repeated, fatal);
+  assert.equal(fatalCommittedStates.length, 1);
+  const fatalCommittedState = fatalCommittedStates[0] as {
+    expectedTick: number;
+    activeEntities: Array<{ id: number; kind: string; definitionId: string }>;
+    nextEntityId: number;
+    pendingEvents: unknown[];
+    prngState: { state: number };
+    score: number;
+    timelineCursor: number;
+  };
+  assert.equal(fatalCommittedState.expectedTick, 0);
+  assert.deepEqual(fatalCommittedState.activeEntities.map((entity) => ({
+    id: entity.id,
+    kind: entity.kind,
+    definitionId: entity.definitionId,
+  })), [
+    { id: 1, kind: "player", definitionId: "player.default" },
+  ]);
+  assert.equal(fatalCommittedState.nextEntityId, Number.MAX_SAFE_INTEGER - 1);
+  assert.deepEqual(fatalCommittedState.pendingEvents, [{ type: "stageStarted", tick: 0, stageId: "stage.stage_01" }]);
+  assert.equal(fatalCommittedState.prngState.state, 3597787782);
+  assert.equal(fatalCommittedState.score, 0);
+  assert.equal(fatalCommittedState.timelineCursor, 0);
+});
+
+test("latches nextEntityId snapshots that would duplicate active entity ids", () => {
+  const started = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+    overrideCommittedNextEntityIdTicks: [{
+      tick: 0,
+      nextEntityId: 1,
+    }],
+  }), createMinimumDefinition());
+
+  const fatal = started.tick(createPressedShotInputFrame(0));
+  assert.equal(fatal.ok, false);
+  assert.equal(!fatal.ok && fatal.errors[0]?.code, "stageSession.fatal");
+  assert.match(!fatal.ok ? fatal.errors[0]?.message ?? "" : "", /nextEntityId must be greater/);
+});
+
+test("keeps testing hooks scoped to each created stage session", () => {
+  const loaded = createShootingCoreWithTestingHooksForTest("0.0.0", {
+    failAfterWorkingMutationTicks: [0],
+  }).load(createMinimumDefinition());
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game with testing hooks");
+  }
+
+  const first = startStageFromLoadedGame(loaded.value);
+  const second = startStageFromLoadedGame(loaded.value);
+
+  const firstFailure = first.tick(createEmptyInputFrame(0));
+  const secondFailure = second.tick(createEmptyInputFrame(0));
+  assert.equal(firstFailure.ok, false);
+  assert.equal(secondFailure.ok, false);
+  assert.equal(!firstFailure.ok && firstFailure.errors[0]?.code, "testHook.failure");
+  assert.equal(!secondFailure.ok && secondFailure.errors[0]?.code, "testHook.failure");
+});
+
+test("rejects hook-enabled core creation without the internal test environment flag", () => {
+  if (!testEnv) {
+    assert.fail("expected node test environment");
+  }
+
+  const previousFlag = testEnv.SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS;
+  delete testEnv.SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS;
+  try {
+    assert.throws(
+      () => createShootingCoreWithTestingHooksForInternalTest("0.0.0", {
+        failAfterWorkingMutationTicks: [0],
+      }),
+      /SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS=1/,
+    );
+  } finally {
+    testEnv.SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS = previousFlag;
+  }
+});
+
 test("returns immutable event frames and drains one-shot events", () => {
   const started = startMinimumStage();
 
@@ -2605,13 +2807,21 @@ function startMinimumStage() {
 }
 
 function startStageFromDefinition(definition: GameDefinition) {
-  const loaded = createShootingCore("0.0.0").load(definition);
+  return startStageFromCoreAndDefinition(createShootingCore("0.0.0"), definition);
+}
+
+function startStageFromCoreAndDefinition(core: ShootingCore, definition: GameDefinition) {
+  const loaded = core.load(definition);
   assert.equal(loaded.ok, true);
   if (!loaded.ok) {
     assert.fail("expected loaded game");
   }
 
-  const started = loaded.value.startStage({
+  return startStageFromLoadedGame(loaded.value);
+}
+
+function startStageFromLoadedGame(loaded: LoadedGame) {
+  const started = loaded.startStage({
     stageId: "stage.stage_01",
     difficulty: "normal",
     seed: "seed-1",
@@ -2646,6 +2856,76 @@ function createCollisionScoreDefinition(): GameDefinition {
       playerShots: [{
         ...definition.content.playerShots[0]!,
         damage: 10,
+      }],
+    },
+  };
+}
+
+function createRollbackCollisionDefinition(): GameDefinition {
+  const definition = createMinimumDefinition();
+  return {
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        timeline: [
+          {
+            tick: 1,
+            action: {
+              type: "spawnEnemy",
+              enemy: "enemy.scout",
+              path: "path.none",
+              pattern: "pattern.none",
+              position: { x: 192, y: 392 },
+            },
+          },
+          {
+            tick: 1,
+            action: {
+              type: "spawnEnemy",
+              enemy: "enemy.scout",
+              path: "path.none",
+              pattern: "pattern.none",
+              position: { x: 192, y: 392 },
+            },
+          },
+        ],
+      }],
+      playerShots: [{
+        ...definition.content.playerShots[0]!,
+        damage: 10,
+      }],
+    },
+  };
+}
+
+function createFireOnSpawnAtZeroDefinition(): GameDefinition {
+  const definition = createMinimumDefinition();
+  return {
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        timeline: [{
+          tick: 0,
+          action: {
+            type: "spawnEnemy",
+            enemy: "enemy.scout",
+            path: "path.none",
+            pattern: "pattern.spawn_bullet",
+            position: { x: 192, y: 80 },
+          },
+        }],
+      }],
+      patterns: [{
+        id: "pattern.spawn_bullet",
+        version: 1,
+        fireOnSpawn: {
+          bullet: "bullet.red_small",
+          offset: { x: 0, y: 8 },
+        },
       }],
     },
   };

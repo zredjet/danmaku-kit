@@ -40,6 +40,18 @@ import type { HashableGameState } from "@shooting-sample/shooting-core";
 // @ts-expect-error internal PRNG snapshot is not part of the root public contract.
 import type { SerializedPrngState } from "@shooting-sample/shooting-core";
 
+// @ts-expect-error test-only hook factory is not part of the root public contract.
+import { createShootingCoreWithTestingHooksForTest } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error test-only core factory is not part of the root public contract.
+import { createShootingCoreWithTestingHooks } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error internal test-only core factory is not part of the root public contract.
+import { createShootingCoreWithTestingHooksForInternalTest } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error test-only hook options are not part of the root public contract.
+import type { StageSessionTestingHooks } from "@shooting-sample/shooting-core";
+
 // @ts-expect-error internal runtime component is not part of the root public contract.
 import type { EnemyRuntimeEntity } from "@shooting-sample/shooting-core";
 
@@ -102,6 +114,8 @@ const errorCode: CoreErrorCode = "input.invalidShape";
 const bulletErrorCode: CoreErrorCode = "bullet.notFound";
 const invalidConstraintErrorCode: CoreErrorCode = "definition.invalidConstraint";
 const playerShotErrorCode: CoreErrorCode = "playerShot.notFound";
+const fatalStageSessionErrorCode: CoreErrorCode = "stageSession.fatal";
+const testHookFailureErrorCode: CoreErrorCode = "testHook.failure";
 const difficulty: Difficulty = "normal";
 const enabledFeature: EnabledFeature = "bomb";
 const assetKeys: AssetKeyRegistry = { keys: ["player.default"] };
@@ -555,6 +569,8 @@ void errorCode;
 void bulletErrorCode;
 void invalidConstraintErrorCode;
 void playerShotErrorCode;
+void fatalStageSessionErrorCode;
+void testHookFailureErrorCode;
 void difficulty;
 void enabledFeature;
 void assetKeys;
