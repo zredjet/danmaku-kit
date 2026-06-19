@@ -442,11 +442,9 @@ life:
   invincibleTicksAfterHit: 120
 shot:
   definition: playerShot.basic
-bomb:
-  definition: null
 ```
 
-`graze` と `bomb.definition` は optional である。MVP では `graze` field を持たず、`bomb.definition: null` を許可する。Graze module を有効にした title だけ `graze.radius` / `graze.oncePerBullet` を定義し、Bomb module を有効にした title だけ `bomb.default` などの定義を参照する。
+MVP の basic `PlayerDefinition` は `graze` と `bomb` field を持たない。Basic core validator は未知 field として拒否し、feature module schema 導入後だけ `graze.radius` / `graze.oncePerBullet` や `bomb.definition` を許可する。Bomb module 有効時でも bomb 未所持の自機を表したい場合は feature schema 側で `bomb.definition: null` を許可するが、この null 契約は basic schema へ持ち込まない。
 
 Player movement は `InputFrame.axes` を intent として扱い、`focus` held 中は `focusSpeed`、それ以外は `speed` を使う。低速移動の意味を守るため `focusSpeed <= speed` を content validation で要求し、MVP では `speed` / `focusSpeed` ともに `16` 以下に制限する。斜め入力は通常移動より速くならないよう正規化し、自機中心は playfield の `x=0..384`、`y=0..448` 内へ clamp する。Shot 生成は system order に従って movement 前の player position を使い、同じ tick の `GameFrame.state` では player が movement 後の position になる。
 
@@ -468,7 +466,7 @@ projectile:
   lifetimeTicks: 90
 ```
 
-Phase 1A の validator が受け付ける PlayerShot schema は上記の最小形である。`fire.intervalTicks` は同じ shot definition から次に発射できるまでの tick 間隔であり、`pressed` は初弾の edge、`held` は interval に従う連射 intent として扱う。発射可能条件は `input.tick >= nextShotAllowedTick` とし、発射後は `nextShotAllowedTick = firedTick + fire.intervalTicks` に更新する。同一 tick で `pressed` と `held` の両方に `shot` が含まれていても生成する batch は 1 つだけとする。発射後は Player runtime component に `nextShotAllowedTick` を保持し、public snapshot には出さず、将来の serialize / restore と state hash 対象になる内部状態として扱う。MVP では過剰な entity 生成を避けるため `1 <= fire.intervalTicks <= 60` に制限する。
+Phase 1A の validator が受け付ける PlayerShot schema は上記の最小形である。`fire.intervalTicks` は同じ shot definition から次に発射できるまでの tick 間隔であり、`pressed` は初弾の edge、`held` は interval に従う連射 intent として扱う。発射可能条件は `input.tick >= nextShotAllowedTick` とし、発射後は `nextShotAllowedTick = firedTick + fire.intervalTicks` に更新する。同一 tick で `pressed` と `held` の両方に `shot` が含まれていても生成する batch は 1 つだけとする。発射後は Player runtime component に `nextShotAllowedTick` を保持し、renderer が読む `GameFrame.state` の public snapshot には出さない。一方で replay resume 用の `SerializedRuntimeEntityState` と state hash には含める。MVP では過剰な entity 生成を避けるため `1 <= fire.intervalTicks <= 60` に制限する。
 
 `lifetimeTicks` は生成 tick を含めて `GameFrame.state.entities` に残る tick 数を表す。生成 tick でも `velocity` による movement は適用するが、lifetime decrement は次 tick から開始する。MVP では active player shot budget を守るため `lifetimeTicks <= 300`、`velocity.x/y` は `-64` から `64` の範囲に制限する。
 
@@ -633,7 +631,7 @@ segments:
 
 PathRunner は segment 開始位置を `p0`、segment 内経過 tick を `t` として、基本位置 `p0 + velocity * t` に `offset(t)` を足す。`offset.sine` は位置への相対変位であり、速度そのものは変更しない。segment が切り替わると、その時点の最終位置を次 segment の `p0` とする。
 
-Simulation 内部の座標は固定小数点として扱う。単位は `1 px = 1024 units` とし、content 上の小数値は loader で固定小数点整数へ変換する。三角関数や角度指定は pattern/path の初期化時に固定小数点テーブルまたは決定的な近似関数へ変換し、tick 中に環境依存の丸めを発生させない。Golden test の snapshot は px 表示へ戻す前の固定小数点値を比較する。
+Phase 1 の Simulation 座標は JavaScript の finite number として保持し、state hash では IEEE-754 binary64 の canonical encoding で比較する。斜め移動や sine offset によって小数座標が自然に発生するため、固定小数点へ変換できない値を不正扱いにしない。ただし tick 中の非線形関数は host `Math.sin` などの実装差へ依存させない。`offset.sine` のような機能を実装する slice では、core version に紐づく deterministic lookup table または決定的な近似関数を feature ごとに定義し、table 生成方法、解像度、補間方式、丸め規則、golden vector を同じ slice で固定してから tick で使う。将来、runtime state 自体を固定小数点へ移行する場合は、単位、丸め規則、content loader の変換、golden snapshot の比較対象を別 schema version として同時に固定する。
 
 ### 9.9 Pickup 定義例
 
@@ -935,7 +933,7 @@ Phase 1A では object pool はまだ実装せず、deterministic な ID 採番�
 - 背景と敵弾のコントラストを manifest レベルで確認できるようにする。
 - 弾幕生成は deterministic にする。
 - ランダムは seed 管理する。
-- `randomSpread` などの乱数は Core が所有する PRNG だけを使う。PRNG state は `serialize()` に完全保存し、replay metadata には検証用 hash と resume 用 snapshot として扱う。
+- `randomSpread` などの乱数は Core が所有する PRNG だけを使う。PRNG state は `SerializedGameState` / state hash の対象として完全保存し、`ReplayMetadata` 自体には PRNG snapshot を重複して持たせない。
 
 ### 15.3 演出
 
@@ -1047,7 +1045,7 @@ Debug HUD は以下を表示する。
 - seed
 - content version
 - state hash
-- PRNG state hash
+- PRNG state hash（state hash と同じ canonical encoding / xxHash64 seed / output format を使う）
 - dropped tick
 - entity 数
 - enemy bullet 数
@@ -1151,9 +1149,18 @@ DSL の失敗時挙動:
 
 別タイトルで再利用するため、Core の公開 API は小さく保つ。
 
+以下の型例は、現在実装済みの public method、現在実装済みの public DTO contract、
+future API を分けて示す。現在実装済みの public method は
+`ShootingCore.load()`、`LoadedGame.startStage()`、`StageSession.tick()` までである。
+Phase 1B-3 で `SerializedGameState` などの public DTO 型境界は追加済みだが、
+`StageSession.serialize()` が実装されるまでは runtime から snapshot を生成する public method はない。
+Phase 1B-4 で root export 済みの `StageSession` 自体へ `serialize()`、Phase 1B-5 で
+root export 済みの `LoadedGame` 自体へ `restore()` を追加する。
+Phase 1B-7 は metadata-only の `ReplayMetadata` だけを追加し、replay playback 系 API は post-1B で扱う。
+
 ```ts
 type AssetKeyRegistry = {
-  keys: string[];
+  keys: readonly string[];
 };
 
 type EnabledFeature =
@@ -1167,69 +1174,176 @@ type EnabledFeature =
 type ContentRegistry = {
   version: string;
   assetKeys: AssetKeyRegistry;
-  players: PlayerDefinition[];
-  stages: StageDefinition[];
-  enemies: EnemyDefinition[];
-  bullets: BulletDefinition[];
-  playerShots: PlayerShotDefinition[];
-  patterns: PatternDefinition[];
-  paths: PathDefinition[];
-  features?: FeatureRegistry;
+  players: readonly PlayerDefinition[];
+  stages: readonly StageDefinition[];
+  enemies: readonly EnemyDefinition[];
+  bullets: readonly BulletDefinition[];
+  playerShots: readonly PlayerShotDefinition[];
+  patterns: readonly PatternDefinition[];
+  paths: readonly PathDefinition[];
 };
-
-type FeatureRegistry = Partial<{
-  bombs: BombDefinition[];
-  pickups: PickupDefinition[];
-  affinities: AffinityRules[];
-  scoringRules: ScoringRule[];
-  rankRules: RankRule[];
-}>;
 
 type GameDefinition = {
   schemaVersion: string;
-  enabledFeatures: EnabledFeature[];
-  defaultPlayerId: string;
-  defaultAffinityRulesId?: string;
-  defaultScoringRuleId?: string;
-  defaultRankRuleId?: string;
+  enabledFeatures: readonly EnabledFeature[];
+  defaultPlayerId: PlayerId;
   content: ContentRegistry;
 };
 
+// Future feature module schema。現在の basic core validator はこれらの field を受け付けない。
+type FeatureRegistry = Partial<{
+  bombs: readonly BombDefinition[];
+  pickups: readonly PickupDefinition[];
+  affinities: readonly AffinityRules[];
+  scoringRules: readonly ScoringRule[];
+  rankRules: readonly RankRule[];
+}>;
+
+type FeatureContentRegistry = ContentRegistry & Readonly<{
+  features?: FeatureRegistry;
+}>;
+
+type FeatureGameDefinition = GameDefinition & Readonly<{
+  defaultAffinityRulesId?: string;
+  defaultScoringRuleId?: string;
+  defaultRankRuleId?: string;
+  content: FeatureContentRegistry;
+}>;
+
 type StartStageOptions = {
-  stageId: string;
+  stageId: StageId;
   difficulty: Difficulty;
-  playerId?: string;
+  playerId?: PlayerId;
   seed: string;
 };
 
-type ReplayPlayback = {
+// Phase 1B-7 で追加する metadata-only DTO。
+type ReplayMetadata = Readonly<{
+  coreVersion: string;
+  schemaVersion: string;
+  contentVersion: string;
+  inputFormatVersion: string;
+  stageId: StageId;
+  difficulty: Difficulty;
+  playerId: PlayerId;
+  seed: string;
+}>;
+
+// post-1B replay playback API。Phase 1B-7 では root export しない。
+type ReplayPlayback = Readonly<{
   metadata: ReplayMetadata;
-  inputs: InputFrame[];
-};
+  inputs: readonly InputFrame[];
+}>;
 
-type SerializedReplayPlaybackState = SerializedGameState & {
+type SerializedReplayPlaybackState = SerializedGameState & Readonly<{
   replayCursor: number;
-};
+}>;
 
-type SerializedPrngSnapshot = {
+type SerializedPrngSnapshot = Readonly<{
   state: number;
-};
+}>;
 
-type SerializedGameState = {
+type SerializedEntityId = number;
+
+type SerializedJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly SerializedJsonValue[]
+  | { readonly [key: string]: SerializedJsonValue };
+
+type SerializedVector2 = Readonly<{
+  x: number;
+  y: number;
+}>;
+
+type SerializedPendingEvent = Readonly<{
+  type: "stageStarted";
+  tick: 0;
+  stageId: StageId;
+}>;
+
+type SerializedRuntimeEntityState =
+  | Readonly<{
+      id: SerializedEntityId;
+      kind: "player";
+      definitionId: PlayerId;
+      position: SerializedVector2;
+      collisionRadius: number;
+      lives: number;
+      invincibleTicksRemaining: number;
+      nextShotAllowedTick: number;
+      movement: Readonly<{ speed: number; focusSpeed: number }>;
+      shotDefinitionId: PlayerShotId;
+    }>
+  | Readonly<{
+      id: SerializedEntityId;
+      kind: "enemy";
+      definitionId: EnemyId;
+      position: SerializedVector2;
+      collisionRadius: number;
+      hp: number;
+      scoreOnKill: number;
+      pathId: PathId;
+      patternId: PatternId;
+    }>
+  | Readonly<{
+      id: SerializedEntityId;
+      kind: "enemyBullet";
+      definitionId: BulletId;
+      position: SerializedVector2;
+      collisionRadius: number;
+    }>
+  | Readonly<{
+      id: SerializedEntityId;
+      kind: "playerShot";
+      definitionId: PlayerShotId;
+      position: SerializedVector2;
+      collisionRadius: number;
+      velocity: SerializedVector2;
+      remainingLifetimeTicks: number;
+      damage: number;
+    }>;
+
+type SerializedPatternRunnerState = Readonly<{
+  // Root package では SerializedPatternRunnerId という補助型名は公開しない。
+  runnerId: `patternRunner.${string}`;
+  patternId: PatternId;
+  stateVersion: number;
+  payload: SerializedJsonValue;
+}>;
+
+type SerializedEnabledFeatureState = Readonly<{
+  feature: EnabledFeature;
+  stateVersion: number;
+  payload: SerializedJsonValue;
+}>;
+
+type SerializedDeterministicState = Readonly<{
+  runtimeEntities: readonly SerializedRuntimeEntityState[];
+  pendingEvents: readonly SerializedPendingEvent[];
+  score: number;
+  timelineCursor: number;
+  patternRunnerStates: readonly SerializedPatternRunnerState[];
+  enabledFeatureStates: readonly SerializedEnabledFeatureState[];
+}>;
+
+type SerializedGameState = Readonly<{
   coreVersion: string;
   schemaVersion: string;
   contentVersion: string;
   inputFormatVersion: string;
   stateHashVersion: number;
-  enabledFeatures: EnabledFeature[];
-  stageId: string;
+  enabledFeatures: readonly EnabledFeature[];
+  stageId: StageId;
   difficulty: Difficulty;
-  playerId: string;
+  playerId: PlayerId;
   expectedTick: number;
   nextEntityId: number;
   prngState: SerializedPrngSnapshot;
   state: SerializedDeterministicState;
-};
+}>;
 
 type GameFrame = {
   tick: number;
@@ -1260,14 +1374,28 @@ type ShootingCore = {
 
 type LoadedGame = {
   startStage(options: StartStageOptions): CoreResult<StageSession>;
-  restore(state: SerializedGameState): CoreResult<StageSession>;
-  createReplayPlayback(replay: ReplayPlayback): CoreResult<ReplaySession>;
-  restoreReplayPlayback(replay: ReplayPlayback, state: SerializedReplayPlaybackState): CoreResult<ReplaySession>;
 };
 
 type StageSession = {
   tick(input: InputFrame): CoreResult<GameFrame>;
+};
+
+// Phase 1B-4 で root export 済みの StageSession 自体へ serialize() を追加する。
+// SerializableStageSession は設計説明用 alias であり、別名の public export は増やさない。
+type SerializableStageSession = StageSession & {
   serialize(): CoreResult<SerializedGameState>;
+};
+
+// Phase 1B-5 で root export 済みの LoadedGame 自体へ restore() を追加する。
+// RestorableLoadedGame は設計説明用 alias であり、別名の public export は増やさない。
+type RestorableLoadedGame = LoadedGame & {
+  restore(state: SerializedGameState): CoreResult<SerializableStageSession>;
+};
+
+// post-1B replay playback API。
+type ReplayLoadedGame = RestorableLoadedGame & {
+  createReplayPlayback(replay: ReplayPlayback): CoreResult<ReplaySession>;
+  restoreReplayPlayback(replay: ReplayPlayback, state: SerializedReplayPlaybackState): CoreResult<ReplaySession>;
 };
 
 type ReplaySession = {
@@ -1280,13 +1408,23 @@ Runtime は `tick()` の戻り値に含まれる `GameFrame.events` を読んで
 
 `SerializedPrngSnapshot` は public DTO とし、`state` は platform-independent な non-zero uint32 とする。Core 内部で使う旧 `SerializedPrngState` 相当の型名は root export せず、public snapshot の名前は `SerializedPrngSnapshot` に統一する。PRNG algorithm を変更する場合は snapshot field を暗黙変換せず、`ShootingCore.coreVersion` と restore compatibility policy で扱う。
 
-Core API は transactional とする。`load()`、`startStage()`、`restore()`、`createReplayPlayback()`、`restoreReplayPlayback()` は成功時だけ新しい handle を返し、失敗時に既存の `LoadedGame` / `StageSession` を部分更新しない。Core version は `ShootingCore.coreVersion` が持ち、content が申告する値ではない。`StageSession.tick()` は session 内の `expectedTick` を持ち、`input.tick !== expectedTick`、重複 tick、欠番 tick を caller precondition error として返すが、session を fatal にしない。Runtime は dropped tick を replay 入力として補完せず、実際に Simulation へ渡した `InputFrame` だけを保存する。
+`SerializedPendingEvent` は `GameFrame.events` の `GameEvent` と用途を分ける。`GameFrame.events` はその tick で発生して runtime adapter が消費する通知であり、`SerializedPendingEvent` は serialize / restore をまたいで未処理のまま再通知する queue だけを表す。Phase 1B では startStage 直後に残り得る tick 0 の `stageStarted` のみに限定し、`entitySpawned`、`playerShotsSpawnedBatch`、`enemyBulletsSpawnedBatch`、`playerHit`、`entityDestroyed`、`scoreChanged`、`tickAdvanced` は drain 済み frame event として pending queue へ保存しない。Phase 1B の restore は `expectedTick === 0` の snapshot では同一 `stageId` の `stageStarted` 1 件だけを要求し、`expectedTick > 0` では `pendingEvents` を空に限定する。feature / progression event は、restore 後にも pending として残る実装上の正本を持つ slice でだけ `SerializedPendingEvent` へ追加する。EnemyBullet の serialized state は Phase 1B では現行 runtime state から生成できる `definitionId`、`position`、`collisionRadius` までに限定する。enemy bullet の `velocity`、`damage`、lifetime は Core runtime が正本を持つ slice で schema version を上げて追加し、それ以前の restore は `projectile` のような未知 field を `state.invalidShape` として拒否する。
+
+`SerializedDeterministicState.runtimeEntities` は serialize 時に entity id 昇順で出力する。entity id は正の safe integer とし、`runtimeEntities` 内では strict ascending / unique / `id < nextEntityId` を満たす必要がある。restore は 0、負数、小数、unsafe integer、重複、`nextEntityId` 以上、または昇順でない `runtimeEntities` を `state.invalidShape` として拒否し、受け取った順序を暗黙に sort しない。これにより collision / event order の tie-breaker と state hash の入力順を同じ契約に固定する。
+
+Phase 1B の `SerializedRuntimeEntityState` は現行 runtime が正本を持つ state だけを含める。将来 PathRunner が segment index、segment start `p0`、segment 内経過 tick `t`、sine offset の phase などを runtime state として持つ slice では、enemy serialized payload に `pathRunnerState` を schema version 付きで追加する。現在座標、`pathId`、`patternId` だけから path movement を逆算して restore することは禁止する。
+
+`SerializedPatternRunnerState.runnerId` は `patternRunner.${string}` の namespace 付き ID とし、`patternRunner.` のような空 suffix は restore で拒否する。同一 snapshot 内で一意にし、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は top-level `enabledFeatures` と同じ canonical feature order で出力する。`runnerId` の比較に `localeCompare` や JavaScript の UTF-16 code unit order を使わない。canonical feature order は `["bomb", "graze", "affinity", "rank", "pickup", "advancedScoring"]` の順に固定し、実装はこの順序を `KNOWN_ENABLED_FEATURES` の正本として扱う。ただし package runtime の value export は `createShootingCore` に限定し、feature order は schema / type contract と test で固定する。restore は型や shape の不正を `state.invalidShape`、top-level `enabledFeatures` と feature state の extra / missing / wrong feature を `state.featureMismatch` として一意に分類する。top-level `enabledFeatures` に含まれる feature の `enabledFeatureStates` 欠落可否は module ごとの serialized-state contract で宣言し、stateful feature は欠落を拒否する。
+
+`SerializedPatternRunnerState.payload` と `SerializedEnabledFeatureState.payload` は public な `SerializedJsonValue` だけを許可し、state hash では canonical encoding の対象にする。`number` は finite number のみ有効とし、`NaN` / `Infinity` は restore validation で `state.invalidShape` にする。hash では `-0` を `+0` に正規化し、finite number を IEEE-754 binary64 little-endian bytes として encode する。string は lone surrogate を含む場合に `state.invalidShape` として拒否し、payload の object key は UTF-8 byte sequence の lexicographic order で正規化する。module ごとの `stateVersion` は正の safe integer とし、未対応 version は module ごとの互換性 error で拒否する。Phase 1B-3 は型境界だけを固定し、basic core が実際に `patternRunnerStates: []` と `enabledFeatureStates: []` を出力する処理は Phase 1B-4 の serialize 実装で追加する。restore 時の top-level `enabledFeatures` と feature state の整合検証は Phase 1B-5 で扱う。
+
+Core API は transactional とする。現在実装済みの `load()` と `startStage()` は成功時だけ新しい handle を返し、失敗時に既存の `LoadedGame` / `StageSession` を部分更新しない。Phase 1B-5 で追加する `restore()`、post-1B replay playback で追加する `createReplayPlayback()` / `restoreReplayPlayback()` も同じ transactional 契約に従う。Core version は `ShootingCore.coreVersion` が持ち、content が申告する値ではない。`StageSession.tick()` は session 内の `expectedTick` を持ち、`input.tick !== expectedTick`、重複 tick、欠番 tick を caller precondition error として返すが、session を fatal にしない。Runtime は dropped tick を replay 入力として補完せず、実際に Simulation へ渡した `InputFrame` だけを保存する。
 
 `ContentRegistry` は外部データの参照関係を検証する境界でもある。Stage の `music`、`background`、timeline 内の `enemy` と `path`、`clearCondition.bossDefeated.enemy`、Enemy の `asset`、`behavior.pattern`、Boss phase の `phases[].pattern`、Pattern の `fireOnSpawn.bullet`、Bullet/Player/PlayerShot の `asset` はすべて registry 経由で解決し、未定義 ID を schema test で検出する。Feature registry が登録された場合だけ、Pickup、Bomb、Affinity、Rank、advanced scoring の参照を追加検証する。
 
 `load()` は registry index を生成する時点で、namespace ごとの `id` 一意性を検証する。同一 namespace 内で重複 ID があれば失敗する。別 namespace 間で同じ suffix を使うことはできるが、完全な ID は `enemy.scout`、`bullet.red_small` のように namespace prefix を含める。参照解決は配列順に依存させず、検証済み index だけを使う。
 
-許可する namespace prefix:
+Basic core が許可する namespace prefix:
 
 | Content type | Prefix |
 | --- | --- |
@@ -1297,6 +1435,11 @@ Core API は transactional とする。`load()`、`startStage()`、`restore()`�
 | PlayerShotDefinition | `playerShot.` |
 | PatternDefinition | `pattern.` |
 | PathDefinition | `path.` |
+
+Feature module 導入後に追加で許可する namespace prefix:
+
+| Content type | Prefix |
+| --- | --- |
 | BombDefinition | `bomb.` |
 | PickupDefinition | `pickup.` |
 | AffinityRules | `affinity.` |
@@ -1314,17 +1457,15 @@ Feature id、module path、YAML namespace の対応:
 | `rank` | `features/rank` | `rank.` |
 | `advancedScoring` | `features/advanced-scoring` | `scoring.` |
 
-`load()` は `defaultPlayerId`、`defaultAffinityRulesId`、`defaultScoringRuleId`、`defaultRankRuleId` が指定されている場合に registry に存在することを検証する。`startStage()` は `stageId`、`playerId`、`difficulty` が registry と stage definition に存在することを検証し、不正な値では Simulation を開始しない。検証失敗は例外や no-op ではなく `CoreResult` の `errors` として返す。
+現在の basic core の `load()` は `schemaVersion`、`enabledFeatures`、`defaultPlayerId`、`content` だけを `GameDefinition` の top-level field として受け付け、`defaultPlayerId` が registry に存在することを検証する。`features`、`defaultAffinityRulesId`、`defaultScoringRuleId`、`defaultRankRuleId` は feature module schema 導入後の field であり、basic core では unknown field または unsupported feature として拒否する。`startStage()` は `stageId`、`playerId`、`difficulty` が registry と stage definition に存在することを検証し、不正な値では Simulation を開始しない。検証失敗は例外や no-op ではなく `CoreResult` の `errors` として返す。
 
-Affinity を使う content では、Bullet、Enemy、Player、PlayerShot、Pattern が参照する `affinity` 値が `none` または選択された `AffinityRules.values` に含まれることを検証する。`defaultAffinityRulesId` が未指定の場合、`affinity` 値は `none` だけを許可する。
+Feature module 導入後、Affinity を使う content では、Bullet、Enemy、Player、PlayerShot、Pattern が参照する `affinity` 値が `none` または選択された `AffinityRules.values` に含まれることを検証する。`defaultAffinityRulesId` が未指定の場合、`affinity` 値は `none` だけを許可する。Bomb、Graze、Pickup、Rank、advanced scoring の default id、asset、effect target、rule id も feature module の registry 経由で解決し、未定義 ID、未対応 effect、cycle する参照は load error とする。これらの検証は feature schema の責務であり、現在の basic core には適用しない。
 
-Player の `shot.definition`、optional な `bomb.definition`、Shot の `asset`、Bomb の `asset` と effect target、Scoring/Rank rule id も registry 経由で解決する。未定義 ID、未対応 effect、cycle する参照は load error とする。
+Feature module 導入後の `enabledFeatures` は optional module の境界である。MVP basic core は `[]` だけを許可し、basic score は Core minimum の固定仕様として扱う。Feature schema では disabled feature の定義ファイルを content library として registry に含めることは許可するが、default id、stage/player からの参照、runtime input action、collision pair として使うことは禁止する。未使用の disabled feature 定義は warning、参照された disabled feature は load error にする。
 
-`enabledFeatures` は optional module の境界である。MVP は `[]` を許可し、basic score は Core minimum の固定仕様として扱う。disabled feature の定義ファイルを content library として registry に含めることは許可するが、default id、stage/player からの参照、runtime input action、collision pair として使うことは禁止する。未使用の disabled feature 定義は warning、参照された disabled feature は load error にする。
+`FeatureRegistry` は feature schema 側の型であり、現在の basic `ContentRegistry` には存在しない。Feature schema では `Partial` だが、`enabledFeatures` に含まれる feature の registry entry は原則必須とする。空配列は「feature module は有効だが content 定義はない」状態として許可する。entry 自体が欠けている場合は configuration error とする。ただし `graze` は Player field だけで有効化できるため registry entry を持たない。
 
-`FeatureRegistry` は `Partial` だが、`enabledFeatures` に含まれる feature の registry entry は原則必須とする。空配列は「feature module は有効だが content 定義はない」状態として許可する。entry 自体が欠けている場合は configuration error とする。ただし `graze` は Player field だけで有効化できるため registry entry を持たない。
-
-- `bomb` 無効: `PlayerDefinition.bomb.definition` は `null`、`bomb` gameplay action は登録不可、`bombClear` collision pair は無効。
+- `bomb` 無効: basic schema では `PlayerDefinition.bomb` field 自体を禁止する。feature schema では `bomb.definition` の参照、`bomb` gameplay action、`bombClear` collision pair を禁止し、bomb 未所持の表現が必要な場合だけ `bomb.definition: null` を許可する。
 - `graze` 無効: `PlayerDefinition.graze` field、player graze collider、`playerGraze` collision pair は禁止。
 - `affinity` 無効: `defaultAffinityRulesId` は未指定、content の `affinity` は `none` のみ許可、`switchAffinity` gameplay action は登録不可。
 - `rank` 無効: `defaultRankRuleId` は未指定、rank rule 参照と rank state は無効。
@@ -1333,30 +1474,29 @@ Player の `shot.definition`、optional な `bomb.definition`、Shot の `asset`
 
 Optional module は論理分離だけでなく source / export 境界も分ける。Core minimum は `packages/shooting-core/src/basic/` と root export に置く。Bomb、Graze、Affinity、Rank、Pickup、advanced scoring は `packages/shooting-core/src/features/<feature>/` に置き、feature registration を通じて schema fragments、validation rules、systems、collision pairs、input actions を追加する。root package に型名を置く場合でも、feature 固有 field は discriminated extension として扱い、enabled feature なしでは参照できない。
 
-`StageSession.tick()` は stage session が active でない場合、`gameOver` / `stageCleared` 後、または tick mismatch 時に `CoreResult` の error を返す。precondition violation を silent no-op にしない。`gameOver` / `stageCleared` 後の余分な tick と tick mismatch は caller precondition error であり、session を fatal にしない。budget invariant 破壊、不正 state、内部 system order 違反は fatal error とし、以後の `tick()` は同じ fatal reason を返す。`serialize()` は fatal 後は error を返す。tick 更新は commit 前の working state で実行し、成功時だけ committed state に swap するため、部分更新された state は公開しない。`serialize()` と `restore()` も version mismatch、壊れた state、不正 registry、feature mismatch を `CoreError[]` として返す。
+`StageSession.tick()` は stage session が active でない場合、`gameOver` / `stageCleared` 後、または tick mismatch 時に `CoreResult` の error を返す。precondition violation を silent no-op にしない。`gameOver` / `stageCleared` 後の余分な tick と tick mismatch は caller precondition error であり、session を fatal にしない。budget invariant 破壊、不正 state、内部 system order 違反は fatal error とし、以後の `tick()` は同じ fatal reason を返す。tick 更新は commit 前の working state で実行し、成功時だけ committed state に swap するため、部分更新された state は公開しない。Phase 1B-4 で追加する `serialize()` は fatal 後に error を返す。Phase 1B-5 で追加する `restore()` は version mismatch、壊れた state、不正 registry、feature mismatch を `CoreError[]` として返し、失敗時に既存 handle へ副作用を残さない。
 
-`createReplayPlayback()` は開始前に `ReplayPlayback.inputs` の tick が 0 から始まる連続列であること、重複と欠番がないこと、metadata の `stageId` / `difficulty` / `playerId` と一致することを検証する。また、`ShootingCore.coreVersion`、`schemaVersion`、`content.version`、`inputFormatVersion` の互換性を検証し、完全一致は保証対象、minor mismatch は warning 付き best-effort、major mismatch は error とする。`ReplaySession.tick()` は現在 cursor の input を消費し、cursor を 1 進める。入力列をすべて消費した時点で stage が terminal state なら `replayFinished` terminal frame を 1 回返し、それ以後の `tick()` は terminal precondition error を返す。入力列を消費し切っても stage が active の場合は replay truncation error を返す。`ReplaySession.serialize()` は `SerializedReplayPlaybackState` として replay cursor を含め、`restoreReplayPlayback()` は次に読む input index を復元する。
+post-1B replay playback API の `createReplayPlayback()` は開始前に `ReplayPlayback.inputs` の tick が 0 から始まる連続列であること、重複と欠番がないこと、metadata の `stageId` / `difficulty` / `playerId` と一致することを検証する。また、`ShootingCore.coreVersion`、`schemaVersion`、`content.version`、`inputFormatVersion` の互換性を検証し、完全一致は保証対象、minor mismatch は warning 付き best-effort、major mismatch は error とする。`ReplaySession.tick()` は現在 cursor の input を消費し、cursor を 1 進める。入力列をすべて消費した時点で stage が terminal state なら `replayFinished` terminal frame を 1 回返し、それ以後の `tick()` は terminal precondition error を返す。入力列を消費し切っても stage が active の場合は replay truncation error を返す。`ReplaySession.serialize()` は `SerializedReplayPlaybackState` として replay cursor を含め、`restoreReplayPlayback()` は次に読む input index を復元する。
 
 Replay metadata は用途ごとに分ける。`ReplayMetadata` は互換性確認と表示用、`ReplayPlayback` は metadata と入力列を持つ再生入力、`RuntimeDroppedTicks` は Runtime 診断 metadata であり Simulation の入力列ではない。
 
 - Full replay 必須: `ShootingCore.coreVersion` から記録した `coreVersion`、`schemaVersion`、`content.version`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、platform-independent `seed`、入力列。
 - optional diagnostics: `RuntimeDroppedTicks` log、runtime build info、browser timing summary。
-- 検証用: tick ごとの state hash、PRNG state hash。
+- 検証用: tick ごとの state hash、PRNG state hash（独立 algorithm ではなく state hash format 内の `prngState` field を使う）。
 - Resume 用 snapshot: `SerializedGameState` と完全な PRNG state。
 
-完全再生は seed と入力列から再構築し、PRNG snapshot を必須にしない。途中再開 replay だけ snapshot を使う。完全再生を保証するのは同一 `ShootingCore.coreVersion`、`schemaVersion`、`content.version`、`inputFormatVersion` の replay だけとする。minor version 差分では `CoreResult.ok.warnings` に互換性 warning を返して best-effort playback として開始できるが、determinism 保証対象外とする。major version 差分では再生不可にする。
+完全再生は seed と入力列から再構築し、PRNG snapshot を必須にしない。途中再開 replay だけ snapshot を使う。完全再生を保証するのは同一 `ShootingCore.coreVersion`、`schemaVersion`、`content.version`、`inputFormatVersion` の replay だけとする。minor version 差分では `CoreResult.ok.warnings` に互換性 warning を返して best-effort playback として開始できるが、determinism 保証対象外とする。major version 差分では再生不可にする。`SerializedGameState` からの snapshot restore は PRNG state を直接復元するため、`coreVersion` 完全一致だけを受け付ける。PRNG algorithm の変更は必ず major version 変更として扱い、minor mismatch の best-effort playback 対象にしない。
 
 State hash は replay determinism test の正本とする。
 
 Hash 対象:
 
-- tick
+- expectedTick（次に受け付ける input tick）
 - nextEntityId
-- entity ids
-- component values（Player runtime component の `nextShotAllowedTick` を含む）
+- runtime entities（entity id と component values を含む単一の canonical DTO。別枠で entity id や component values を二重 encode しない）
 - active pattern runner states
 - active stage timeline cursor
-- score、lives
+- score
 - Bomb feature 有効時だけ bomb count
 - enabled feature states
 - PRNG state
@@ -1373,7 +1513,11 @@ Hash 対象外:
 
 Rank が無効な MVP では rank value を hash に含めない。Rank module が有効な場合だけ score/rank state として hash に含める。
 
-State hash は canonical encoding を固定する。hash input は `stateHashVersion`、`ShootingCore.coreVersion`、`schemaVersion`、tick を先頭に置き、entity は id 昇順、component は component kind の固定順、object key は schema 定義順で列挙する。数値は固定小数点整数として little-endian 64 bit でエンコードし、文字列は UTF-8 bytes、boolean は `0x00` / `0x01`、配列は length prefix 付きでエンコードする。浮動小数点文字列化や JSON object key order に依存しない。hash algorithm は `xxHash64`、seed `0x53484f4f54494e47`、出力は lower-case 16 桁 hex と固定する。algorithm 変更時は `stateHashVersion` を上げる。現在 tick で出力済みの `GameFrame.events` は hash 対象外とし、serialize/restore 後も残る pending queue だけを hash に含める。
+State hash は canonical encoding を固定する。hash input は `stateHashVersion`、`ShootingCore.coreVersion`、`schemaVersion`、`expectedTick` を先頭に置く。`expectedTick` は次に受け付ける input tick であり、最後に完了した frame tick ではない。hash は replay / snapshot metadata の互換性検証が完了した同一 `contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId` 文脈内でだけ比較する。debug artifact 単体で異なる文脈を比較したい場合は、state hash 本体ではなく artifact metadata にこれらの互換性 field を必ず併記する。
+
+entity は id 昇順、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は canonical feature order で列挙する。state hash 用 DTO は public serialize DTO とは別の `HashableGameState` として定義し、`stateHashVersion`、`ShootingCore.coreVersion`、`schemaVersion`、`expectedTick`、`nextEntityId`、`timelineCursor`、`prngState`、`score`、runtime entities、pending events、pattern runner states、enabled feature states を持つ。runtime entity DTO には entity id と component values を一度だけ入れ、`entity ids` や `component values` を別配列として二重 encode しない。`lives` や `nextShotAllowedTick` は player runtime entity payload 内の field として encode する。
+
+固定 DTO は fixedStruct として encode する。fixedStruct は `0x07` tag、struct name の UTF-8 byte length u32 little-endian、struct name bytes、field count u32 little-endian、schema 定義順の field value bytes の順に出力し、object key bytes は出さない。type discriminant を持つ union DTO では `kind` などの discriminant field も schema 定義順の通常 field として encode する。nested field は flatten せず、`position` は `fixedStruct("vector2", [x, y])`、player `movement` は `fixedStruct("playerMovement", [speed, focusSpeed])` として encode する。たとえば player entity は現在の `HashableRuntimeEntityState` schema に合わせて `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`lives`、`invincibleTicksRemaining`、`nextShotAllowedTick`、`movement`、`shotDefinitionId` の順に encode する。extension payload のような任意 object だけは object tag、property count、key length + key bytes、value を UTF-8 byte sequence の lexicographic order で encode する。string value と object key はどちらも lone surrogate を拒否する。各値は 1 byte の type tag から始め、tag table は `0x00 = null`、`0x01 = false`、`0x02 = true`、`0x03 = number`、`0x04 = string`、`0x05 = array`、`0x06 = object`、`0x07 = fixedStruct` とする。可変長 payload は unsigned 32 bit little-endian の byte length または element count を付ける。string は tag、byte length、UTF-8 bytes の順に encode する。array は tag、element count、各 value の順に encode する。number は finite number のみ許可し、`-0` は `+0` に正規化したうえで IEEE-754 binary64 little-endian bytes としてエンコードする。これにより斜め移動で発生する `Math.SQRT1_2` 由来の座標も合法な hash 対象にする。浮動小数点文字列化、`localeCompare`、JavaScript の object key order には依存しない。hash algorithm は `xxHash64`、seed は safe integer に丸めず `0x53484f4f54494e47n` の BigInt literal または hi/lo uint32 pair `{ hi: 0x53484f4f, lo: 0x54494e47 }` として渡す。出力は lower-case 16 桁 hex と固定する。algorithm 変更時は `stateHashVersion` を上げる。PRNG state hash は独立した algorithm を作らないが、debug artifact 用に単独 digest が必要な場合は `fixedStruct("prngState", [state])` として、`0x07` tag、`prngState` name、field count `1`、`prngState.state` の canonical number bytes を state hash と同じ xxHash64 seed / output format で比較する。現在 tick で出力済みの `GameFrame.events` は hash 対象外とし、serialize/restore 後も残る pending queue だけを hash に含める。
 
 ## 21. 検証とテスト
 
@@ -1396,10 +1540,11 @@ State hash は canonical encoding を固定する。hash input は `stateHashVer
 - 未定義 asset key、stage id、player id、enemy id、boss enemy id、enemy bullet id、player shot id、pattern id、path id を検出する。
 - `PatternDefinition.fireOnSpawn.bullet` の namespace と存在確認、`offset` の数値制約、timeline spawn 位置との合成結果が有限座標になることを検証する。
 - feature 有効時だけ、bomb id、pickup id、scoring rule id、rank rule id、affinity rules id を検出する。
-- `defaultPlayerId`、`defaultAffinityRulesId`、`defaultScoringRuleId`、`defaultRankRuleId`、`startStage()` に渡す `stageId`、`playerId`、`difficulty` を registry と stage definition に対して検証する。
-- Bullet、Enemy、Player、PlayerShot、Pattern の `affinity` 値が `none` または選択された `AffinityRules.values` に含まれることを検証する。
-- `enabledFeatures` の matrix test を持つ。各 feature について、disabled で未使用定義だけがある場合は warning、disabled で参照された場合は error、enabled で valid reference の場合は pass、enabled で不正 reference の場合は error になることを検証する。
-- feature 間依存の matrix test を持つ。`advancedScoring + graze`、`advancedScoring + pickup`、`rank + bomb`、`bomb + pickup refill` は依存 feature が揃う場合だけ pass し、片方だけ有効な参照は error にする。
+- basic core では `defaultPlayerId`、`startStage()` に渡す `stageId`、`playerId`、`difficulty` を registry と stage definition に対して検証する。
+- feature module 導入後は、enabled feature に応じて `defaultAffinityRulesId`、`defaultScoringRuleId`、`defaultRankRuleId` も registry に対して検証する。
+- feature module 導入後は、Bullet、Enemy、Player、PlayerShot、Pattern の `affinity` 値が `none` または選択された `AffinityRules.values` に含まれることを検証する。
+- feature module 導入後は、`enabledFeatures` の matrix test を持つ。各 feature について、disabled で未使用定義だけがある場合は warning、disabled で参照された場合は error、enabled で valid reference の場合は pass、enabled で不正 reference の場合は error になることを検証する。
+- feature module 導入後は、feature 間依存の matrix test を持つ。`advancedScoring + graze`、`advancedScoring + pickup`、`rank + bomb`、`bomb + pickup refill` は依存 feature が揃う場合だけ pass し、片方だけ有効な参照は error にする。
 - settings migration は旧 `settingsVersion`、破損 JSON、未知 action、重複 binding の fixture を持ち、Runtime が default fallback または migration 済み settings を返すことを検証する。
 - package boundary test では root export 以外の runtime / type-only deep import を拒否し、public type contract は内部 runtime component や system result が漏れないことを検証する。
 - public API 境界は getter、Proxy、prototype 継承 property、巨大 input、非 JSON 互換値を validation 前に拒否し、例外を漏らさないことを検証する。
@@ -1668,11 +1813,6 @@ MVP では対象外だが、再利用基盤として以下を追跡する。
 
 Phase 1A の Core minimum contract は、TypeScript package、最小 content schema、registry validation、fixed tick、InputFrame、immutable event log、Entity/Component、seed/PRNG、Player / Enemy / EnemyBullet / PlayerShot、minimum Pattern `fireOnSpawn`、MVP collision resolution pair、fixed `scoreOnKill`、package boundary test まで実装済みである。collision broad phase は Phase 1A 完了条件ではなく、playable runtime へ向けた後続性能タスクとして残す。
 
-次の作業では、Phase 1A の締めと Phase 1B の入口として以下を作る。
+次の作業は Phase 1B-4 の serialize minimum である。`StageSession.serialize(): CoreResult<SerializedGameState>` を追加し、committed state から deep immutable な plain data snapshot を生成する。`coreVersion`、`schemaVersion`、`contentVersion`、`inputFormatVersion`、`stateHashVersion`、`enabledFeatures`、`stageId`、`difficulty`、`playerId` は startStage 時点で確定した session metadata から出力し、runtime state から推測しない。
 
-1. object pool や renderer state を Core minimum へ入れないことを最終確認する。
-2. collision / scoring event を含む deterministic smoke の期待値を golden 化するか判断する。
-3. Phase 1B の serialize / restore / state hash を小さな実装タスクへ分割する。
-4. `CommittedStageState` / `WorkingStageState` の明示型を導入するか判断する。
-
-state hash 対象の更新は Phase 1B の replay determinism 作業で扱う。
+restore、state hash、replay metadata は `docs/implementation-plan.md` の Phase 1B-5 以降へ分ける。

@@ -40,3 +40,14 @@ export type {
 } from "./content/types.ts";
 export type { GameEvent } from "./events/game-event.ts";
 export type { GameplayActionId, InputFrame } from "./input/input-frame.ts";
+export type {
+  SerializedDeterministicState,
+  SerializedEntityId,
+  SerializedEnabledFeatureState,
+  SerializedGameState,
+  SerializedJsonValue,
+  SerializedPatternRunnerState,
+  SerializedPendingEvent,
+  SerializedPrngSnapshot,
+  SerializedRuntimeEntityState,
+} from "./serialization/types.ts";

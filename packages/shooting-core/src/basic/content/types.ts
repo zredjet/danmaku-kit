@@ -6,7 +6,7 @@ export type Difficulty = "normal" | "hard";
  *
  * basic core では型として名前だけ共有し、実行時は `enabledFeatures: []` のみ許可する。
  */
-export const KNOWN_ENABLED_FEATURES = ["bomb", "graze", "affinity", "rank", "pickup", "advancedScoring"] as const;
+export const KNOWN_ENABLED_FEATURES = Object.freeze(["bomb", "graze", "affinity", "rank", "pickup", "advancedScoring"] as const);
 export type EnabledFeature = (typeof KNOWN_ENABLED_FEATURES)[number];
 
 /** 自機定義の namespace 付き ID。 */

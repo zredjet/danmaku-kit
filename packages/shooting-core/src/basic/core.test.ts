@@ -2747,6 +2747,46 @@ test("latches nextEntityId snapshots that would duplicate active entity ids", ()
   assert.match(!fatal.ok ? fatal.errors[0]?.message ?? "" : "", /nextEntityId must be greater/);
 });
 
+test("latches invalid committed pending event snapshots", () => {
+  const expectPendingEventFatal = (pendingEvents: readonly unknown[]) => {
+    const started = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+      overrideCommittedPendingEventsTicks: [{
+        tick: 0,
+        pendingEvents,
+      }],
+    }), createMinimumDefinition());
+
+    const fatal = started.tick(createEmptyInputFrame(0));
+    assert.equal(fatal.ok, false);
+    assert.equal(!fatal.ok && fatal.errors[0]?.code, "stageSession.fatal");
+    assert.match(!fatal.ok ? fatal.errors[0]?.message ?? "" : "", /unsupported pending event in committed state/);
+    assert.deepEqual(started.tick(createEmptyInputFrame(0)), fatal);
+  };
+
+  expectPendingEventFatal([]);
+  expectPendingEventFatal([{ type: "stageStarted", tick: 0, stageId: "stage.other" }]);
+  expectPendingEventFatal([{ type: "stageStarted", tick: 0, stageId: "stage.stage_01", extra: "reject" }]);
+  expectPendingEventFatal([
+    { type: "stageStarted", tick: 0, stageId: "stage.stage_01" },
+    { type: "stageStarted", tick: 0, stageId: "stage.stage_01" },
+  ]);
+  expectPendingEventFatal([{ type: "scoreChanged", tick: 0, delta: 1, total: 1 }]);
+
+  const staleStartupEvent = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+    overrideCommittedPendingEventsTicks: [{
+      tick: 1,
+      pendingEvents: [{ type: "stageStarted", tick: 0, stageId: "stage.stage_01" }],
+    }],
+  }), createMinimumDefinition());
+
+  const frame0 = staleStartupEvent.tick(createEmptyInputFrame(0));
+  assert.equal(frame0.ok, true);
+  const staleFatal = staleStartupEvent.tick(createEmptyInputFrame(1));
+  assert.equal(staleFatal.ok, false);
+  assert.equal(!staleFatal.ok && staleFatal.errors[0]?.code, "stageSession.fatal");
+  assert.match(!staleFatal.ok ? staleFatal.errors[0]?.message ?? "" : "", /unsupported pending event in committed state/);
+});
+
 test("keeps testing hooks scoped to each created stage session", () => {
   const loaded = createShootingCoreWithTestingHooksForTest("0.0.0", {
     failAfterWorkingMutationTicks: [0],
@@ -2765,6 +2805,18 @@ test("keeps testing hooks scoped to each created stage session", () => {
   assert.equal(secondFailure.ok, false);
   assert.equal(!firstFailure.ok && firstFailure.errors[0]?.code, "testHook.failure");
   assert.equal(!secondFailure.ok && secondFailure.errors[0]?.code, "testHook.failure");
+});
+
+test("rejects duplicate testing hook override ticks", () => {
+  assert.throws(
+    () => startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+      overrideCommittedPendingEventsTicks: [
+        { tick: 0, pendingEvents: [] },
+        { tick: 0, pendingEvents: [] },
+      ],
+    }), createMinimumDefinition()),
+    /Duplicate testing hook override tick: 0/,
+  );
 });
 
 test("rejects hook-enabled core creation without the internal test environment flag", () => {
