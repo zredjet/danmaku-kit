@@ -22,6 +22,12 @@ import type { InputFrame } from "./input/input-frame.ts";
 import { deepFreezeClone, deepFreezePlainData } from "./internal/immutable.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
 import type { CoreError, CoreErrorCode, CoreResult } from "./result.ts";
+import type {
+  SerializedDeterministicState,
+  SerializedGameState,
+  SerializedPendingEvent,
+  SerializedRuntimeEntityState,
+} from "./serialization/types.ts";
 import { resolveCollisionAndScoring } from "./simulation/collision-system.ts";
 import { EntityAllocator } from "./simulation/entity.ts";
 import { spawnEnemyBulletsOnSpawn } from "./simulation/enemy-bullet-system.ts";
@@ -230,10 +236,16 @@ export type LoadedGame = {
  * gameplay simulation の実行単位。
  *
  * 現時点では playing 中の fixed tick だけを扱う。pause / result / replay UI は
- * runtime lifecycle 側で管理する。
+ * runtime lifecycle 側で管理する。`serialize()` は simulation を進めない読み取り API であり、
+ * 成功時は restore 用の deep immutable snapshot を返す。state hash は committed state から
+ * 別の内部 DTO を生成して計算する。
+ * fatal state に入った後は `tick()` と同じ fatal error を返す。
  */
 export type StageSession = {
+  /** 次の fixed tick を実行し、frame state とその tick の event を返す。 */
   tick(input: InputFrame): CoreResult<GameFrame>;
+  /** 現在の committed state を serialized snapshot として返す。 */
+  serialize(): CoreResult<SerializedGameState>;
 };
 
 /**
@@ -311,9 +323,10 @@ type CommittedStageState = Readonly<{
   timelineCursor: number;
 }>;
 
-/** restore や fault injection 直後の、pending event 検証前 committed snapshot。 */
-type UntrustedCommittedStageState = Omit<CommittedStageState, "pendingEvents"> & Readonly<{
+/** restore や fault injection 直後の、PRNG / pending event 検証前 committed snapshot。 */
+type UntrustedCommittedStageState = Omit<CommittedStageState, "pendingEvents" | "prngState"> & Readonly<{
   pendingEvents: readonly unknown[];
+  prngState: unknown;
 }>;
 
 type WorkingStageState = {
@@ -337,6 +350,10 @@ type StageSessionTestingHookOptions = Readonly<{
     tick: number;
     pendingEvents: readonly unknown[];
   }>>;
+  reverseCommittedEntitiesOnSerialize?: boolean;
+  overrideCommittedNextEntityIdOnSerialize?: number;
+  overrideCommittedPendingEventsOnSerialize?: readonly unknown[];
+  overrideCommittedPrngStateOnSerialize?: unknown;
   recordCommittedStateOnFatal?: (state: CommittedStageState) => void;
 }>;
 
@@ -345,6 +362,10 @@ type ActiveStageSessionTestingHooks = Readonly<{
   failAfterWorkingMutationTicks: Set<number>;
   overrideCommittedNextEntityIdByTick: Map<number, number>;
   overrideCommittedPendingEventsByTick: Map<number, readonly unknown[]>;
+  reverseCommittedEntitiesOnSerialize: boolean;
+  overrideCommittedNextEntityIdOnSerialize?: number;
+  overrideCommittedPendingEventsOnSerialize?: readonly unknown[];
+  overrideCommittedPrngStateOnSerialize?: unknown;
   recordCommittedStateOnFatal?: (state: CommittedStageState) => void;
 }>;
 
@@ -457,7 +478,18 @@ function createStageSession(options: StageSessionContext): StageSession {
     return errorResult(fatalErrors);
   };
 
-  return Object.freeze({
+  const session: StageSession = {
+    serialize() {
+      if (fatalErrors) {
+        return errorResult(fatalErrors);
+      }
+      const serializedState = createSerializeSourceState(committedState, options.testingHooks);
+      const serialized = serializeCommittedStageState(options.serializationMetadata, serializedState);
+      if (!serialized.ok) {
+        return latchFatalErrors(serialized.errors);
+      }
+      return serialized;
+    },
     tick(rawInput) {
       if (fatalErrors) {
         return errorResult(fatalErrors);
@@ -641,7 +673,136 @@ function createStageSession(options: StageSessionContext): StageSession {
       });
       return okResult(frame);
     },
-  });
+  };
+  return Object.freeze(session);
+}
+
+/** committed snapshot と session metadata から public serialize DTO を生成する。 */
+function serializeCommittedStageState(
+  metadata: StageSessionSerializationMetadata,
+  committedState: UntrustedCommittedStageState,
+): CoreResult<SerializedGameState> {
+  const prng = XorShift32.restore(committedState.prngState);
+  if (!prng.ok) {
+    return prng;
+  }
+  const entityInvariant = validateCommittedEntityInvariants(committedState);
+  if (!entityInvariant.ok) {
+    return entityInvariant;
+  }
+  const pendingEvents = validateCommittedPendingEventInvariants(committedState, metadata.stageId);
+  if (!pendingEvents.ok) {
+    return pendingEvents;
+  }
+
+  const state: SerializedDeterministicState = {
+    runtimeEntities: committedState.activeEntities.map((entity) => serializeRuntimeEntity(entity)),
+    pendingEvents: pendingEvents.value.map((event) => serializePendingEvent(event)),
+    score: committedState.score,
+    timelineCursor: committedState.timelineCursor,
+    patternRunnerStates: [],
+    enabledFeatureStates: [],
+  };
+
+  return okResult(deepFreezeClone({
+    coreVersion: metadata.coreVersion,
+    schemaVersion: metadata.schemaVersion,
+    contentVersion: metadata.contentVersion,
+    inputFormatVersion: metadata.inputFormatVersion,
+    stateHashVersion: metadata.stateHashVersion,
+    enabledFeatures: metadata.enabledFeatures,
+    stageId: metadata.stageId,
+    difficulty: metadata.difficulty,
+    playerId: metadata.playerId,
+    expectedTick: committedState.expectedTick,
+    nextEntityId: committedState.nextEntityId,
+    prngState: prng.value.snapshot(),
+    state,
+  }));
+}
+
+/** serialize 専用 fault injection を committed snapshot の clone へだけ反映する。 */
+function createSerializeSourceState(
+  committedState: CommittedStageState,
+  testingHooks: ActiveStageSessionTestingHooks,
+): UntrustedCommittedStageState {
+  return {
+    ...committedState,
+    activeEntities: testingHooks.reverseCommittedEntitiesOnSerialize
+      ? [...committedState.activeEntities].reverse()
+      : committedState.activeEntities,
+    nextEntityId: testingHooks.overrideCommittedNextEntityIdOnSerialize ?? committedState.nextEntityId,
+    pendingEvents: testingHooks.overrideCommittedPendingEventsOnSerialize === undefined
+      ? committedState.pendingEvents
+      : deepFreezeClone(testingHooks.overrideCommittedPendingEventsOnSerialize),
+    prngState: testingHooks.overrideCommittedPrngStateOnSerialize === undefined
+      ? committedState.prngState
+      : testingHooks.overrideCommittedPrngStateOnSerialize,
+  };
+}
+
+/** runtime entity を restore 用の discriminated union DTO に写す。 */
+function serializeRuntimeEntity(entity: RuntimeEntityState): SerializedRuntimeEntityState {
+  switch (entity.kind) {
+    case "player":
+      return {
+        id: entity.id,
+        kind: "player",
+        definitionId: entity.definitionId,
+        position: { x: entity.position.x, y: entity.position.y },
+        collisionRadius: entity.collisionRadius,
+        lives: entity.lives,
+        invincibleTicksRemaining: entity.invincibleTicksRemaining,
+        nextShotAllowedTick: entity.nextShotAllowedTick,
+        movement: { speed: entity.movement.speed, focusSpeed: entity.movement.focusSpeed },
+        shotDefinitionId: entity.shotDefinitionId,
+      };
+    case "enemy":
+      return {
+        id: entity.id,
+        kind: "enemy",
+        definitionId: entity.definitionId,
+        position: { x: entity.position.x, y: entity.position.y },
+        collisionRadius: entity.collisionRadius,
+        hp: entity.hp,
+        scoreOnKill: entity.scoreOnKill,
+        pathId: entity.pathId,
+        patternId: entity.patternId,
+      };
+    case "enemyBullet":
+      return {
+        id: entity.id,
+        kind: "enemyBullet",
+        definitionId: entity.definitionId,
+        position: { x: entity.position.x, y: entity.position.y },
+        collisionRadius: entity.collisionRadius,
+      };
+    case "playerShot":
+      return {
+        id: entity.id,
+        kind: "playerShot",
+        definitionId: entity.definitionId,
+        position: { x: entity.position.x, y: entity.position.y },
+        collisionRadius: entity.collisionRadius,
+        velocity: { x: entity.velocity.x, y: entity.velocity.y },
+        remainingLifetimeTicks: entity.remainingLifetimeTicks,
+        damage: entity.damage,
+      };
+  }
+}
+
+/** pending queue に残せる event を public DTO へ正規化する。 */
+function serializePendingEvent(event: CommittedPendingEvent): SerializedPendingEvent {
+  switch (event.type) {
+    case "stageStarted":
+      return {
+        type: "stageStarted",
+        tick: event.tick,
+        stageId: event.stageId,
+      };
+    default:
+      return assertNever(event.type);
+  }
 }
 
 /** committed 側で保持する値を mutable handle なしの immutable snapshot に正規化する。 */
@@ -727,6 +888,10 @@ function createActiveStageSessionTestingHooks(
       testingHooks.overrideCommittedPendingEventsTicks ?? [],
       (override) => override.pendingEvents,
     ),
+    reverseCommittedEntitiesOnSerialize: testingHooks.reverseCommittedEntitiesOnSerialize ?? false,
+    overrideCommittedNextEntityIdOnSerialize: testingHooks.overrideCommittedNextEntityIdOnSerialize,
+    overrideCommittedPendingEventsOnSerialize: testingHooks.overrideCommittedPendingEventsOnSerialize,
+    overrideCommittedPrngStateOnSerialize: testingHooks.overrideCommittedPrngStateOnSerialize,
     recordCommittedStateOnFatal: testingHooks.recordCommittedStateOnFatal,
   });
 }
@@ -777,18 +942,28 @@ function failAfterWorkingMutationForTesting(working: WorkingStageState): CoreRes
 
 /** committed snapshot の entity id と allocator snapshot の整合性を検証する。 */
 function validateCommittedEntityInvariants(committedState: UntrustedCommittedStageState): CoreResult<null> {
+  const restoredAllocator = EntityAllocator.restore(committedState.nextEntityId);
+  if (!restoredAllocator.ok) {
+    return restoredAllocator;
+  }
+
   const ids = new Set<number>();
   let maxEntityId = 0;
+  let previousEntityId = 0;
 
   for (const entity of committedState.activeEntities) {
     if (!Number.isSafeInteger(entity.id) || entity.id < 1) {
       return error("entityAllocator.invalidState", "active entity id must be a positive safe integer");
+    }
+    if (entity.id <= previousEntityId) {
+      return error("entityAllocator.invalidState", "active entity ids must be sorted in strict ascending order");
     }
     if (ids.has(entity.id)) {
       return error("entityAllocator.invalidState", `active entity id must be unique: ${entity.id}`);
     }
     ids.add(entity.id);
     maxEntityId = Math.max(maxEntityId, entity.id);
+    previousEntityId = entity.id;
   }
 
   if (committedState.nextEntityId <= maxEntityId) {
@@ -999,6 +1174,11 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     return null;
   }
   return value as Record<string, unknown>;
+}
+
+/** union 型の追加時に switch の更新漏れを型エラーとして検出する。 */
+function assertNever(value: never): never {
+  throw new Error(`Unhandled value: ${String(value)}`);
 }
 
 /** 単一エラーを `CoreResult` の失敗として返すための小さな helper。 */

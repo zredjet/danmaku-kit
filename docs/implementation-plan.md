@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract、Phase 1B-1 の committed / working state boundary、Phase 1B-2 の fatal latch minimum、Phase 1B-3 の serialized DTO contract は完了済みである。現在の実装スライスは Phase 1B-4 の serialize minimum に限定する。Phase 1B-5 以降の restore / state hash / replay metadata は後続スライスとして順に扱う。
+Phase 1A の renderer 非依存 Core minimum contract、Phase 1B-1 の committed / working state boundary、Phase 1B-2 の fatal latch minimum、Phase 1B-3 の serialized DTO contract、Phase 1B-4 の serialize minimum は完了済みである。現在の実装スライスは Phase 1B-5A の restore API / error boundary に進む。Phase 1B-5B 以降の runtime entity 以降の shape / registry validation、transactional restore、state hash、replay metadata は後続スライスとして順に扱う。
 
 Done:
 
@@ -59,15 +59,18 @@ Done:
 - pending event は frame 通知用 `GameEvent` と別の `SerializedPendingEvent` として定義する
 - pattern runner / optional feature の serialized state は空配列型に固定せず、後続 module が拡張できる DTO 型を置く
 - serialized entity id は内部 `EntityId` を root export へ漏らさず、公開 DTO 用 `SerializedEntityId` として定義する
+- root export 済みの `StageSession` に `serialize(): CoreResult<SerializedGameState>` を追加する
+- `StageSession.serialize()` で session metadata、`expectedTick`、`nextEntityId`、PRNG、score、timeline cursor、runtime entity、pending event を deep immutable snapshot へ写す
+- serialize 結果で startStage 直後の `stageStarted` pending event、tick 後の drain 済み pending event、basic core の空 feature state、runtime entity field mapping を test する
+- fatal 後の `serialize()` が同じ fatal reason を返すことを test する
 
 Next:
 
-- root export 済みの `StageSession` に `serialize(): CoreResult<SerializedGameState>` を追加し、別名 public export は増やさない
-- session metadata、`expectedTick`、`nextEntityId`、PRNG、score、timeline cursor、runtime entity、pending event を snapshot へ写す
-- `runtimeEntities` の entity id 昇順、basic core の空 feature state、pending event drain、主要 field mapping を test する
-- serialize 結果を deep immutable plain data として返し、fatal 後の `serialize()` が error を返すことを固定する
+- `LoadedGame.restore(state): CoreResult<StageSession>` の public API を追加し、restore error code と version mismatch の境界を固定する
+- `tests/public-type-contract.ts` で restore の引数 / 戻り値 / serialize roundtrip 型を固定する
+- `coreVersion`、`schemaVersion`、`inputFormatVersion`、`stateHashVersion`、`contentVersion`、`stageId`、`difficulty`、`playerId`、top-level `enabledFeatures` の mismatch を public restore error に閉じ込める
 
-このスライスでは Phaser、Vite、DOM、asset loader、YAML parser、restore、state hash、replay metadata、replay playback UI は扱わない。
+このスライスでは Phaser、Vite、DOM、asset loader、YAML parser、state hash、replay metadata、replay playback UI は扱わない。
 
 ## 設計から実装への対応表
 
@@ -93,8 +96,8 @@ Status legend:
 | `docs/design.md` Transactional tick contract | 汎用 working / committed state 境界 | Done | `packages/shooting-core/src/basic/core.ts` | `packages/shooting-core/src/basic/core.test.ts` | `npm test`, `npm run typecheck` |
 | `docs/design.md` Transactional tick contract | fatal state と fatal 後 `tick()` の error latch | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/result.ts`, `packages/shooting-core/src/basic/internal/testing-hooks.ts` | `packages/shooting-core/src/basic/core.test.ts`, `tests/public-type-contract.ts` | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | serialized DTO contract | Done | `packages/shooting-core/src/basic/serialization/types.ts`, `packages/shooting-core/src/basic/index.ts` | `tests/public-type-contract.ts` | `npm test`, `npm run typecheck` |
-| `docs/design.md` Replay determinism | serialize minimum | Next | 未実装 | metadata / field mapping / pendingEvents / entity order / empty feature state / deep immutable / fatal 後 error を追加 | `npm test`, `npm run typecheck` |
-| `docs/design.md` Replay determinism | restore minimum | Queued: Phase 1B-5A..D | 未実装 | restore error code、shape / registry validation、transactional restore、roundtrip / multi tick 一致 test を段階追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Replay determinism | serialize minimum | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/serialization/types.ts` | metadata / field mapping / pendingEvents / empty feature state / deep immutable / fatal 後 error を追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Replay determinism | restore API / error boundary | Next: Phase 1B-5A | 未実装 | restore method contract、restore error code、version / content / top-level feature mismatch を追加 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | state hash minimum（Player runtime component の `nextShotAllowedTick` を含む） | Queued: Phase 1B-6 | 未実装 | canonical bytes / digest golden、PRNG state hash 同一形式、first divergent tick test を追加 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | replay metadata minimum | Queued: Phase 1B-7 | 未実装 | replay file metadata と playback session は作らず、互換性 metadata 型だけ追加 | `npm test`, `npm run typecheck` |
 
@@ -198,11 +201,11 @@ Done slice:
    - Done: 既存の内部 `SerializedPrngState` は Core 内部型として残し、root export する公開名は `SerializedPrngSnapshot` に統一する
    - Done: `SerializedGameState`、`SerializedDeterministicState`、`SerializedRuntimeEntityState`、`SerializedPrngSnapshot`、`SerializedPendingEvent`、`SerializedEntityId`、serialized extension state は root export し、`tests/public-type-contract.ts` で positive import、required field、kind 別 required field、namespace id、JSON-compatible payload、nested readonly contract を固定する
 
-Next slice:
+Done:
 
 4. Phase 1B-4: serialize 最小実装
    - Phase 1B-4A: public API と metadata snapshot
-   - 作業: root export 済みの `StageSession` 自体へ `serialize(): CoreResult<SerializedGameState>` を stable public API として追加する。設計書の `SerializableStageSession` は移行差分を説明する alias であり、別名の public export は増やさない。`packages/shooting-core/src/basic/index.ts` の root export と `tests/public-type-contract.ts` の method contract で固定する
+   - 作業: root export 済みの `StageSession` 自体へ `serialize(): CoreResult<SerializedGameState>` を stable public API として追加する。別名の public export は増やさない。`packages/shooting-core/src/basic/index.ts` の root export と `tests/public-type-contract.ts` の method contract で固定する
    - 作業: `startStage()` 時点で session context に保持した `coreVersion`、`schemaVersion`、`contentVersion`、`inputFormatVersion`、`stateHashVersion`、`enabledFeatures`、`stageId`、`difficulty`、`playerId` をそのまま `SerializedGameState` の top-level metadata に出力する。serialize 実装内で difficulty や version を推測しない
    - 作業: `expectedTick`、`nextEntityId`、`prngState`、`state.score`、`state.timelineCursor`、`state.pendingEvents` を committed state から生成する
    - Phase 1B-4B: runtime entity mapping と ordering
@@ -216,15 +219,17 @@ Next slice:
    - 作業: fatal 後の `serialize()` は error を返すことを test する
 
 5. Phase 1B-5: restore 最小実装
+   - Next slice: Phase 1B-5A API / error boundary
    - Phase 1B-5A: API / error boundary
-   - 作業: `LoadedGame.restore(state): CoreResult<StageSession>` を stable public API として追加する。Phase 1B-4 後の root exported `StageSession` は `serialize()` を持つため、設計書上は `CoreResult<SerializableStageSession>` と同じ意味になる。type contract では restore 戻り値に対して `value.serialize(): CoreResult<SerializedGameState>` を呼べることまで positive に固定する
-   - 作業: restore 用 `CoreErrorCode` として `state.invalidShape`、`state.coreVersionMismatch`、`state.schemaVersionMismatch`、`state.inputFormatVersionMismatch`、`state.stateHashVersionMismatch`、`state.contentMismatch`、`state.featureMismatch`、`state.registryInvalid`、`state.entityAllocatorInvalid`、`state.prngInvalid` を追加し、`tests/public-type-contract.ts` で public union を固定する
+   - 作業: `LoadedGame.restore(state): CoreResult<StageSession>` を stable public API として追加する。Phase 1B-4 後の root exported `StageSession` は `serialize()` を持つ。type contract では restore 戻り値に対して `value.serialize(): CoreResult<SerializedGameState>` を呼べることまで positive に固定する
+   - 作業: restore 用 `CoreErrorCode` として 5A では `state.invalidShape`、`state.coreVersionMismatch`、`state.schemaVersionMismatch`、`state.inputFormatVersionMismatch`、`state.stateHashVersionMismatch`、`state.contentMismatch`、`state.featureMismatch` を追加し、`tests/public-type-contract.ts` で public union を固定する。`state.invalidShape` は top-level object / required metadata field / primitive field type を判定する最小 shape guard に限定し、runtime entity や registry 参照などの深い validation は 5B で追加する。`state.registryInvalid`、`state.entityAllocatorInvalid`、`state.prngInvalid` は 5B の validation 実装と同時に public union へ追加する
    - 作業: snapshot restore は `coreVersion` 完全一致だけを受け付ける。minor mismatch の best-effort playback は replay playback 専用であり、snapshot restore には適用しない negative test を追加する。PRNG algorithm 変更は major version 変更として扱う
    - 作業: `state.contentMismatch` は `contentVersion`、`stageId`、`difficulty`、`playerId` の不一致を包括する。より細かい user-facing 表示が必要になった場合だけ専用 code を追加する
-   - 作業: version / stage / player / feature / entity allocator / PRNG state mismatch を `CoreResult` error にする
-   - 作業: restore 内で `XorShift32.restore()` の `prng.invalidState` を受け取った場合は `state.prngInvalid` に包み直し、低レベル code を `LoadedGame.restore()` の public error として漏らさない
+   - 作業: version / stage / player / top-level feature mismatch を `CoreResult` error にする
    - Phase 1B-5B: shape / registry / budget validation
    - 作業: serialized entity、stage、player、content reference が現在の registry で解決不能な場合は `state.registryInvalid` にする
+   - 作業: `nextEntityId` snapshot 自体が不正な場合は `state.entityAllocatorInvalid` にする。runtime entity 側の ID/order/`id < nextEntityId` 違反は serialized shape 契約違反として `state.invalidShape` にする。restore 内で `EntityAllocator.restore()` の `entityAllocator.invalidState` を受け取った場合は `state.entityAllocatorInvalid` に包み直し、低レベル code を `LoadedGame.restore()` の public error として漏らさない
+   - 作業: `prngState` が不正な場合は `state.prngInvalid` にする。restore 内で `XorShift32.restore()` の `prng.invalidState` を受け取った場合は `state.prngInvalid` に包み直し、低レベル code を `LoadedGame.restore()` の public error として漏らさない
    - 作業: Phase 1B の serialized enemy bullet は `definitionId`、`position`、`collisionRadius` だけを受け付ける。`projectile` のような未実装 runtime state field は unknown field として `state.invalidShape` にする
    - 作業: `SerializedPendingEvent` は tick 0 の `stageStarted` だけを受け付ける。top-level `expectedTick === 0` では top-level `stageId` と一致する `stageStarted` 1 件だけを要求し、0 件、複数件、別 `stageId` は `state.invalidShape` にする。top-level `expectedTick > 0` では `pendingEvents` は空配列だけを許可し、非空なら `state.invalidShape` にする。negative test は `expectedTick 0 + empty`、`expectedTick 0 + multiple`、`expectedTick 0 + stageId mismatch`、`expectedTick > 0 + stageStarted` を含める
    - 作業: restore 用 budget 定数は `content/validation.ts` や `simulation/entity.ts` の private const を複製せず、Phase 1B-5B の前半で `content/runtime-budgets.ts` などの共有 domain constants へ切り出す。`MAX_PLAYER_SHOT_SPEED_PER_AXIS = 64`、`MAX_PLAYER_MOVEMENT_SPEED = 16`、`MAX_PLAYER_SHOT_LIFETIME_TICKS = 300`、EntityAllocator の restorable upper bound は validation と restore が同じ定数を参照する
@@ -244,6 +249,7 @@ Next slice:
    - 作業: canonical encoding format として固定 DTO の schema 定義順、extension payload object key と `patternRunnerStates.runnerId` の UTF-8 byte lexicographic order、type tag table（`0x00=null`, `0x01=false`, `0x02=true`, `0x03=number`, `0x04=string`, `0x05=array`, `0x06=object`, `0x07=fixedStruct`）、fixedStruct の `0x07` tag + struct name length + struct name bytes + field count + field values、可変長 payload の u32 little-endian length / count、finite number の IEEE-754 binary64 little-endian encoding（`-0` は `+0` に正規化）、hash algorithm、`xxHash64 seed 0x53484f4f54494e47n` または `{ hi: 0x53484f4f, lo: 0x54494e47 }`、output format を実装前に固定し、game seed は PRNG state 側で扱う。`xxHash64` 実装は `packages/shooting-core/src/basic/hash/xxhash64.ts` に vendored / self-contained な uint32 pair 実装として置き、npm dependency は追加しない
    - 作業: hash 比較は replay / snapshot metadata 検証済みの同一 `contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId` 文脈内に限定し、debug artifact 単体では metadata を併記する
    - 作業: canonical encoding の対象を `HashableGameState` の単一 DTO に限定する。runtime entity DTO には entity id と component values を一度だけ含め、`entity ids` / `component values` / `runtime entities` を別投影として重ねて encode しない。`ReadonlyGameState` / render-facing `visible` snapshot は hash DTO に含めず encode しない
+   - 作業: runtime entity の deterministic field projection は `StageSession.serialize()` と state hash で二重実装しない。Phase 1B-6 で shared internal projection helper を作り、public serialize DTO と `HashableGameState` がそこから明示的に派生するようにする
    - 作業: runtime entities は entity id 昇順、pattern runner states は `runnerId` の UTF-8 byte lexicographic order 昇順、enabled feature states は canonical feature order で encode する
    - 作業: fixed DTO field order を table fixture として固定する。`HashableGameState` は `stateHashVersion`, `coreVersion`, `schemaVersion`, `expectedTick`, `nextEntityId`, `timelineCursor`, `prngState`, `score`, `runtimeEntities`, `pendingEvents`, `patternRunnerStates`, `enabledFeatureStates`。nested vector は `fixedStruct("vector2", [x, y])`、player movement は `fixedStruct("playerMovement", [speed, focusSpeed])` として flatten しない。player entity は `id`, `kind`, `definitionId`, `position`, `collisionRadius`, `lives`, `invincibleTicksRemaining`, `nextShotAllowedTick`, `movement`, `shotDefinitionId`。enemy entity は `id`, `kind`, `definitionId`, `position`, `collisionRadius`, `hp`, `scoreOnKill`, `pathId`, `patternId`。enemy bullet は `id`, `kind`, `definitionId`, `position`, `collisionRadius`。player shot は `id`, `kind`, `definitionId`, `position`, `collisionRadius`, `velocity`, `remainingLifetimeTicks`, `damage`。pending event は `type`, `tick`, `stageId`。pattern runner state は `runnerId`, `patternId`, `stateVersion`, `payload`。enabled feature state は `feature`, `stateVersion`, `payload`
    - 作業: current tick の `GameFrame.events` と drain 済み events は hash 対象外にする。hash 対象にするのは serialize / restore をまたいで残る pending queue だけとする

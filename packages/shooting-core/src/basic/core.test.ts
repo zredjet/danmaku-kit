@@ -61,6 +61,289 @@ test("loads valid minimum content and advances deterministic ticks", () => {
   assert.equal(frame1.ok && frame1.value.state.score, 0);
 });
 
+test("serializes initial stage state with metadata and pending startup event", () => {
+  const loaded = createShootingCore("core.test").load(createMinimumDefinition());
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const started = loaded.value.startStage({
+    stageId: "stage.stage_01",
+    difficulty: "normal",
+    seed: "seed-1",
+  });
+  assert.equal(started.ok, true);
+  if (!started.ok) {
+    assert.fail("expected stage session");
+  }
+
+  const serialized = started.value.serialize();
+  assert.equal(serialized.ok, true);
+  if (!serialized.ok) {
+    assert.fail("expected serialized state");
+  }
+  assert.deepEqual(serialized.value, {
+    coreVersion: "core.test",
+    schemaVersion: "1",
+    contentVersion: "content.0",
+    inputFormatVersion: "1",
+    stateHashVersion: 1,
+    enabledFeatures: [],
+    stageId: "stage.stage_01",
+    difficulty: "normal",
+    playerId: "player.default",
+    expectedTick: 0,
+    nextEntityId: 2,
+    prngState: { state: 3597787782 },
+    state: {
+      runtimeEntities: [{
+        id: 1,
+        kind: "player",
+        definitionId: "player.default",
+        position: { x: 192, y: 400 },
+        collisionRadius: 3,
+        lives: 3,
+        invincibleTicksRemaining: 0,
+        nextShotAllowedTick: 0,
+        movement: { speed: 4, focusSpeed: 1.8 },
+        shotDefinitionId: "playerShot.basic",
+      }],
+      pendingEvents: [{ type: "stageStarted", tick: 0, stageId: "stage.stage_01" }],
+      score: 0,
+      timelineCursor: 0,
+      patternRunnerStates: [],
+      enabledFeatureStates: [],
+    },
+  });
+  assert.equal(Object.isFrozen(serialized.value), true);
+  assert.equal(Object.isFrozen(serialized.value.state), true);
+  assert.equal(Object.isFrozen(serialized.value.enabledFeatures), true);
+  assert.equal(Object.isFrozen(serialized.value.prngState), true);
+  assert.equal(Object.isFrozen(serialized.value.state.runtimeEntities), true);
+  assert.equal(Object.isFrozen(serialized.value.state.runtimeEntities[0]), true);
+  assert.equal(Object.isFrozen(serialized.value.state.runtimeEntities[0]!.position), true);
+  assert.equal(Object.isFrozen(serialized.value.state.pendingEvents), true);
+  assert.equal(Object.isFrozen(serialized.value.state.pendingEvents[0]), true);
+  assert.equal(Object.isFrozen(serialized.value.state.patternRunnerStates), true);
+  assert.equal(Object.isFrozen(serialized.value.state.enabledFeatureStates), true);
+  if (serialized.value.state.runtimeEntities[0]?.kind !== "player") {
+    assert.fail("expected serialized player entity");
+  }
+  assert.equal(Object.isFrozen(serialized.value.state.runtimeEntities[0].movement), true);
+
+  const frameAfterSerialize = started.value.tick(createEmptyInputFrame(0));
+  assert.equal(frameAfterSerialize.ok, true);
+  assert.deepEqual(frameAfterSerialize.ok && frameAfterSerialize.value.events.map((event) => event.type), [
+    "stageStarted",
+    "tickAdvanced",
+  ]);
+});
+
+test("serializes runtime entities after tick without drained frame events", () => {
+  const started = startMinimumStage();
+  const frame = started.tick(createShotInputFrame(0));
+  assert.equal(frame.ok, true);
+
+  const serialized = started.serialize();
+  assert.equal(serialized.ok, true);
+  if (!serialized.ok) {
+    assert.fail("expected serialized state");
+  }
+  assert.equal(serialized.value.expectedTick, 1);
+  assert.equal(serialized.value.nextEntityId, 3);
+  assert.equal(serialized.value.prngState.state, 2919998806);
+  assert.deepEqual(serialized.value.state.pendingEvents, []);
+  assert.deepEqual(serialized.value.state.runtimeEntities, [
+    {
+      id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: { x: 192, y: 400 },
+      collisionRadius: 3,
+      lives: 3,
+      invincibleTicksRemaining: 0,
+      nextShotAllowedTick: 3,
+      movement: { speed: 4, focusSpeed: 1.8 },
+      shotDefinitionId: "playerShot.basic",
+    },
+    {
+      id: 2,
+      kind: "playerShot",
+      definitionId: "playerShot.basic",
+      position: { x: 192, y: 392 },
+      collisionRadius: 5,
+      velocity: { x: 0, y: -8 },
+      remainingLifetimeTicks: 3,
+      damage: 5,
+    },
+  ]);
+});
+
+test("serializes selected player and difficulty metadata", () => {
+  const loaded = createShootingCore("core.test").load(createAlternatePlayerHardDifficultyDefinition());
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+
+  const started = loaded.value.startStage({
+    stageId: "stage.stage_01",
+    difficulty: "hard",
+    playerId: "player.alt",
+    seed: "seed-1",
+  });
+  assert.equal(started.ok, true);
+  if (!started.ok) {
+    assert.fail("expected stage session");
+  }
+
+  const serialized = started.value.serialize();
+  assert.equal(serialized.ok, true);
+  if (!serialized.ok) {
+    assert.fail("expected serialized state");
+  }
+  assert.equal(serialized.value.difficulty, "hard");
+  assert.equal(serialized.value.playerId, "player.alt");
+  assert.deepEqual(serialized.value.state.runtimeEntities[0], {
+    id: 1,
+    kind: "player",
+    definitionId: "player.alt",
+    position: { x: 192, y: 400 },
+    collisionRadius: 2,
+    lives: 5,
+    invincibleTicksRemaining: 0,
+    nextShotAllowedTick: 0,
+    movement: { speed: 5, focusSpeed: 2 },
+    shotDefinitionId: "playerShot.basic",
+  });
+});
+
+test("serializes enemy and enemy bullet runtime entities", () => {
+  const started = startStageFromDefinition(createFireOnSpawnAtZeroDefinition());
+  const frame = started.tick(createEmptyInputFrame(0));
+  assert.equal(frame.ok, true);
+
+  const serialized = started.serialize();
+  assert.equal(serialized.ok, true);
+  if (!serialized.ok) {
+    assert.fail("expected serialized state");
+  }
+
+  assert.deepEqual(serialized.value.state.runtimeEntities, [
+    {
+      id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: { x: 192, y: 400 },
+      collisionRadius: 3,
+      lives: 3,
+      invincibleTicksRemaining: 0,
+      nextShotAllowedTick: 0,
+      movement: { speed: 4, focusSpeed: 1.8 },
+      shotDefinitionId: "playerShot.basic",
+    },
+    {
+      id: 2,
+      kind: "enemy",
+      definitionId: "enemy.scout",
+      position: { x: 192, y: 80 },
+      collisionRadius: 12,
+      hp: 10,
+      scoreOnKill: 100,
+      pathId: "path.none",
+      patternId: "pattern.spawn_bullet",
+    },
+    {
+      id: 3,
+      kind: "enemyBullet",
+      definitionId: "bullet.red_small",
+      position: { x: 192, y: 88 },
+      collisionRadius: 4,
+    },
+  ]);
+});
+
+test("serializes updated score and timeline cursor after collision scoring", () => {
+  const started = startStageFromDefinition(createCollisionScoreDefinition());
+  const frame = started.tick(createShotInputFrame(0));
+  assert.equal(frame.ok, true);
+
+  const serialized = started.serialize();
+  assert.equal(serialized.ok, true);
+  if (!serialized.ok) {
+    assert.fail("expected serialized state");
+  }
+  assert.equal(serialized.value.expectedTick, 1);
+  assert.equal(serialized.value.state.score, 100);
+  assert.equal(serialized.value.state.timelineCursor, 1);
+  assert.deepEqual(serialized.value.state.runtimeEntities, [
+    {
+      id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: { x: 192, y: 400 },
+      collisionRadius: 3,
+      lives: 3,
+      invincibleTicksRemaining: 0,
+      nextShotAllowedTick: 3,
+      movement: { speed: 4, focusSpeed: 1.8 },
+      shotDefinitionId: "playerShot.basic",
+    },
+  ]);
+});
+
+test("returns immutable serialized snapshots independent from caller-owned clones", () => {
+  const started = startMinimumStage();
+  const first = started.serialize();
+  assert.equal(first.ok, true);
+  if (!first.ok) {
+    assert.fail("expected serialized state");
+  }
+
+  assert.throws(
+    () => (first.value.state.runtimeEntities as unknown as unknown[]).push({}),
+    TypeError,
+  );
+  assert.throws(
+    () => (first.value.state.patternRunnerStates as unknown as unknown[]).push({}),
+    TypeError,
+  );
+  assert.throws(
+    () => (first.value.state.enabledFeatureStates as unknown as unknown[]).push({}),
+    TypeError,
+  );
+  assert.throws(
+    () => ((first.value.prngState as unknown as { state: number }).state = 0),
+    TypeError,
+  );
+  assert.throws(
+    () => ((first.value.state.pendingEvents[0] as unknown as { stageId: string }).stageId = "stage.changed"),
+    TypeError,
+  );
+  const serializedPlayer = first.value.state.runtimeEntities[0];
+  assert.equal(serializedPlayer?.kind, "player");
+  if (serializedPlayer?.kind !== "player") {
+    assert.fail("expected serialized player entity");
+  }
+  assert.throws(
+    () => ((serializedPlayer.position as unknown as { x: number }).x = 0),
+    TypeError,
+  );
+  assert.throws(
+    () => ((serializedPlayer.movement as unknown as { speed: number }).speed = 0),
+    TypeError,
+  );
+
+  const mutableClone = JSON.parse(JSON.stringify(first.value)) as {
+    state: { runtimeEntities: Array<{ position: { x: number } }> };
+  };
+  mutableClone.state.runtimeEntities[0]!.position.x = 0;
+
+  const second = started.serialize();
+  assert.equal(second.ok, true);
+  assert.deepEqual(second.ok && second.value, first.value);
+});
+
 test("returns identical frames for identical seed and input sequence", () => {
   const first = startMinimumStage();
   const second = startMinimumStage();
@@ -2689,6 +2972,88 @@ test("latches committed snapshot restore failures as fatal stage session errors"
 
   const futureTickAfterFatal = started.tick(createEmptyInputFrame(1));
   assert.deepEqual(futureTickAfterFatal, fatal);
+
+  const serializedAfterFatal = started.serialize();
+  assert.deepEqual(serializedAfterFatal, fatal);
+});
+
+test("latches serialize invariant failures as fatal stage session errors", () => {
+  const started = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+    overrideCommittedNextEntityIdOnSerialize: 1,
+  }), createMinimumDefinition());
+
+  const fatal = started.serialize();
+  assert.equal(fatal.ok, false);
+  assert.equal(!fatal.ok && fatal.errors[0]?.code, "stageSession.fatal");
+  assert.match(!fatal.ok ? fatal.errors[0]?.message ?? "" : "", /nextEntityId must be greater/);
+
+  assert.deepEqual(started.serialize(), fatal);
+  assert.deepEqual(started.tick(createEmptyInputFrame(0)), fatal);
+});
+
+test("latches serialize-only committed snapshot invariant failures", () => {
+  const expectSerializeFatal = (hooks: NonNullable<Parameters<typeof createShootingCoreWithTestingHooksForInternalTest>[1]>, detail: RegExp) => {
+    const started = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", hooks), createMinimumDefinition());
+
+    const fatal = started.serialize();
+    assert.equal(fatal.ok, false);
+    assert.equal(!fatal.ok && fatal.errors[0]?.code, "stageSession.fatal");
+    assert.match(!fatal.ok ? fatal.errors[0]?.message ?? "" : "", detail);
+    assert.deepEqual(started.serialize(), fatal);
+    assert.deepEqual(started.tick(createEmptyInputFrame(0)), fatal);
+  };
+
+  expectSerializeFatal({
+    overrideCommittedNextEntityIdOnSerialize: Number.MAX_SAFE_INTEGER + 1,
+  }, /nextEntityId must be a positive safe integer/);
+  expectSerializeFatal({
+    overrideCommittedPendingEventsOnSerialize: [{ type: "stageStarted", tick: 0, stageId: "stage.stage_01", extra: "reject" }],
+  }, /unsupported pending event in committed state/);
+  expectSerializeFatal({
+    overrideCommittedPrngStateOnSerialize: { state: 0 },
+  }, /prng\.invalidState/);
+});
+
+test("latches serialize runtime entity order invariant failures", () => {
+  const started = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+    reverseCommittedEntitiesOnSerialize: true,
+  }), createFireOnSpawnAtZeroDefinition());
+
+  const frame = started.tick(createEmptyInputFrame(0));
+  assert.equal(frame.ok, true);
+
+  const fatal = started.serialize();
+  assert.equal(fatal.ok, false);
+  assert.equal(!fatal.ok && fatal.errors[0]?.code, "stageSession.fatal");
+  assert.match(!fatal.ok ? fatal.errors[0]?.message ?? "" : "", /active entity ids must be sorted/);
+  assert.deepEqual(started.serialize(), fatal);
+  assert.deepEqual(started.tick(createEmptyInputFrame(1)), fatal);
+});
+
+test("keeps serialize-only test hook mutations out of committed state", () => {
+  const fatalCommittedStates: unknown[] = [];
+  const started = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+    overrideCommittedNextEntityIdOnSerialize: Number.MAX_SAFE_INTEGER + 1,
+    overrideCommittedPendingEventsOnSerialize: [{ type: "stageStarted", tick: 0, stageId: "stage.stage_01", extra: "reject" }],
+    overrideCommittedPrngStateOnSerialize: { state: 0 },
+    recordCommittedStateOnFatal: (state) => fatalCommittedStates.push(state),
+  }), createMinimumDefinition());
+
+  const fatal = started.serialize();
+  assert.equal(fatal.ok, false);
+  assert.equal(!fatal.ok && fatal.errors[0]?.code, "stageSession.fatal");
+  assert.equal(fatalCommittedStates.length, 1);
+
+  const fatalCommittedState = fatalCommittedStates[0] as {
+    activeEntities: Array<{ id: number }>;
+    nextEntityId: number;
+    pendingEvents: unknown[];
+    prngState: { state: number };
+  };
+  assert.deepEqual(fatalCommittedState.activeEntities.map((entity) => entity.id), [1]);
+  assert.equal(fatalCommittedState.nextEntityId, 2);
+  assert.deepEqual(fatalCommittedState.pendingEvents, [{ type: "stageStarted", tick: 0, stageId: "stage.stage_01" }]);
+  assert.equal(fatalCommittedState.prngState.state, 3597787782);
 });
 
 test("latches runtime invariant failures after working state restore", () => {
@@ -2817,6 +3182,15 @@ test("rejects duplicate testing hook override ticks", () => {
     }), createMinimumDefinition()),
     /Duplicate testing hook override tick: 0/,
   );
+  assert.throws(
+    () => startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+      overrideCommittedNextEntityIdTicks: [
+        { tick: 0, nextEntityId: 1 },
+        { tick: 0, nextEntityId: 2 },
+      ],
+    }), createMinimumDefinition()),
+    /Duplicate testing hook override tick: 0/,
+  );
 });
 
 test("rejects hook-enabled core creation without the internal test environment flag", () => {
@@ -2908,6 +3282,38 @@ function createCollisionScoreDefinition(): GameDefinition {
       playerShots: [{
         ...definition.content.playerShots[0]!,
         damage: 10,
+      }],
+    },
+  };
+}
+
+function createAlternatePlayerHardDifficultyDefinition(): GameDefinition {
+  const definition = createMinimumDefinition();
+  return {
+    ...definition,
+    content: {
+      ...definition.content,
+      assetKeys: {
+        keys: [
+          ...definition.content.assetKeys.keys,
+          "player.alt",
+        ],
+      },
+      players: [
+        ...definition.content.players,
+        {
+          id: "player.alt",
+          version: 1,
+          asset: "player.alt",
+          movement: { speed: 5, focusSpeed: 2 },
+          collision: { radius: 2 },
+          life: { initialLives: 5, invincibleTicksAfterHit: 90 },
+          shot: { definition: "playerShot.basic" },
+        },
+      ],
+      stages: [{
+        ...definition.content.stages[0]!,
+        difficulties: ["normal", "hard"],
       }],
     },
   };

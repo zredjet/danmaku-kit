@@ -34,6 +34,7 @@ import type {
   SerializedPrngSnapshot,
   SerializedRuntimeEntityState,
   ShootingCore,
+  StageSession,
   StageDefinition,
   StageId,
   StartStageOptions,
@@ -488,6 +489,11 @@ if (loaded.ok) {
   const started = loaded.value.startStage(startOptions);
   if (started.ok) {
     started.value.tick(input);
+    const publicStageSession: StageSession = started.value;
+    const serializedFromSession: CoreResult<SerializedGameState> = publicStageSession.serialize();
+    const serializedFromInferredSession: CoreResult<SerializedGameState> = started.value.serialize();
+    void serializedFromSession;
+    void serializedFromInferredSession;
   }
 }
 
@@ -983,6 +989,8 @@ if (loaded.ok) {
   if (maybeStarted.ok) {
     // @ts-expect-error tick requires an InputFrame at the public type boundary.
     maybeStarted.value.tick({ tick: 0 });
+    // @ts-expect-error serialize は引数を受け取らない。
+    maybeStarted.value.serialize(input);
   }
 }
 
