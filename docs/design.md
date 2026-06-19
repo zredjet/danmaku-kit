@@ -1211,6 +1211,10 @@ type SerializedReplayPlaybackState = SerializedGameState & {
   replayCursor: number;
 };
 
+type SerializedPrngSnapshot = {
+  state: number;
+};
+
 type SerializedGameState = {
   coreVersion: string;
   schemaVersion: string;
@@ -1223,7 +1227,7 @@ type SerializedGameState = {
   playerId: string;
   expectedTick: number;
   nextEntityId: number;
-  prngState: SerializedPrngState;
+  prngState: SerializedPrngSnapshot;
   state: SerializedDeterministicState;
 };
 
@@ -1273,6 +1277,8 @@ type ReplaySession = {
 ```
 
 Runtime は `tick()` の戻り値に含まれる `GameFrame.events` を読んで描画する。
+
+`SerializedPrngSnapshot` は public DTO とし、`state` は platform-independent な non-zero uint32 とする。Core 内部で使う旧 `SerializedPrngState` 相当の型名は root export せず、public snapshot の名前は `SerializedPrngSnapshot` に統一する。PRNG algorithm を変更する場合は snapshot field を暗黙変換せず、`ShootingCore.coreVersion` と restore compatibility policy で扱う。
 
 Core API は transactional とする。`load()`、`startStage()`、`restore()`、`createReplayPlayback()`、`restoreReplayPlayback()` は成功時だけ新しい handle を返し、失敗時に既存の `LoadedGame` / `StageSession` を部分更新しない。Core version は `ShootingCore.coreVersion` が持ち、content が申告する値ではない。`StageSession.tick()` は session 内の `expectedTick` を持ち、`input.tick !== expectedTick`、重複 tick、欠番 tick を caller precondition error として返すが、session を fatal にしない。Runtime は dropped tick を replay 入力として補完せず、実際に Simulation へ渡した `InputFrame` だけを保存する。
 

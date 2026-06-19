@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A のうち、renderer 非依存の Core minimum contract から着手する。
+Phase 1A の renderer 非依存 Core minimum contract は完了済みである。現在の実装スライスは Phase 1B-1 の committed / working state boundary に限定する。Phase 1B-2 以降の fatal latch / serialized DTO / serialize / restore / state hash / replay metadata は後続スライスとして順に扱う。
 
 Done:
 
@@ -43,15 +43,25 @@ Done:
 - PatternDefinition の `fireOnSpawn` から deterministic な EnemyBullet entity と `enemyBulletsSpawnedBatch` event を生成する
 - player shot と enemy、enemy bullet と player、player と enemy contact の最小 collision を入れる
 - enemy HP、player shot damage、enemy defeated、fixed `scoreOnKill` を event と state に接続する
+- collision / score を含む deterministic smoke test を追加する
 
 Next:
 
-- collision / score を含む deterministic smoke test を固める
-- Phase 1B の serialize / restore / state hash 設計を実装タスクへ分割する
+- `StageSession` 内の変数群を `CommittedStageState` / `WorkingStageState` にまとめる
+- committed state は mutable handle ではなく `nextEntityId` / `prngState` などの immutable snapshot を保持する
+- tick mismatch / invalid input と、working state mutation 後 failure の rollback regression test を追加する
+- PRNG と entity allocator の mutable handle は working state 作成時だけ snapshot から復元し、成功時だけ snapshot として commit する
 
-このスライスでは Phaser、Vite、DOM、asset loader、YAML parser、serialize / restore は扱わない。
+このスライスでは Phaser、Vite、DOM、asset loader、YAML parser、serialize、restore、state hash、replay metadata、replay playback UI は扱わない。
 
 ## 設計から実装への対応表
+
+Status legend:
+
+- Done: 実装済みで、対象 test / typecheck が通っている。
+- Next: 現在の実装スライスで扱う。
+- Queued: 同じ Phase 内の後続スライスで扱う。表では `Queued: Phase 1B-2` のように対象 slice id を併記する。
+- Later: 現在 Phase の外へ送る。
 
 | Design section | Task | Status | Implementation | Tests | Command |
 | --- | --- | --- | --- | --- | --- |
@@ -65,8 +75,13 @@ Next:
 | `docs/design.md` Player movement | player input axes / focus movement / playfield clamp | Done | `packages/shooting-core/src/basic/simulation/player-movement-system.ts`, `packages/shooting-core/src/basic/core.ts` | `packages/shooting-core/src/basic/simulation/player-movement-system.test.ts`, `packages/shooting-core/src/basic/core.test.ts` | `npm test` |
 | `docs/design.md` Enemy bullet fireOnSpawn | PatternDefinition の最小敵弾生成経路、複数 enemy と player shot の同 tick order 固定 | Done | `packages/shooting-core/src/basic/content/types.ts`, `packages/shooting-core/src/basic/content/validation.ts`, `packages/shooting-core/src/basic/events/game-event.ts`, `packages/shooting-core/src/basic/result.ts`, `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/simulation/entity.ts`, `packages/shooting-core/src/basic/simulation/runtime-entity.ts`, `packages/shooting-core/src/basic/simulation/enemy-bullet-system.ts` | `packages/shooting-core/src/basic/core.test.ts`, `packages/shooting-core/src/basic/simulation/entity.test.ts`, `packages/shooting-core/src/basic/simulation/runtime-entity.test.ts`, `packages/shooting-core/src/basic/simulation/enemy-bullet-system.test.ts`, `tests/public-type-contract.ts` | `npm test`, `npm run typecheck` |
 | `docs/design.md` Collision / score minimum | MVP collision pair と fixed `scoreOnKill` | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/events/game-event.ts`, `packages/shooting-core/src/basic/simulation/collision-system.ts` | `packages/shooting-core/src/basic/core.test.ts`, `packages/shooting-core/src/basic/simulation/collision-system.test.ts`, `tests/public-type-contract.ts` | `npm test`, `npm run typecheck` |
-| `docs/design.md` Transactional tick contract | fatal state、serialize / restore 失敗契約、汎用 working / committed state 境界 | Later | 未実装 | Phase 1B で明示型へ整理 | `npm test` |
-| `docs/design.md` Replay determinism | serialize / restore / state hash（Player runtime component の `nextShotAllowedTick` を含む） | Later | 未実装 | Phase 1B golden test で追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Transactional tick contract | 汎用 working / committed state 境界 | Next | `packages/shooting-core/src/basic/core.ts` | `packages/shooting-core/src/basic/core.test.ts` | `npm test` |
+| `docs/design.md` Transactional tick contract | fatal state と fatal 後 `tick()` の error latch | Queued: Phase 1B-2 | 未実装 | error taxonomy と合わせて追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Replay determinism | serialized DTO contract | Queued: Phase 1B-3 | 未実装 | public DTO と export 境界を追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Replay determinism | serialize minimum | Queued: Phase 1B-4 | 未実装 | deep immutable serialize と fatal 後 error を追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Replay determinism | restore minimum | Queued: Phase 1B-5 | 未実装 | restore error code と複数 tick 一致 test を追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Replay determinism | state hash minimum（Player runtime component の `nextShotAllowedTick` を含む） | Queued: Phase 1B-6 | 未実装 | golden test で追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Replay determinism | replay metadata minimum | Queued: Phase 1B-7 | 未実装 | replay file metadata と playback session は作らず、互換性 metadata 型だけ追加 | `npm test`, `npm run typecheck` |
 
 ## 次の作業順
 
@@ -109,17 +124,17 @@ Next:
 5. Phase 1A-5: Core minimum completion test
    - Done: 同一 seed と入力で同じ frame event を返す smoke test を追加する
    - Done: collision と score を含む deterministic smoke test へ拡張する
-   - Next: object pool や renderer state を Core minimum へ入れないことを確認する
+   - Later: object pool や renderer state を Core minimum へ入れないことを Phase 2A 前の性能設計で再確認する
 
 ## 後続で明示対応するレビュー指摘
 
-- `StageSession.tick()` は PRNG、entity allocator、active entities、timeline cursor、pending event、expected tick の commit 境界へ寄せた。collision / pattern / budget failure 追加時は `CommittedStageState` と `WorkingStageState` を明示し、成功時だけ committed state へ swap する。
+- `StageSession.tick()` は PRNG、entity allocator、active entities、timeline cursor、pending event、expected tick の commit 境界へ寄せた。collision / pattern / internal invariant failure 追加時は `CommittedStageState` と `WorkingStageState` を明示し、成功時だけ committed state へ swap する。
 - `EntityAllocator` は restore 経路を追加済み。Phase 1B の `SerializedGameState` に `nextEntityId` を含める。
 - `XorShift32.restore()` は invalid state を `CoreResult` として返す API に見直し済み。
 - root package export の minimum gameplay flow test は追加済み。`npm install` による workspace symlink 作成を開発手順に含める。
 - TypeScript 型検査は `npm run typecheck` で実行する。Phase 1A の package export は source TS export で、配布用 `dist` は後続で判断する。
 
-## Phase 1B へ進む条件
+## Phase 1A 完了条件
 
 - renderer なしで `StageSession.tick()` が 1 tick 単位で成功する
 - minimum content fixture から player / enemy / player shot / `fireOnSpawn` enemy bullet を生成でき、`enemyBulletsSpawnedBatch` event と bullet の runtime entity 型境界が用意されている
@@ -127,7 +142,84 @@ Next:
 - `npm install` 後の `npm test` が通る
 - `npm run typecheck` が通る
 
-Phase 1B では serialize / restore、state hash、replay metadata、golden test を追加する。
+Phase 1B では fatal latch を先に固定し、その後に state serialize / restore / state hash と replay metadata minimum の determinism contract を追加する。Replay input list、playback session、optional diagnostics は Phase 1B の外へ分け、ここでは `SerializedGameState` と `ReplayMetadata` の互換性 field として必要な version 情報だけを扱う。
+
+## Phase 1B タスク分割
+
+Next slice:
+
+1. Phase 1B-1: コミット済み / 作業中 state 境界
+   - 作業: `CommittedStageState` に `expectedTick`、`activeEntities`、`pendingEvents`、`score`、`timelineCursor`、`nextEntityId`、`prngState` を集約する
+   - 作業: `CommittedStageState` は immutable snapshot だけを保持し、`EntityAllocator` / `XorShift32` の mutable instance を保持しない
+   - 作業: `activeEntities` と `pendingEvents` は immutable snapshot として保持する
+   - 作業: tick 中の `WorkingStageState` は `EntityAllocator.restore(nextEntityId)` と `XorShift32.restore(prngState)` で mutable handle を復元し、成功時だけ immutable snapshot として committed state へ swap する
+   - 作業: committed snapshot 由来の restore は実装上 infallible に閉じる。もし内部不整合を検出した場合、1B-1 では test / dev の assertion fail-fast とし、public `CoreResult` error には露出させない。1B-2 で fatal latch に接続する
+   - 作業: tick mismatch / invalid input は非 fatal precondition error として扱い、同じ `expectedTick` で継続できることを regression test にする
+   - 作業: rollback regression test では失敗呼び出しを挟まない baseline session と比較し、その後の成功 tick の `GameFrame`、events、test-only の `CommittedStageState` snapshot が一致することを確認する。public serialize DTO や `StageSession.serialize()` は使わない
+   - 作業: clone 境界の regression test には、test-only hook `failAfterWorkingMutation` を用意する。この hook は working state 側の `expectedTick`、`activeEntities`、`nextEntityId`、`pendingEvents`、`prngState`、`score`、`timelineCursor` を進めた後に test-only error code `test.workingStateMutationFailed` で失敗する
+   - 作業: rollback regression test は、失敗後に元の `expectedTick` の入力を受け付けること、entity snapshot が entity id 昇順に保たれること、event / collision tie-break order が baseline と一致することを確認する
+
+Queued slices:
+
+2. Phase 1B-2: fatal latch 最小実装
+   - 作業: system invariant 破壊、不正 committed state、1B-1 の committed snapshot restore 不整合を fatal error として latch する。performance budget invariant の具体実装は Phase 2A 以降へ送る
+   - 作業: fatal trigger は最小 fixture または test-only hook で再現できる形にする
+   - 作業: fatal 後の `tick()` は同じ fatal reason を返し、committed state を進めないことを test する
+   - 作業: fatal 系 `CoreErrorCode` と precondition error の境界を `tests/public-type-contract.ts` で固定する
+
+3. Phase 1B-3: serialized DTO contract
+   - 作業: `SerializedGameState` の top-level は `coreVersion`、`schemaVersion`、`contentVersion`、`inputFormatVersion`、`stateHashVersion`、`enabledFeatures`、`stageId`、`difficulty`、`playerId`、`expectedTick`、`nextEntityId`、`prngState`、`state` に合わせる
+   - 作業: deterministic payload は `state: SerializedDeterministicState` 配下に置き、`runtimeEntities`、`pendingEvents`、`score`、`timelineCursor`、将来の pattern runner state / feature state を top-level へ出さない
+   - 作業: `SerializedDeterministicState` は public DTO として root export し、`runtimeEntities`、`pendingEvents`、`score`、`timelineCursor`、`patternRunnerStates`、`enabledFeatureStates` の required field と nested readonly contract を固定する
+   - 作業: `prngState` と `runtimeEntities` は内部 state 型を直接公開せず、public 用 plain-data DTO として `SerializedPrngSnapshot` / `SerializedRuntimeEntityState` を定義する。`docs/design.md` の public shape も `SerializedPrngSnapshot` に統一する
+   - 作業: `SerializedRuntimeEntityState` は common base と kind 別 payload の discriminated union にする。common base は `id`、`kind`、`definitionId`、`position`、`collisionRadius` を持つ
+   - 作業: Player payload は `lives`、`invincibleTicksRemaining`、`nextShotAllowedTick`、movement snapshot、`shotDefinitionId` を持つ
+   - 作業: Enemy payload は `hp`、`scoreOnKill`、`pathId`、`patternId` を持つ
+   - 作業: EnemyBullet payload は bullet definition id、`velocity`、`damage`、必要な lifetime state を持つ
+   - 作業: PlayerShot payload は shot definition id、`velocity`、`remainingLifetimeTicks`、`damage` を持つ
+   - 作業: restore に不要な render-only field、object pool state、view id は serialized runtime entity に含めない
+   - 作業: `SerializedPrngSnapshot` は public DTO として field 名、uint32 値域、0 を許可しない制約、PRNG algorithm 変更時は `coreVersion` 互換性で扱う方針を固定する
+   - 作業: 既存の内部 `SerializedPrngState` は Core 内部型として残すか、`SerializedPrngSnapshot` へ統合するかをこの slice で決める。root export する公開名は `SerializedPrngSnapshot` に統一する
+   - 作業: `SerializedGameState`、`SerializedDeterministicState`、`SerializedRuntimeEntityState`、`SerializedPrngSnapshot` は root export し、`tests/public-type-contract.ts` で positive import、required field、kind 別 required field、nested readonly contract を固定する
+
+4. Phase 1B-4: serialize 最小実装
+   - 作業: `StageSession.serialize(): CoreResult<SerializedGameState>` を stable public API として追加し、`packages/shooting-core/src/basic/index.ts` の root export と `tests/public-type-contract.ts` の method contract を更新する
+   - 作業: serialize 結果は deep immutable plain data とし、public 型の nested readonly、runtime の deep freeze / mutation rejection、clone mutation が次 tick / 再 serialize へ影響しないことを別々の期待値として固定する
+   - 作業: fatal 後の `serialize()` は error を返すことを test する
+
+5. Phase 1B-5: restore 最小実装
+   - 作業: `LoadedGame.restore(state): CoreResult<StageSession>` を stable public API として追加する
+   - 作業: restore 用 `CoreErrorCode` として `state.invalidShape`、`state.coreVersionMismatch`、`state.schemaVersionMismatch`、`state.inputFormatVersionMismatch`、`state.stateHashVersionMismatch`、`state.contentMismatch`、`state.featureMismatch`、`state.registryInvalid`、`state.entityAllocatorInvalid`、`state.prngInvalid` を追加し、`tests/public-type-contract.ts` で public union を固定する
+   - 作業: `state.contentMismatch` は `contentVersion`、`stageId`、`difficulty`、`playerId` の不一致を包括する。より細かい user-facing 表示が必要になった場合だけ専用 code を追加する
+   - 作業: version / stage / player / feature / entity allocator / PRNG state mismatch を `CoreResult` error にする
+   - 作業: restore 内で `XorShift32.restore()` の `prng.invalidState` を受け取った場合は `state.prngInvalid` に包み直し、低レベル code を `LoadedGame.restore()` の public error として漏らさない
+   - 作業: serialized entity、stage、player、content reference が現在の registry で解決不能な場合は `state.registryInvalid` にする
+   - 作業: restore の runtime guard は unknown field、getter / Proxy、非 JSON 互換値、prototype 継承 property を `state.invalidShape` に閉じ込める
+   - 作業: 失敗した restore は `LoadedGame` と既存 `StageSession` に副作用を残さない。invalid restore の前に別の active session を進め、失敗後の次 tick / serialize 結果が baseline session と一致すること、さらに valid snapshot の restore または `startStage()` が成功することを negative test にする
+   - 作業: `tests/public-type-contract.ts` で `LoadedGame.restore(state): CoreResult<StageSession>` の存在、引数 `SerializedGameState`、戻り値を positive に固定する
+   - 作業: restore 直後の再 serialize が元 snapshot と一致する test を追加する
+   - 作業: serialize 前 session と restore session に同じ入力列を複数 tick 流し、各 `GameFrame` と再 serialize 結果が一致する test を追加する
+
+6. Phase 1B-6: state hash 最小実装
+   - 作業: `HashableGameState` を committed state から生成する helper を追加する
+   - 作業: canonical encoding format として key order、配列順、数値表現、hash algorithm、`xxHash64 seed 0x53484f4f54494e47`、output format を実装前に固定し、game seed は PRNG state 側で扱う
+   - 作業: hash prefix に `stateHashVersion`、`ShootingCore.coreVersion`、`schemaVersion`、`expectedTick` を含める。`expectedTick` は次に受け付ける input tick であり、最後に完了した frame tick ではない
+   - 作業: canonical encoding の対象を `expectedTick`、`nextEntityId`、entity ids、component values、runtime entities、score、lives、timeline cursor、PRNG state、persisted pending deterministic event queue、Player runtime component の `nextShotAllowedTick`、active pattern runner states、enabled feature states に限定する
+   - 作業: runtime entities は entity id 昇順、component values は component kind 固定順で encode する
+   - 作業: current tick の `GameFrame.events` と drain 済み events は hash 対象外にする。hash 対象にするのは serialize / restore をまたいで残る pending queue だけとする
+   - 作業: MVP では active pattern runner states と enabled feature states を空配列として encode し、feature 追加時に hash 対象へ入る契約を残す
+   - 作業: golden smoke fixture は shot 発射、player shot cooldown、敵撃破、score 変化、enemy bullet / player hit、lives 減少、invincibility decrement、`entityDestroyed` / `scoreChanged` event、pending event drain を通す
+   - 作業: internal hash helper の export 境界を `packages/shooting-core/src/basic/testing` または test-only internal import に限定する。比較順は初期 pending event を含む hash、tick 後 drain 済み hash、restore 直後 hash、restore 後 tick hash とする
+   - 作業: emitted `entityDestroyed` / `scoreChanged` events が pending queue drain 後の hash に影響しない golden case を追加する
+   - 作業: 同一 seed / input と restore 後 session の state hash が複数 tick で一致する test を追加する
+   - 作業: Phase 1B は test assertion 内の hash 比較と first divergent tick の最小報告までに留める。entity diff / event diff / PRNG diff artifact、debug state dump、validate-content CLI 連携は Phase 1C で扱う
+
+7. Phase 1B-7: replay metadata 最小実装
+   - 作業: `ReplayMetadata` の minimum DTO として `coreVersion`、`schemaVersion`、`contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、platform-independent `seed` を定義する
+   - 作業: `ReplayMetadata` は root export し、`tests/public-type-contract.ts` で positive import、required readonly field、`seed` の型と値域を固定する
+   - 作業: `ReplayMetadata` が共有する互換性 field は `coreVersion`、`schemaVersion`、`contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId` に限定する。`SerializedGameState` 専用の `stateHashVersion` と `enabledFeatures` は共有 field ではなく snapshot validation 用 field として扱う
+   - 作業: Phase 1B-7 は metadata-only DTO だけを root export する。`ReplayPlayback` type、入力列 validation、`createReplayPlayback()`、`ReplaySession`、runtime dropped tick diagnostics、full replay の `inputs: InputFrame[]` は root export せず Phase 1B の外に残す
+   - 作業: `ReplayMetadata` に playback inputs や `RuntimeDroppedTicks` を含めない契約は、Phase 1B では `satisfies ReplayMetadata` と `@ts-expect-error` による type-only negative contract に限定する。runtime guard は replay playback 実装時に追加する
 
 ## Phase 2A へ進む条件
 
@@ -135,5 +227,7 @@ Phase 1B では serialize / restore、state hash、replay metadata、golden test
 - sample app が Core の `GameFrame` を読むだけで描画できる
 - keyboard input は runtime adapter で `InputFrame` に変換される
 - Core event と render-only event が混ざっていない
+- Core state hash に render-only state、view id、object pool state が含まれていない
+- object pool sizing と performance budget は runtime adapter / performance design 側で扱う
 
 Phase 2A で初期 playable を目標にする。
