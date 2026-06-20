@@ -87,4 +87,18 @@ test("runs the minimum gameplay flow through the workspace package export", asyn
   const frame = started.value.tick({ tick: 0, axes: { moveX: 0, moveY: 0 }, held: [], pressed: [], released: [] });
   assert.equal(frame.ok, true);
   assert.equal(frame.ok && frame.value.tick, 0);
+
+  const serialized = started.value.serialize();
+  assert.equal(serialized.ok, true);
+  if (!serialized.ok) {
+    assert.fail("expected package import to serialize minimum stage");
+  }
+
+  const restored = loaded.value.restore(serialized.value);
+  assert.equal(restored.ok, false);
+  assert.equal(!restored.ok && restored.errors[0]?.code, "state.unsupportedSnapshot");
+
+  const mismatched = loaded.value.restore({ ...serialized.value, coreVersion: "other.core" });
+  assert.equal(mismatched.ok, false);
+  assert.equal(!mismatched.ok && mismatched.errors[0]?.code, "state.coreVersionMismatch");
 });

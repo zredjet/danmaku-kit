@@ -13,6 +13,7 @@ import type {
   GameDefinition,
   GameEvent,
   InputFrame,
+  LoadedGame,
   PathDefinition,
   PathId,
   PatternDefinition,
@@ -135,6 +136,14 @@ const invalidConstraintErrorCode: CoreErrorCode = "definition.invalidConstraint"
 const playerShotErrorCode: CoreErrorCode = "playerShot.notFound";
 const fatalStageSessionErrorCode: CoreErrorCode = "stageSession.fatal";
 const testHookFailureErrorCode: CoreErrorCode = "testHook.failure";
+const restoreInvalidShapeErrorCode: CoreErrorCode = "state.invalidShape";
+const restoreCoreVersionMismatchErrorCode: CoreErrorCode = "state.coreVersionMismatch";
+const restoreSchemaVersionMismatchErrorCode: CoreErrorCode = "state.schemaVersionMismatch";
+const restoreInputFormatVersionMismatchErrorCode: CoreErrorCode = "state.inputFormatVersionMismatch";
+const restoreStateHashVersionMismatchErrorCode: CoreErrorCode = "state.stateHashVersionMismatch";
+const restoreContentMismatchErrorCode: CoreErrorCode = "state.contentMismatch";
+const restoreFeatureMismatchErrorCode: CoreErrorCode = "state.featureMismatch";
+const unsupportedSnapshotErrorCode: CoreErrorCode = "state.unsupportedSnapshot";
 const difficulty: Difficulty = "normal";
 const enabledFeature: EnabledFeature = "bomb";
 const assetKeys: AssetKeyRegistry = { keys: ["player.default"] };
@@ -486,6 +495,16 @@ const startOptions: StartStageOptions = {
 };
 
 if (loaded.ok) {
+  const publicLoadedGame: LoadedGame = loaded.value;
+  const restoredFromPublicLoaded: CoreResult<StageSession> = publicLoadedGame.restore(serializedInitialGameState);
+  void restoredFromPublicLoaded;
+
+  const restoredFromSerialized: CoreResult<StageSession> = loaded.value.restore(serializedInitialGameState);
+  if (restoredFromSerialized.ok) {
+    const serializedAfterRestore: CoreResult<SerializedGameState> = restoredFromSerialized.value.serialize();
+    void serializedAfterRestore;
+  }
+
   const started = loaded.value.startStage(startOptions);
   if (started.ok) {
     started.value.tick(input);
@@ -503,6 +522,8 @@ core.load(null);
 if (loaded.ok) {
   // @ts-expect-error startStage requires StartStageOptions at the public type boundary.
   loaded.value.startStage(null);
+  // @ts-expect-error restore requires SerializedGameState at the public type boundary.
+  loaded.value.restore(null);
 }
 
 // @ts-expect-error stageId must use the stage.* namespace.
@@ -861,6 +882,15 @@ scoreChangedEvent.total = 0;
 // @ts-expect-error entity.notFound is an internal invariant, not a public CoreErrorCode.
 const invalidCoreErrorCode: CoreErrorCode = "entity.notFound";
 
+// @ts-expect-error state.registryInvalid is introduced with restore registry validation, not 5A.
+const prematureRegistryInvalidErrorCode: CoreErrorCode = "state.registryInvalid";
+
+// @ts-expect-error state.entityAllocatorInvalid is introduced with restore allocator validation, not 5A.
+const prematureEntityAllocatorInvalidErrorCode: CoreErrorCode = "state.entityAllocatorInvalid";
+
+// @ts-expect-error state.prngInvalid is introduced with restore PRNG validation, not 5A.
+const prematurePrngInvalidErrorCode: CoreErrorCode = "state.prngInvalid";
+
 const invalidEmptyPlayerShotsBatch: GameEvent = {
   type: "playerShotsSpawnedBatch",
   tick: 0,
@@ -1003,6 +1033,14 @@ void invalidConstraintErrorCode;
 void playerShotErrorCode;
 void fatalStageSessionErrorCode;
 void testHookFailureErrorCode;
+void restoreInvalidShapeErrorCode;
+void restoreCoreVersionMismatchErrorCode;
+void restoreSchemaVersionMismatchErrorCode;
+void restoreInputFormatVersionMismatchErrorCode;
+void restoreStateHashVersionMismatchErrorCode;
+void restoreContentMismatchErrorCode;
+void restoreFeatureMismatchErrorCode;
+void unsupportedSnapshotErrorCode;
 void difficulty;
 void enabledFeature;
 void assetKeys;
@@ -1091,6 +1129,9 @@ void invalidPlayerEntity;
 void invalidEnemyBulletEntity;
 void invalidPlayerShotEntity;
 void invalidCoreErrorCode;
+void prematureRegistryInvalidErrorCode;
+void prematureEntityAllocatorInvalidErrorCode;
+void prematurePrngInvalidErrorCode;
 void invalidEmptyPlayerShotsBatch;
 void invalidEnemyDestroyedByCollision;
 void invalidEnemyBulletDefeated;

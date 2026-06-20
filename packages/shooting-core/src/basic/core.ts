@@ -229,6 +229,9 @@ export type ShootingCore = {
  * `LoadedGame` は load 後の content mutation に影響されない snapshot を参照する。
  */
 export type LoadedGame = {
+  /** serialized snapshot から stage session を復元し、不整合や未対応 snapshot は `CoreResult` error として返す。 */
+  restore(state: SerializedGameState): CoreResult<StageSession>;
+  /** stage id / difficulty / player / seed から新しい stage session を開始する。 */
   startStage(options: StartStageOptions): CoreResult<StageSession>;
 };
 
@@ -329,6 +332,54 @@ type UntrustedCommittedStageState = Omit<CommittedStageState, "pendingEvents" | 
   prngState: unknown;
 }>;
 
+const MAX_RESTORE_TOP_LEVEL_STRING_LENGTH = 8_192;
+const MAX_RESTORE_ENABLED_FEATURES_LENGTH = 64;
+
+const RESTORE_TOP_LEVEL_KEY_MAP = Object.freeze({
+  coreVersion: true,
+  schemaVersion: true,
+  contentVersion: true,
+  inputFormatVersion: true,
+  stateHashVersion: true,
+  enabledFeatures: true,
+  stageId: true,
+  difficulty: true,
+  playerId: true,
+  expectedTick: true,
+  nextEntityId: true,
+  prngState: true,
+  state: true,
+} satisfies Record<keyof SerializedGameState, true>);
+
+const RESTORE_TOP_LEVEL_KEYS = Object.freeze(Object.keys(RESTORE_TOP_LEVEL_KEY_MAP)) as readonly (keyof SerializedGameState)[];
+
+type RestoreTopLevelField = typeof RESTORE_TOP_LEVEL_KEYS[number];
+type RestoreSchemaMetadata = Pick<SerializedGameState, "coreVersion" | "schemaVersion">;
+type RestoreVersionMetadata = Pick<
+  SerializedGameState,
+  "coreVersion" | "schemaVersion" | "contentVersion" | "inputFormatVersion" | "stateHashVersion"
+>;
+type RestoreCompatibilityMetadata = Readonly<RestoreVersionMetadata & {
+  enabledFeatures: readonly string[];
+  stageId: StageId;
+  difficulty: Difficulty;
+  playerId: PlayerId;
+}>;
+
+/**
+ * 復元互換性を判定する top-level serialized state。
+ *
+ * `enabledFeatures` は将来 feature 名を `state.featureMismatch` に分類できるよう、
+ * shape guard では string array までに留める。
+ */
+type RestoreTopLevelState = Readonly<
+  Omit<Pick<SerializedGameState, RestoreTopLevelField>, "enabledFeatures" | "prngState" | "state"> & {
+    enabledFeatures: readonly string[];
+    prngState: unknown;
+    state: unknown;
+  }
+>;
+
 type WorkingStageState = {
   expectedTick: number;
   activeEntities: RuntimeEntityState[];
@@ -394,6 +445,68 @@ function createLoadedGame(
   testingHooks: StageSessionTestingHookOptions,
 ): LoadedGame {
   return Object.freeze({
+    restore(rawState) {
+      const schemaMetadata = parseRestoreSchemaMetadata(rawState);
+      if (!schemaMetadata.ok) {
+        return schemaMetadata;
+      }
+      const schemaCompatibility = validateRestoreSchemaCompatibility(schemaMetadata.value, content, coreVersion);
+      if (!schemaCompatibility.ok) {
+        return schemaCompatibility;
+      }
+      const topLevelState = cloneRestoreTopLevelPlainRecord(rawState);
+      if (!topLevelState.ok) {
+        return topLevelState;
+      }
+      const record = topLevelState.value;
+      const inputFormatVersion = parseRestoreTopLevelStringField(record, "inputFormatVersion");
+      if (!inputFormatVersion.ok) {
+        return inputFormatVersion;
+      }
+      const inputFormatCompatibility = validateRestoreInputFormatCompatibility(inputFormatVersion.value);
+      if (!inputFormatCompatibility.ok) {
+        return inputFormatCompatibility;
+      }
+      const stateHashVersion = parseRestoreStateHashVersion(record);
+      if (!stateHashVersion.ok) {
+        return stateHashVersion;
+      }
+      const stateHashCompatibility = validateRestoreStateHashVersionCompatibility(stateHashVersion.value);
+      if (!stateHashCompatibility.ok) {
+        return stateHashCompatibility;
+      }
+      const metadata = Object.freeze({
+        ...schemaMetadata.value,
+        contentVersion: "",
+        inputFormatVersion: inputFormatVersion.value,
+        stateHashVersion: stateHashVersion.value,
+      });
+      const compatibilityMetadata = parseRestoreCompatibilityMetadata(record, metadata);
+      if (!compatibilityMetadata.ok) {
+        return compatibilityMetadata;
+      }
+      const contentVersionCompatibility = validateRestoreContentVersionCompatibility(compatibilityMetadata.value.contentVersion, content);
+      if (!contentVersionCompatibility.ok) {
+        return contentVersionCompatibility;
+      }
+      const fullMetadata = Object.freeze({
+        ...metadata,
+        contentVersion: compatibilityMetadata.value.contentVersion,
+      });
+      const compatibility = validateRestoreContentCompatibility(compatibilityMetadata.value, content);
+      if (!compatibility.ok) {
+        return compatibility;
+      }
+      const state = parseRestoreTopLevelState(record, fullMetadata, compatibilityMetadata.value);
+      if (!state.ok) {
+        return state;
+      }
+
+      return error(
+        "state.unsupportedSnapshot",
+        "SerializedGameState deterministic payload restore is not supported by this core version",
+      );
+    },
     startStage(rawOptions) {
       const plainOptions = deepFreezePlainData(rawOptions);
       if (!plainOptions) {
@@ -1095,6 +1208,225 @@ function parseStartStageOptions(value: unknown): CoreResult<StartStageOptions> {
   }));
 }
 
+/** core / schema mismatch を現行 schema の key set より先に分類するための metadata だけを読む。 */
+function parseRestoreSchemaMetadata(value: unknown): CoreResult<RestoreSchemaMetadata> {
+  const coreVersion = readRestoreTopLevelDataProperty(value, "coreVersion");
+  if (!coreVersion.ok) {
+    return coreVersion;
+  }
+  if (!isRestoreTopLevelString(coreVersion.value)) {
+    return error("state.invalidShape", "coreVersion must be a string");
+  }
+
+  const schemaVersion = readRestoreTopLevelDataProperty(value, "schemaVersion");
+  if (!schemaVersion.ok) {
+    return schemaVersion;
+  }
+  if (!isRestoreTopLevelString(schemaVersion.value)) {
+    return error("state.invalidShape", "schemaVersion must be a string");
+  }
+
+  return okResult(Object.freeze({
+    coreVersion: coreVersion.value,
+    schemaVersion: schemaVersion.value,
+  }));
+}
+
+/**
+ * restore の early compatibility check 用に top-level data property だけを読む。
+ *
+ * schema mismatch を未知 field や deep payload shape より先に返したい一方で、
+ * getter / Proxy を発火させて public API 境界から例外を漏らさないための helper。
+ */
+function readRestoreTopLevelDataProperty(value: unknown, key: RestoreTopLevelField): CoreResult<unknown> {
+  try {
+    if (!isPlainObjectContainer(value)) {
+      return error("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor) {
+      return error("state.invalidShape", `${key} must be provided`);
+    }
+    if (!("value" in descriptor) || !descriptor.enumerable) {
+      return error("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
+    }
+
+    return okResult(descriptor.value);
+  } catch {
+    return error("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
+  }
+}
+
+/** top-level string metadata を field 単位で読む。 */
+function parseRestoreTopLevelStringField(
+  record: Record<string, unknown>,
+  key: keyof Pick<SerializedGameState, "contentVersion" | "inputFormatVersion" | "stageId" | "playerId">,
+): CoreResult<string> {
+  if (!isRestoreTopLevelString(record[key])) {
+    return error("state.invalidShape", `${key} must be a string`);
+  }
+
+  return okResult(record[key]);
+}
+
+/** state hash version を field 単位で読む。 */
+function parseRestoreStateHashVersion(record: Record<string, unknown>): CoreResult<number> {
+  if (typeof record.stateHashVersion !== "number" || !Number.isSafeInteger(record.stateHashVersion)) {
+    return error("state.invalidShape", "stateHashVersion must be a safe integer");
+  }
+
+  return okResult(record.stateHashVersion);
+}
+
+/** content / feature mismatch を payload container shape より先に分類するための metadata を読む。 */
+function parseRestoreCompatibilityMetadata(
+  record: Record<string, unknown>,
+  metadata: RestoreVersionMetadata,
+): CoreResult<RestoreCompatibilityMetadata> {
+  const contentVersion = parseRestoreTopLevelStringField(record, "contentVersion");
+  if (!contentVersion.ok) {
+    return contentVersion;
+  }
+  const enabledFeatures = parseRestoreEnabledFeatures(record.enabledFeatures);
+  if (!enabledFeatures.ok) {
+    return enabledFeatures;
+  }
+  const featureContract = validateRestoreEnabledFeatureContract(enabledFeatures.value);
+  if (!featureContract.ok) {
+    return featureContract;
+  }
+  const stageId = parseRestoreTopLevelStringField(record, "stageId");
+  if (!stageId.ok) {
+    return stageId;
+  }
+  if (!isNamespacedId(stageId.value, "stage")) {
+    return error("state.invalidShape", "stageId must use the stage.* namespace");
+  }
+  if (record.difficulty !== "normal" && record.difficulty !== "hard") {
+    return error("state.invalidShape", "difficulty must be normal or hard");
+  }
+  const playerId = parseRestoreTopLevelStringField(record, "playerId");
+  if (!playerId.ok) {
+    return playerId;
+  }
+  if (!isNamespacedId(playerId.value, "player")) {
+    return error("state.invalidShape", "playerId must use the player.* namespace");
+  }
+
+  return okResult(Object.freeze({
+    ...metadata,
+    contentVersion: contentVersion.value,
+    enabledFeatures: enabledFeatures.value,
+    stageId: stageId.value as StageId,
+    difficulty: record.difficulty,
+    playerId: playerId.value as PlayerId,
+  }));
+}
+
+/** 現行 schema の top-level metadata と deterministic payload container の最小 shape を検証する。 */
+function parseRestoreTopLevelState(
+  value: unknown,
+  metadata: RestoreVersionMetadata,
+  compatibilityMetadata: RestoreCompatibilityMetadata,
+): CoreResult<RestoreTopLevelState> {
+  const record = asRecord(value);
+  if (!record) {
+    return error("state.invalidShape", "SerializedGameState must be an object");
+  }
+  if (!hasOnlyKeys(record, RESTORE_TOP_LEVEL_KEYS)) {
+    return error("state.invalidShape", "SerializedGameState contains unknown top-level fields");
+  }
+  if (typeof record.expectedTick !== "number" || !Number.isSafeInteger(record.expectedTick) || record.expectedTick < 0) {
+    return error("state.invalidShape", "expectedTick must be a non-negative safe integer");
+  }
+  if (typeof record.nextEntityId !== "number" || !Number.isSafeInteger(record.nextEntityId) || record.nextEntityId < 1) {
+    return error("state.invalidShape", "nextEntityId must be a positive safe integer");
+  }
+  if (!isPlainObjectContainer(record.prngState)) {
+    return error("state.invalidShape", "prngState must be an object");
+  }
+  if (!isPlainObjectContainer(record.state)) {
+    return error("state.invalidShape", "state must be an object");
+  }
+
+  return okResult(Object.freeze({
+    ...metadata,
+    enabledFeatures: compatibilityMetadata.enabledFeatures,
+    stageId: compatibilityMetadata.stageId,
+    difficulty: compatibilityMetadata.difficulty,
+    playerId: compatibilityMetadata.playerId,
+    expectedTick: record.expectedTick,
+    nextEntityId: record.nextEntityId,
+    prngState: record.prngState,
+    state: record.state,
+  }));
+}
+
+/** core / schema mismatch は現行 schema の key set や詳細 shape より先に分類する。 */
+function validateRestoreSchemaCompatibility(
+  state: RestoreSchemaMetadata,
+  content: LoadedContentIndex,
+  coreVersion: string,
+): CoreResult<null> {
+  if (state.coreVersion !== coreVersion) {
+    return error("state.coreVersionMismatch", `coreVersion mismatch: expected ${coreVersion}, got ${state.coreVersion}`);
+  }
+  if (state.schemaVersion !== content.definition.schemaVersion) {
+    return error("state.schemaVersionMismatch", `schemaVersion mismatch: expected ${content.definition.schemaVersion}, got ${state.schemaVersion}`);
+  }
+
+  return okResult(null);
+}
+
+/** input format mismatch は現行 schema の key set や後続 metadata より先に分類する。 */
+function validateRestoreInputFormatCompatibility(inputFormatVersion: string): CoreResult<null> {
+  if (inputFormatVersion !== SERIALIZED_INPUT_FORMAT_VERSION) {
+    return error("state.inputFormatVersionMismatch", `inputFormatVersion mismatch: expected ${SERIALIZED_INPUT_FORMAT_VERSION}, got ${inputFormatVersion}`);
+  }
+
+  return okResult(null);
+}
+
+/** state hash version mismatch は現行 schema の key set や後続 metadata より先に分類する。 */
+function validateRestoreStateHashVersionCompatibility(stateHashVersion: number): CoreResult<null> {
+  if (stateHashVersion !== SERIALIZED_STATE_HASH_VERSION) {
+    return error("state.stateHashVersionMismatch", `stateHashVersion mismatch: expected ${SERIALIZED_STATE_HASH_VERSION}, got ${stateHashVersion}`);
+  }
+
+  return okResult(null);
+}
+
+/** content version mismatch は deterministic payload container shape より先に分類する。 */
+function validateRestoreContentVersionCompatibility(
+  contentVersion: string,
+  content: LoadedContentIndex,
+): CoreResult<null> {
+  if (contentVersion !== content.definition.content.version) {
+    return error("state.contentMismatch", "serialized content metadata does not match the loaded content");
+  }
+
+  return okResult(null);
+}
+
+/** public error に閉じ込める current schema の content 互換性を検査する。 */
+function validateRestoreContentCompatibility(
+  state: RestoreCompatibilityMetadata,
+  content: LoadedContentIndex,
+): CoreResult<null> {
+  if (!content.stagesById.has(state.stageId)
+    || !content.playersById.has(state.playerId)
+    || !content.stagesById.get(state.stageId)!.difficulties.includes(state.difficulty)
+  ) {
+    return error("state.contentMismatch", "serialized content metadata does not match the loaded content");
+  }
+  const enabledFeatures = canonicalizeEnabledFeatures(content.definition.enabledFeatures);
+  if (!sameOrderedValues(state.enabledFeatures, enabledFeatures)) {
+    return error("state.featureMismatch", "enabledFeatures do not match the loaded content");
+  }
+
+  return okResult(null);
+}
+
 function parseInputFrame(value: unknown): CoreResult<InputFrame> {
   const record = asRecord(value);
   if (!record) {
@@ -1163,10 +1495,124 @@ function hasIntersection(left: readonly InputFrame["held"][number][], right: rea
   return left.some((action) => rightActions.has(action));
 }
 
+/** feature list など、順序まで contract の一部である配列を比較する。 */
+function sameOrderedValues(left: readonly unknown[], right: readonly unknown[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 /** public API 境界で typo 付き field を silent accept しないための key 検査。 */
 function hasOnlyKeys(value: Record<string, unknown>, allowedKeys: readonly string[]): boolean {
   const allowed = new Set(allowedKeys);
   return Object.keys(value).every((key) => allowed.has(key));
+}
+
+/** restore の top-level string は deep guard を通らないため、ここで最小 budget を守る。 */
+function isRestoreTopLevelString(value: unknown): value is string {
+  return typeof value === "string" && value.length <= MAX_RESTORE_TOP_LEVEL_STRING_LENGTH;
+}
+
+/**
+ * restore 用に top-level の own data property だけを浅く clone する。
+ *
+ * `state` / `prngState` の deep payload はここでは読まず、後段の deterministic payload
+ * validator に渡す。互換性 metadata が nested payload の shape error にマスクされないことを優先する。
+ */
+function cloneRestoreTopLevelPlainRecord(value: unknown): CoreResult<Record<string, unknown>> {
+  try {
+    if (!isPlainObjectContainer(value)) {
+      return error("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
+    }
+    const record = value as Record<string, unknown>;
+    const clone = Object.create(null) as Record<string, unknown>;
+    for (const key of Object.getOwnPropertyNames(record)) {
+      const descriptor = Object.getOwnPropertyDescriptor(record, key);
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+        return error("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
+      }
+      clone[key] = descriptor.value;
+    }
+
+    return okResult(Object.freeze(clone));
+  } catch {
+    return error("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
+  }
+}
+
+/** enabledFeatures だけは top-level metadata として one-level の dense string array に clone / freeze する。 */
+function parseRestoreEnabledFeatures(value: unknown): CoreResult<readonly string[]> {
+  try {
+    if (!Array.isArray(value)) {
+      return error("state.invalidShape", "enabledFeatures must be an array of strings");
+    }
+    const length = value.length;
+    if (
+      !Number.isSafeInteger(length)
+      || length < 0
+      || length > MAX_RESTORE_ENABLED_FEATURES_LENGTH
+      || Object.getOwnPropertySymbols(value).length > 0
+    ) {
+      return error("state.invalidShape", "enabledFeatures must be an array of strings");
+    }
+    const propertyNames = Object.getOwnPropertyNames(value);
+    const clone: string[] = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable || typeof descriptor.value !== "string") {
+        return error("state.invalidShape", "enabledFeatures must be an array of strings");
+      }
+      if (descriptor.value.length > MAX_RESTORE_TOP_LEVEL_STRING_LENGTH) {
+        return error("state.invalidShape", "enabledFeatures must be an array of strings");
+      }
+      clone.push(descriptor.value);
+    }
+    for (const key of propertyNames) {
+      if (key === "length") {
+        continue;
+      }
+      const index = Number(key);
+      if (!Number.isSafeInteger(index) || index < 0 || index >= length || String(index) !== key) {
+        return error("state.invalidShape", "enabledFeatures must be an array of strings");
+      }
+    }
+    return okResult(Object.freeze(clone));
+  } catch {
+    return error("state.invalidShape", "enabledFeatures must be an array of strings");
+  }
+}
+
+/** enabledFeatures の canonical order / duplicate だけを shape contract として検査する。 */
+function validateRestoreEnabledFeatureContract(features: readonly string[]): CoreResult<null> {
+  const seen = new Set<string>();
+  let previousKnownIndex = -1;
+  for (const feature of features) {
+    if (seen.has(feature)) {
+      return error("state.invalidShape", "enabledFeatures must use canonical order without duplicates");
+    }
+    seen.add(feature);
+    const knownIndex = (KNOWN_ENABLED_FEATURES as readonly string[]).indexOf(feature);
+    if (knownIndex === -1) {
+      continue;
+    }
+    if (knownIndex <= previousKnownIndex) {
+      return error("state.invalidShape", "enabledFeatures must use canonical order without duplicates");
+    }
+    previousKnownIndex = knownIndex;
+  }
+
+  return okResult(null);
+}
+
+/** nested payload の property は未検証なので読まず、plain object shell かだけを見る。 */
+function isPlainObjectContainer(value: unknown): boolean {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return false;
+    }
+    const prototype = Object.getPrototypeOf(value);
+    return (prototype === Object.prototype || prototype === null) && Object.getOwnPropertySymbols(value).length === 0;
+  } catch {
+    return false;
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

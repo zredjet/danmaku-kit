@@ -1151,10 +1151,10 @@ DSL の失敗時挙動:
 
 以下の型例は、現在実装済みの public method、現在実装済みの public DTO contract、
 future API を分けて示す。現在実装済みの public method は
-`ShootingCore.load()`、`LoadedGame.startStage()`、`StageSession.tick()`、`StageSession.serialize()` である。
+`ShootingCore.load()`、`LoadedGame.startStage()`、`LoadedGame.restore()`、`StageSession.tick()`、`StageSession.serialize()` である。
 Phase 1B-3 で `SerializedGameState` などの public DTO 型境界を追加し、Phase 1B-4 で
-root export 済みの `StageSession` 自体へ `serialize()` を追加済みである。Phase 1B-5 で
-root export 済みの `LoadedGame` 自体へ `restore()` を追加する。
+root export 済みの `StageSession` 自体へ `serialize()` を追加済みである。Phase 1B-5A で
+root export 済みの `LoadedGame` 自体へ `restore()` を追加済みである。
 Phase 1B-7 は metadata-only の `ReplayMetadata` だけを追加し、replay playback 系 API は post-1B で扱う。
 
 ```ts
@@ -1372,6 +1372,7 @@ type ShootingCore = {
 };
 
 type LoadedGame = {
+  restore(state: SerializedGameState): CoreResult<StageSession>;
   startStage(options: StartStageOptions): CoreResult<StageSession>;
 };
 
@@ -1380,14 +1381,8 @@ type StageSession = {
   serialize(): CoreResult<SerializedGameState>;
 };
 
-// Phase 1B-5 で root export 済みの LoadedGame 自体へ restore() を追加する。
-// RestorableLoadedGame は設計説明用 alias であり、別名の public export は増やさない。
-type RestorableLoadedGame = LoadedGame & {
-  restore(state: SerializedGameState): CoreResult<StageSession>;
-};
-
 // post-1B replay playback API。
-type ReplayLoadedGame = RestorableLoadedGame & {
+type ReplayLoadedGame = LoadedGame & {
   createReplayPlayback(replay: ReplayPlayback): CoreResult<ReplaySession>;
   restoreReplayPlayback(replay: ReplayPlayback, state: SerializedReplayPlaybackState): CoreResult<ReplaySession>;
 };
@@ -1408,11 +1403,11 @@ Runtime は `tick()` の戻り値に含まれる `GameFrame.events` を読んで
 
 Phase 1B の `SerializedRuntimeEntityState` は現行 runtime が正本を持つ state だけを含める。将来 PathRunner が segment index、segment start `p0`、segment 内経過 tick `t`、sine offset の phase などを runtime state として持つ slice では、enemy serialized payload に `pathRunnerState` を schema version 付きで追加する。現在座標、`pathId`、`patternId` だけから path movement を逆算して restore することは禁止する。
 
-`SerializedPatternRunnerState.runnerId` は `patternRunner.${string}` の namespace 付き ID とし、`patternRunner.` のような空 suffix は restore で拒否する。同一 snapshot 内で一意にし、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は top-level `enabledFeatures` と同じ canonical feature order で出力する。`runnerId` の比較に `localeCompare` や JavaScript の UTF-16 code unit order を使わない。canonical feature order は `["bomb", "graze", "affinity", "rank", "pickup", "advancedScoring"]` の順に固定し、実装はこの順序を `KNOWN_ENABLED_FEATURES` の正本として扱う。ただし package runtime の value export は `createShootingCore` に限定し、feature order は schema / type contract と test で固定する。restore は型や shape の不正を `state.invalidShape`、top-level `enabledFeatures` と feature state の extra / missing / wrong feature を `state.featureMismatch` として一意に分類する。top-level `enabledFeatures` に含まれる feature の `enabledFeatureStates` 欠落可否は module ごとの serialized-state contract で宣言し、stateful feature は欠落を拒否する。
+`SerializedPatternRunnerState.runnerId` は `patternRunner.${string}` の namespace 付き ID とし、`patternRunner.` のような空 suffix は restore で拒否する。同一 snapshot 内で一意にし、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は top-level `enabledFeatures` と同じ canonical feature order で出力する。`runnerId` の比較に `localeCompare` や JavaScript の UTF-16 code unit order を使わない。canonical feature order は `["bomb", "graze", "affinity", "rank", "pickup", "advancedScoring"]` の順に固定し、実装はこの順序を `KNOWN_ENABLED_FEATURES` の正本として扱う。ただし package runtime の value export は `createShootingCore` に限定し、feature order は schema / type contract と test で固定する。restore は型、shape、top-level `enabledFeatures` の重複や canonical order 違反を `state.invalidShape`、loaded content との top-level feature 差分や unknown feature、feature state の extra / missing / wrong feature を `state.featureMismatch` として分類する。top-level `enabledFeatures` に含まれる feature の `enabledFeatureStates` 欠落可否は module ごとの serialized-state contract で宣言し、stateful feature は欠落を拒否する。
 
 `SerializedPatternRunnerState.payload` と `SerializedEnabledFeatureState.payload` は public な `SerializedJsonValue` だけを許可し、state hash では canonical encoding の対象にする。`number` は finite number のみ有効とし、`NaN` / `Infinity` は restore validation で `state.invalidShape` にする。hash では `-0` を `+0` に正規化し、finite number を IEEE-754 binary64 little-endian bytes として encode する。string は lone surrogate を含む場合に `state.invalidShape` として拒否し、payload の object key は UTF-8 byte sequence の lexicographic order で正規化する。module ごとの `stateVersion` は正の safe integer とし、未対応 version は module ごとの互換性 error で拒否する。Phase 1B-3 は型境界だけを固定し、basic core が実際に `patternRunnerStates: []` と `enabledFeatureStates: []` を出力する処理は Phase 1B-4 の serialize 実装で追加する。restore 時の top-level `enabledFeatures` と feature state の整合検証は Phase 1B-5 で扱う。
 
-Core API は transactional とする。現在実装済みの `load()` と `startStage()` は成功時だけ新しい handle を返し、失敗時に既存の `LoadedGame` / `StageSession` を部分更新しない。Phase 1B-5 で追加する `restore()`、post-1B replay playback で追加する `createReplayPlayback()` / `restoreReplayPlayback()` も同じ transactional 契約に従う。Core version は `ShootingCore.coreVersion` が持ち、content が申告する値ではない。`StageSession.tick()` は session 内の `expectedTick` を持ち、`input.tick !== expectedTick`、重複 tick、欠番 tick を caller precondition error として返すが、session を fatal にしない。Runtime は dropped tick を replay 入力として補完せず、実際に Simulation へ渡した `InputFrame` だけを保存する。
+Core API は transactional とする。現在実装済みの `load()`、`startStage()`、`restore()` は成功時だけ新しい handle を返し、失敗時に既存の `LoadedGame` / `StageSession` を部分更新しない。Phase 1B-5A 時点の `restore()` は top-level metadata と互換性 error boundary を固定し、compatible snapshot は `state.unsupportedSnapshot` で停止する。Phase 1B-5D の deterministic payload restore でも同じ transactional 契約に従う。post-1B replay playback で追加する `createReplayPlayback()` / `restoreReplayPlayback()` も同じ方針にする。Core version は `ShootingCore.coreVersion` が持ち、content が申告する値ではない。`StageSession.tick()` は session 内の `expectedTick` を持ち、`input.tick !== expectedTick`、重複 tick、欠番 tick を caller precondition error として返すが、session を fatal にしない。Runtime は dropped tick を replay 入力として補完せず、実際に Simulation へ渡した `InputFrame` だけを保存する。
 
 `ContentRegistry` は外部データの参照関係を検証する境界でもある。Stage の `music`、`background`、timeline 内の `enemy` と `path`、`clearCondition.bossDefeated.enemy`、Enemy の `asset`、`behavior.pattern`、Boss phase の `phases[].pattern`、Pattern の `fireOnSpawn.bullet`、Bullet/Player/PlayerShot の `asset` はすべて registry 経由で解決し、未定義 ID を schema test で検出する。Feature registry が登録された場合だけ、Pickup、Bomb、Affinity、Rank、advanced scoring の参照を追加検証する。
 
@@ -1468,7 +1463,7 @@ Feature module 導入後の `enabledFeatures` は optional module の境界で�
 
 Optional module は論理分離だけでなく source / export 境界も分ける。Core minimum は `packages/shooting-core/src/basic/` と root export に置く。Bomb、Graze、Affinity、Rank、Pickup、advanced scoring は `packages/shooting-core/src/features/<feature>/` に置き、feature registration を通じて schema fragments、validation rules、systems、collision pairs、input actions を追加する。root package に型名を置く場合でも、feature 固有 field は discriminated extension として扱い、enabled feature なしでは参照できない。
 
-`StageSession.tick()` は stage session が active でない場合、`gameOver` / `stageCleared` 後、または tick mismatch 時に `CoreResult` の error を返す。precondition violation を silent no-op にしない。`gameOver` / `stageCleared` 後の余分な tick と tick mismatch は caller precondition error であり、session を fatal にしない。budget invariant 破壊、不正 state、内部 system order 違反は fatal error とし、以後の `tick()` は同じ fatal reason を返す。tick 更新は commit 前の working state で実行し、成功時だけ committed state に swap するため、部分更新された state は公開しない。Phase 1B-4 で追加する `serialize()` は fatal 後に error を返す。Phase 1B-5 で追加する `restore()` は version mismatch、壊れた state、不正 registry、top-level feature mismatch を `CoreError[]` として返し、失敗時に既存 handle へ副作用を残さない。feature state の欠落・余剰・wrong feature は Phase 1B-5C の extension state validation で扱う。
+`StageSession.tick()` は stage session が active でない場合、`gameOver` / `stageCleared` 後、または tick mismatch 時に `CoreResult` の error を返す。precondition violation を silent no-op にしない。`gameOver` / `stageCleared` 後の余分な tick と tick mismatch は caller precondition error であり、session を fatal にしない。budget invariant 破壊、不正 state、内部 system order 違反は fatal error とし、以後の `tick()` は同じ fatal reason を返す。tick 更新は commit 前の working state で実行し、成功時だけ committed state に swap するため、部分更新された state は公開しない。Phase 1B-4 で追加済みの `serialize()` は fatal 後に error を返す。Phase 1B-5A で追加済みの `restore()` は version mismatch、top-level content / feature mismatch、top-level shape error を `CoreError[]` として返し、失敗時に既存 handle へ副作用を残さない。runtime entity、pending event、PRNG、allocator、registry reference の deep validation は Phase 1B-5B、feature state の欠落・余剰・wrong feature は Phase 1B-5C の extension state validation で扱う。
 
 post-1B replay playback API の `createReplayPlayback()` は開始前に `ReplayPlayback.inputs` の tick が 0 から始まる連続列であること、重複と欠番がないこと、metadata の `stageId` / `difficulty` / `playerId` と一致することを検証する。また、`ShootingCore.coreVersion`、`schemaVersion`、`content.version`、`inputFormatVersion` の互換性を検証し、完全一致は保証対象、minor mismatch は warning 付き best-effort、major mismatch は error とする。`ReplaySession.tick()` は現在 cursor の input を消費し、cursor を 1 進める。入力列をすべて消費した時点で stage が terminal state なら `replayFinished` terminal frame を 1 回返し、それ以後の `tick()` は terminal precondition error を返す。入力列を消費し切っても stage が active の場合は replay truncation error を返す。`ReplaySession.serialize()` は `SerializedReplayPlaybackState` として replay cursor を含め、`restoreReplayPlayback()` は次に読む input index を復元する。
 
@@ -1807,6 +1802,6 @@ MVP では対象外だが、再利用基盤として以下を追跡する。
 
 Phase 1A の Core minimum contract は、TypeScript package、最小 content schema、registry validation、fixed tick、InputFrame、immutable event log、Entity/Component、seed/PRNG、Player / Enemy / EnemyBullet / PlayerShot、minimum Pattern `fireOnSpawn`、MVP collision resolution pair、fixed `scoreOnKill`、package boundary test まで実装済みである。collision broad phase は Phase 1A 完了条件ではなく、playable runtime へ向けた後続性能タスクとして残す。
 
-次の作業は Phase 1B-5A の restore API / error boundary である。`LoadedGame.restore(state): CoreResult<StageSession>` を追加し、`SerializedGameState` の top-level shape、version mismatch、`contentVersion` / `stageId` / `difficulty` / `playerId` mismatch、top-level `enabledFeatures` mismatch を public restore error に閉じ込める。runtime entity や registry 参照などの深い validation と、`state.enabledFeatureStates` の欠落・余剰・wrong feature などの extension state validation は Phase 1B-5B 以降に残す。restore 成功後の session は既存の `StageSession.serialize(): CoreResult<SerializedGameState>` を持つ。
+次の作業は Phase 1B-5B の deterministic payload restore shape / registry / runtime budget validation である。`LoadedGame.restore(state): CoreResult<StageSession>` の public API と top-level error boundary は実装済みであり、compatible snapshot は 5A 時点では `state.unsupportedSnapshot` を返す。次は runtime entity、pending event、registry reference、PRNG / allocator snapshot の deep validation と budget validation を `CoreResult` の restore 用 public error に閉じ込め、accepted committed state への変換準備へ進める。`state.enabledFeatureStates` の欠落・余剰・wrong feature などの extension state validation は Phase 1B-5C 以降に残す。
 
-runtime entity 以降の deep shape / registry validation、transactional restore、state hash、replay metadata は `docs/implementation-plan.md` の Phase 1B-5B 以降へ分ける。
+runtime entity 以降の deep shape / registry / runtime budget validation、transactional restore、state hash、replay metadata は `docs/implementation-plan.md` の Phase 1B-5B 以降へ分ける。
