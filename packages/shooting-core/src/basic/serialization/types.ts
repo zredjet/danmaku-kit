@@ -125,7 +125,7 @@ type SerializedPlayerRuntimeEntityState = SerializedRuntimeEntityBase & Readonly
 /**
  * restore に必要な enemy runtime state。sprite / view id は adapter 側の責務に残す。
  *
- * Phase 1B-5 で追加する restore は hp を非負 finite number、scoreOnKill を非負 safe integer として
+ * Phase 1B-5 で追加する restore は enemy hp を非負 finite number、scoreOnKill を非負 safe integer として
  * 検証する。PathRunner が segment state を持つ slice では、この payload に schema version 付きの
  * path runner state を追加し、現在座標から movement state を逆算しない。
  */

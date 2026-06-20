@@ -917,6 +917,18 @@ test("restore validates each runtime entity kind before the unsupported boundary
   expectRestoreError({ ...playerShot, damage: 0 }, "state.invalidShape", /damage/);
   expectRestoreError({ ...playerShot, damage: 6 }, "state.invalidShape", /player shot definition/);
 
+  const zeroHpRestore = loaded.value.restore({
+    ...serialized.value,
+    state: {
+      ...serialized.value.state,
+      runtimeEntities: serialized.value.state.runtimeEntities.map((entity) => (
+        entity.id === enemy.id ? { ...enemy, hp: 0 } : entity
+      )),
+    },
+  } as SerializedGameState);
+  assert.equal(zeroHpRestore.ok, false);
+  assert.equal(!zeroHpRestore.ok && zeroHpRestore.errors[0]?.code, "state.unsupportedSnapshot");
+
   const expectEntityOrderError = (runtimeEntities: typeof serialized.value.state.runtimeEntities) => {
     const restored = loaded.value.restore({
       ...serialized.value,
@@ -1035,18 +1047,24 @@ test("restore validates each runtime entity kind before the unsupported boundary
   ]);
 });
 
-test("restore defers compatible deterministic payload restore to the next slice", () => {
-  const loaded = loadMinimumGame("core.test");
+test("restore converts initial deterministic payload to committed state before the unsupported boundary", () => {
   const validState = serializeInitialStageState("core.test");
+  const restoreInput = toNullPrototypePlainData(validState);
+  const capturedSnapshots: SerializedGameState[] = [];
+  const loaded = loadGameWithRestoreCapture(createMinimumDefinition(), capturedSnapshots);
 
-  const restored = loaded.restore(validState);
+  assert.notDeepEqual(restoreInput, validState);
+  const restored = loaded.restore(restoreInput);
   assert.equal(restored.ok, false);
   assert.equal(!restored.ok && restored.errors[0]?.code, "state.unsupportedSnapshot");
   assert.match(!restored.ok ? restored.errors[0]?.message ?? "" : "", /deterministic payload restore is not supported/);
+  assert.deepEqual(capturedSnapshots, [validState]);
 });
 
-test("restore accepts ticked snapshots up to the 5A unsupported boundary", () => {
-  const loaded = loadMinimumGame("core.test");
+test("restore converts multi-entity deterministic payload to committed state before the unsupported boundary", () => {
+  const definition = createFireOnSpawnAtZeroDefinition();
+  const capturedSnapshots: SerializedGameState[] = [];
+  const loaded = loadGameWithRestoreCapture(definition, capturedSnapshots);
   const started = startStageFromLoadedGame(loaded);
   const frame = started.tick(createShotInputFrame(0));
   assert.equal(frame.ok, true);
@@ -1059,9 +1077,36 @@ test("restore accepts ticked snapshots up to the 5A unsupported boundary", () =>
 
   assert.equal(serialized.value.expectedTick, 1);
   assert.ok(serialized.value.nextEntityId > 2);
-  const restored = loaded.restore(serialized.value);
+  const restoreInput = toNullPrototypePlainData(serialized.value);
+  assert.notDeepEqual(restoreInput, serialized.value);
+  const restored = loaded.restore(restoreInput);
   assert.equal(restored.ok, false);
   assert.equal(!restored.ok && restored.errors[0]?.code, "state.unsupportedSnapshot");
+  assert.deepEqual(capturedSnapshots, [serialized.value]);
+});
+
+test("restore conversion preserves score and timeline cursor before the unsupported boundary", () => {
+  const definition = createCollisionScoreDefinition();
+  const capturedSnapshots: SerializedGameState[] = [];
+  const loaded = loadGameWithRestoreCapture(definition, capturedSnapshots);
+  const started = startStageFromLoadedGame(loaded);
+  const frame = started.tick(createShotInputFrame(0));
+  assert.equal(frame.ok, true);
+
+  const serialized = started.serialize();
+  assert.equal(serialized.ok, true);
+  if (!serialized.ok) {
+    assert.fail("expected serialized state");
+  }
+  assert.equal(serialized.value.state.score, 100);
+  assert.equal(serialized.value.state.timelineCursor, 1);
+
+  const restoreInput = toNullPrototypePlainData(serialized.value);
+  assert.notDeepEqual(restoreInput, serialized.value);
+  const restored = loaded.restore(restoreInput);
+  assert.equal(restored.ok, false);
+  assert.equal(!restored.ok && restored.errors[0]?.code, "state.unsupportedSnapshot");
+  assert.deepEqual(capturedSnapshots, [serialized.value]);
 });
 
 test("returns identical frames for identical seed and input sequence", () => {
@@ -3960,6 +4005,38 @@ function loadMinimumGame(coreVersion = "0.0.0") {
   }
 
   return loaded.value;
+}
+
+function loadGameWithRestoreCapture(
+  definition: GameDefinition,
+  capturedSnapshots: SerializedGameState[],
+  coreVersion = "core.test",
+) {
+  const loaded = createShootingCoreWithTestingHooksForTest(coreVersion, {
+    recordRestoreSerializedSnapshot: (snapshot) => capturedSnapshots.push(snapshot),
+  }).load(definition);
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+
+  return loaded.value;
+}
+
+function toNullPrototypePlainData<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => toNullPrototypePlainData(item)) as T;
+  }
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+
+  const clone = Object.create(null) as Record<string, unknown>;
+  for (const [key, child] of Object.entries(value)) {
+    clone[key] = toNullPrototypePlainData(child);
+  }
+
+  return clone as T;
 }
 
 function serializeInitialStageState(coreVersion = "0.0.0"): SerializedGameState {

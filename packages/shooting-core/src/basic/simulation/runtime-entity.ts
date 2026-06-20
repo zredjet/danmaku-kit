@@ -117,6 +117,50 @@ export type RuntimeEntityState =
   | EnemyBulletRuntimeEntity
   | PlayerShotRuntimeEntity;
 
+/** 検証済み snapshot から player runtime entity を復元するための入力。 */
+export type RestoredPlayerRuntimeEntityInput = Readonly<{
+  id: EntityId;
+  definitionId: PlayerId;
+  position: Vector2;
+  movement: PlayerRuntimeEntity["movement"];
+  collisionRadius: number;
+  lives: number;
+  invincibleTicksRemaining: number;
+  shotDefinitionId: PlayerShotId;
+  nextShotAllowedTick: number;
+}>;
+
+/** 検証済み snapshot から enemy runtime entity を復元するための入力。 */
+export type RestoredEnemyRuntimeEntityInput = Readonly<{
+  id: EntityId;
+  definitionId: EnemyId;
+  position: Vector2;
+  pathId: PathId;
+  patternId: PatternId;
+  collisionRadius: number;
+  hp: number;
+  scoreOnKill: number;
+}>;
+
+/** 検証済み snapshot から enemy bullet runtime entity を復元するための入力。 */
+export type RestoredEnemyBulletRuntimeEntityInput = Readonly<{
+  id: EntityId;
+  definitionId: BulletId;
+  position: Vector2;
+  collisionRadius: number;
+}>;
+
+/** 検証済み snapshot から player shot runtime entity を復元するための入力。 */
+export type RestoredPlayerShotRuntimeEntityInput = Readonly<{
+  id: EntityId;
+  definitionId: PlayerShotId;
+  position: Vector2;
+  velocity: Vector2;
+  collisionRadius: number;
+  damage: number;
+  remainingLifetimeTicks: number;
+}>;
+
 /** PlayerDefinition から stage 開始時の player runtime entity を作る。 */
 export function createPlayerRuntimeEntity(
   allocator: EntityAllocator,
@@ -127,9 +171,8 @@ export function createPlayerRuntimeEntity(
     return entity;
   }
 
-  return okResult(Object.freeze({
+  return okResult(createRestoredPlayerRuntimeEntity({
     id: entity.value.id,
-    kind: "player",
     definitionId: player.id,
     position: DEFAULT_PLAYER_START_POSITION,
     movement: Object.freeze({
@@ -155,9 +198,8 @@ export function createEnemyRuntimeEntity(
     return entity;
   }
 
-  return okResult(Object.freeze({
+  return okResult(createRestoredEnemyRuntimeEntity({
     id: entity.value.id,
-    kind: "enemy",
     definitionId: enemy.id,
     position: Object.freeze({
       x: action.position.x,
@@ -186,9 +228,8 @@ export function createEnemyBulletRuntimeEntity(
     return entity;
   }
 
-  return okResult(Object.freeze({
+  return okResult(createRestoredEnemyBulletRuntimeEntity({
     id: entity.value.id,
-    kind: "enemyBullet",
     definitionId: bullet.id,
     position: Object.freeze({ x: position.x, y: position.y }),
     collisionRadius: bullet.collision.radius,
@@ -206,9 +247,8 @@ export function createPlayerShotRuntimeEntity(
     return entity;
   }
 
-  return okResult(Object.freeze({
+  return okResult(createRestoredPlayerShotRuntimeEntity({
     id: entity.value.id,
-    kind: "playerShot",
     definitionId: playerShot.id,
     position: Object.freeze({ x: position.x, y: position.y }),
     velocity: Object.freeze({
@@ -219,6 +259,69 @@ export function createPlayerShotRuntimeEntity(
     damage: playerShot.damage,
     remainingLifetimeTicks: playerShot.projectile.lifetimeTicks,
   }));
+}
+
+/** restore 済み player component を runtime が使う immutable entity に戻す。 */
+export function createRestoredPlayerRuntimeEntity(input: RestoredPlayerRuntimeEntityInput): PlayerRuntimeEntity {
+  return Object.freeze({
+    id: input.id,
+    kind: "player",
+    definitionId: input.definitionId,
+    position: Object.freeze({ x: input.position.x, y: input.position.y }),
+    movement: Object.freeze({
+      speed: input.movement.speed,
+      focusSpeed: input.movement.focusSpeed,
+    }),
+    collisionRadius: input.collisionRadius,
+    lives: input.lives,
+    invincibleTicksRemaining: input.invincibleTicksRemaining,
+    shotDefinitionId: input.shotDefinitionId,
+    nextShotAllowedTick: input.nextShotAllowedTick,
+  });
+}
+
+/** restore 済み enemy component を runtime が使う immutable entity に戻す。 */
+export function createRestoredEnemyRuntimeEntity(input: RestoredEnemyRuntimeEntityInput): EnemyRuntimeEntity {
+  return Object.freeze({
+    id: input.id,
+    kind: "enemy",
+    definitionId: input.definitionId,
+    position: Object.freeze({ x: input.position.x, y: input.position.y }),
+    pathId: input.pathId,
+    patternId: input.patternId,
+    collisionRadius: input.collisionRadius,
+    hp: input.hp,
+    scoreOnKill: input.scoreOnKill,
+  });
+}
+
+/** restore 済み enemy bullet component を runtime が使う immutable entity に戻す。 */
+export function createRestoredEnemyBulletRuntimeEntity(
+  input: RestoredEnemyBulletRuntimeEntityInput,
+): EnemyBulletRuntimeEntity {
+  return Object.freeze({
+    id: input.id,
+    kind: "enemyBullet",
+    definitionId: input.definitionId,
+    position: Object.freeze({ x: input.position.x, y: input.position.y }),
+    collisionRadius: input.collisionRadius,
+  });
+}
+
+/** restore 済み player shot component を runtime が使う immutable entity に戻す。 */
+export function createRestoredPlayerShotRuntimeEntity(
+  input: RestoredPlayerShotRuntimeEntityInput,
+): PlayerShotRuntimeEntity {
+  return Object.freeze({
+    id: input.id,
+    kind: "playerShot",
+    definitionId: input.definitionId,
+    position: Object.freeze({ x: input.position.x, y: input.position.y }),
+    velocity: Object.freeze({ x: input.velocity.x, y: input.velocity.y }),
+    collisionRadius: input.collisionRadius,
+    damage: input.damage,
+    remainingLifetimeTicks: input.remainingLifetimeTicks,
+  });
 }
 
 /** runtime entity から公開 frame 用の immutable snapshot を作る。 */

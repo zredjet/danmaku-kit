@@ -45,9 +45,20 @@ import {
   DEFAULT_PLAYER_START_POSITION,
   createEnemyRuntimeEntity,
   createPlayerRuntimeEntity,
+  createRestoredEnemyBulletRuntimeEntity,
+  createRestoredEnemyRuntimeEntity,
+  createRestoredPlayerRuntimeEntity,
+  createRestoredPlayerShotRuntimeEntity,
   toReadonlyEntityState,
 } from "./simulation/runtime-entity.ts";
-import type { EnemyRuntimeEntity, PlayerRuntimeEntity, ReadonlyEntityState, RuntimeEntityState } from "./simulation/runtime-entity.ts";
+import type {
+  EnemyBulletRuntimeEntity,
+  EnemyRuntimeEntity,
+  PlayerRuntimeEntity,
+  PlayerShotRuntimeEntity,
+  ReadonlyEntityState,
+  RuntimeEntityState,
+} from "./simulation/runtime-entity.ts";
 import { freezeEntitiesInIdOrder } from "./simulation/system-order.ts";
 import { XorShift32 } from "./simulation/prng.ts";
 import type { SerializedPrngState } from "./simulation/prng.ts";
@@ -452,6 +463,13 @@ type WorkingStageState = {
   timelineCursor: number;
 };
 
+type ValidatedRestoreDeterministicPayload = Readonly<{
+  activeEntities: readonly RuntimeEntityState[];
+  pendingEvents: readonly CommittedPendingEvent[];
+  score: number;
+  timelineCursor: number;
+}>;
+
 type StageSessionTestingHookOptions = Readonly<{
   corruptCommittedPrngStateTicks?: readonly number[];
   failAfterWorkingMutationTicks?: readonly number[];
@@ -468,6 +486,7 @@ type StageSessionTestingHookOptions = Readonly<{
   overrideCommittedPendingEventsOnSerialize?: readonly unknown[];
   overrideCommittedPrngStateOnSerialize?: unknown;
   recordCommittedStateOnFatal?: (state: CommittedStageState) => void;
+  recordRestoreSerializedSnapshot?: (state: SerializedGameState) => void;
 }>;
 
 type ActiveStageSessionTestingHooks = Readonly<{
@@ -568,10 +587,20 @@ function createLoadedGame(
       if (!prng.ok) {
         return prng;
       }
-      const payload = validateRestoreDeterministicPayload(state.value, content);
+      const payload = parseRestoreDeterministicPayload(state.value, content);
       if (!payload.ok) {
         return payload;
       }
+      const committedSnapshot = createRestoreCommittedSnapshot(
+        state.value,
+        payload.value,
+        prng.value,
+        createRestoreSerializationMetadata(fullMetadata, compatibilityMetadata.value, content),
+      );
+      if (!committedSnapshot.ok) {
+        return committedSnapshot;
+      }
+      testingHooks.recordRestoreSerializedSnapshot?.(committedSnapshot.value);
 
       return error(
         "state.unsupportedSnapshot",
@@ -639,6 +668,25 @@ function createLoadedGame(
         testingHooks: createActiveStageSessionTestingHooks(testingHooks),
       }));
     },
+  });
+}
+
+/** restore metadata を StageSession が保持する serialization metadata と同じ形へ変換する。 */
+function createRestoreSerializationMetadata(
+  versionMetadata: RestoreVersionMetadata,
+  compatibilityMetadata: RestoreCompatibilityMetadata,
+  content: LoadedContentIndex,
+): StageSessionSerializationMetadata {
+  return Object.freeze({
+    coreVersion: versionMetadata.coreVersion,
+    schemaVersion: versionMetadata.schemaVersion,
+    contentVersion: versionMetadata.contentVersion,
+    inputFormatVersion: SERIALIZED_INPUT_FORMAT_VERSION,
+    stateHashVersion: SERIALIZED_STATE_HASH_VERSION,
+    enabledFeatures: canonicalizeEnabledFeatures(content.definition.enabledFeatures),
+    stageId: compatibilityMetadata.stageId,
+    difficulty: compatibilityMetadata.difficulty,
+    playerId: compatibilityMetadata.playerId,
   });
 }
 
@@ -1503,8 +1551,8 @@ function validateRestoreContentCompatibility(
   return okResult(null);
 }
 
-/** PRNG の復元失敗を LoadedGame.restore 用の public error に包む。 */
-function validateRestorePrngSnapshot(prngState: unknown): CoreResult<null> {
+/** PRNG の復元失敗を LoadedGame.restore 用の public error に包み、committed snapshot 用に正規化する。 */
+function validateRestorePrngSnapshot(prngState: unknown): CoreResult<SerializedPrngState> {
   const state = cloneRestorePlainRecord(prngState, "prngState", ["state"]);
   if (!state.ok) {
     return state;
@@ -1514,14 +1562,14 @@ function validateRestorePrngSnapshot(prngState: unknown): CoreResult<null> {
     return error("state.prngInvalid", "prngState cannot be restored by the PRNG");
   }
 
-  return okResult(null);
+  return okResult(prng.value.snapshot());
 }
 
-/** deterministic payload の shape、registry reference、runtime budget を検証する。 */
-function validateRestoreDeterministicPayload(
+/** deterministic payload を検証し、committed 変換前 DTO へ正規化する。 */
+function parseRestoreDeterministicPayload(
   state: RestoreTopLevelState,
   content: LoadedContentIndex,
-): CoreResult<null> {
+): CoreResult<ValidatedRestoreDeterministicPayload> {
   const record = cloneRestorePlainRecord(state.state, "state", [
     "runtimeEntities",
     "pendingEvents",
@@ -1606,7 +1654,45 @@ function validateRestoreDeterministicPayload(
     return error("state.invalidShape", "state.enabledFeatureStates must be empty in the basic core");
   }
 
-  return okResult(null);
+  return okResult(Object.freeze({
+    activeEntities: runtimeEntitiesContract.value,
+    pendingEvents: pendingEventsContract.value,
+    score: record.value.score,
+    timelineCursor: record.value.timelineCursor,
+  }));
+}
+
+/** 検証済み restore DTO が既存 serialize 経路へ通ることを確認する。 */
+function createRestoreCommittedSnapshot(
+  state: RestoreTopLevelState,
+  payload: ValidatedRestoreDeterministicPayload,
+  prngState: SerializedPrngState,
+  metadata: StageSessionSerializationMetadata,
+): CoreResult<SerializedGameState> {
+  const committedState = toRestoreCommittedStageState(state, payload, prngState);
+  const committedSnapshot = serializeCommittedStageState(metadata, committedState);
+  if (!committedSnapshot.ok) {
+    return error("state.invalidShape", "SerializedGameState deterministic payload cannot be committed");
+  }
+
+  return committedSnapshot;
+}
+
+/** 検証済み restore DTO を committed snapshot へ変換する。 */
+function toRestoreCommittedStageState(
+  state: RestoreTopLevelState,
+  payload: ValidatedRestoreDeterministicPayload,
+  prngState: SerializedPrngState,
+): CommittedStageState {
+  return createCommittedStageState({
+    activeEntities: payload.activeEntities,
+    expectedTick: state.expectedTick,
+    nextEntityId: state.nextEntityId,
+    pendingEvents: payload.pendingEvents,
+    prngState,
+    score: payload.score,
+    timelineCursor: payload.timelineCursor,
+  });
 }
 
 /** startStage 直後の snapshot だけが持つ entity 数と nextEntityId の不変条件を検証する。 */
@@ -1631,12 +1717,12 @@ function findExpectedTimelineCursor(stage: StageDefinition, expectedTick: number
 function validateRestorePendingEvents(
   state: RestoreTopLevelState,
   pendingEvents: readonly unknown[],
-): CoreResult<null> {
+): CoreResult<readonly CommittedPendingEvent[]> {
   if (state.expectedTick > 0) {
     if (pendingEvents.length !== 0) {
       return error("state.invalidShape", "state.pendingEvents must be empty after tick 0");
     }
-    return okResult(null);
+    return okResult(Object.freeze([]));
   }
   if (pendingEvents.length !== 1) {
     return error("state.invalidShape", "state.pendingEvents must contain stageStarted at tick 0");
@@ -1649,7 +1735,7 @@ function validateRestorePendingEvents(
     return error("state.invalidShape", "state.pendingEvents[0] must be stageStarted for the restored stage");
   }
 
-  return okResult(null);
+  return okResult(Object.freeze([{ type: "stageStarted", tick: 0, stageId: state.stageId }]));
 }
 
 /** runtimeEntities の ID order、kind 別 shape、registry reference を検証する。 */
@@ -1659,7 +1745,7 @@ function validateRestoreRuntimeEntities(
   content: LoadedContentIndex,
   stage: StageDefinition,
   timelineCursor: number,
-): CoreResult<null> {
+): CoreResult<readonly RuntimeEntityState[]> {
   const spawnBudget = createRestoreSpawnBudget(stage, timelineCursor, content);
   if (!spawnBudget.ok) {
     return spawnBudget;
@@ -1674,6 +1760,7 @@ function validateRestoreRuntimeEntities(
   const activeEnemyMatches: RestoreMatchedSpawn[] = [];
   const activeEnemyBulletMatches: RestoreMatchedSpawn[] = [];
   const activePlayerShotMatches: RestoreMatchedPlayerShot[] = [];
+  const activeEntities: RuntimeEntityState[] = [];
   for (let index = 0; index < entities.length; index += 1) {
     const entity = cloneRestorePlainRecord(entities[index], `state.runtimeEntities[${index}]`, RESTORE_RUNTIME_ENTITY_ALL_KEYS);
     if (!entity.ok) {
@@ -1695,20 +1782,21 @@ function validateRestoreRuntimeEntities(
         if (common.value.id !== 1) {
           return error("state.invalidShape", "player runtime entity id must be the initial entity id");
         }
-        const player = validateRestorePlayerRuntimeEntity(entity.value, content);
+        const player = validateRestorePlayerRuntimeEntity(entity.value, common.value, content);
         if (!player.ok) {
           return player;
         }
         if (state.expectedTick === 0) {
-          const initialPlayer = validateRestoreInitialPlayerEntity(entity.value, common.value.position, content);
+          const initialPlayer = validateRestoreInitialPlayerEntity(player.value, content);
           if (!initialPlayer.ok) {
             return initialPlayer;
           }
         }
+        activeEntities.push(player.value);
         break;
       }
       case "enemy": {
-        const enemy = validateRestoreEnemyRuntimeEntity(entity.value, content);
+        const enemy = validateRestoreEnemyRuntimeEntity(entity.value, common.value, content);
         if (!enemy.ok) {
           return enemy;
         }
@@ -1717,10 +1805,11 @@ function validateRestoreRuntimeEntities(
           return budget;
         }
         activeEnemyMatches.push(Object.freeze({ id: common.value.id, tick: budget.value.tick }));
+        activeEntities.push(enemy.value);
         break;
       }
       case "enemyBullet": {
-        const bullet = validateRestoreEnemyBulletRuntimeEntity(entity.value, content);
+        const bullet = validateRestoreEnemyBulletRuntimeEntity(entity.value, common.value, content);
         if (!bullet.ok) {
           return bullet;
         }
@@ -1729,14 +1818,16 @@ function validateRestoreRuntimeEntities(
           return budget;
         }
         activeEnemyBulletMatches.push(Object.freeze({ id: common.value.id, tick: budget.value.tick }));
+        activeEntities.push(bullet.value);
         break;
       }
       case "playerShot": {
-        const shot = validateRestorePlayerShotRuntimeEntity(entity.value, content, state.expectedTick);
+        const shot = validateRestorePlayerShotRuntimeEntity(entity.value, common.value, content, state.expectedTick);
         if (!shot.ok) {
           return shot;
         }
         activePlayerShotMatches.push(Object.freeze({ id: common.value.id, spawnTick: shot.value.spawnTick }));
+        activeEntities.push(shot.value.entity);
         break;
       }
       default:
@@ -1755,7 +1846,7 @@ function validateRestoreRuntimeEntities(
     return sameTickOrder;
   }
 
-  return okResult(null);
+  return okResult(Object.freeze(activeEntities));
 }
 
 type RestoreSpawnBudget = Readonly<{
@@ -1794,6 +1885,7 @@ type RestoreRuntimeEntityCommon = Readonly<{
 }>;
 
 type RestorePlayerShotValidation = Readonly<{
+  entity: PlayerShotRuntimeEntity;
   spawnTick: number;
 }>;
 
@@ -1942,16 +2034,15 @@ function validateRestoreSameTickAllocationOrder(
 
 /** startStage 直後の player snapshot が一意な初期値と一致することを検証する。 */
 function validateRestoreInitialPlayerEntity(
-  entity: Record<string, unknown>,
-  position: Readonly<{ x: number; y: number }>,
+  entity: PlayerRuntimeEntity,
   content: LoadedContentIndex,
 ): CoreResult<null> {
-  const player = typeof entity.definitionId === "string" ? content.playersById.get(entity.definitionId) : undefined;
+  const player = content.playersById.get(entity.definitionId);
   if (!player) {
     return error("state.registryInvalid", "player runtime entity references an unknown player");
   }
   if (
-    !isSameRestorePosition(DEFAULT_PLAYER_START_POSITION, position)
+    !isSameRestorePosition(DEFAULT_PLAYER_START_POSITION, entity.position)
     || entity.lives !== player.life.initialLives
     || entity.invincibleTicksRemaining !== 0
     || entity.nextShotAllowedTick !== 0
@@ -2004,7 +2095,11 @@ function isRestoreRuntimeEntityKind(value: unknown): value is SerializedRuntimeE
 }
 
 /** player entity 固有 field と registry reference を検証する。 */
-function validateRestorePlayerRuntimeEntity(entity: Record<string, unknown>, content: LoadedContentIndex): CoreResult<null> {
+function validateRestorePlayerRuntimeEntity(
+  entity: Record<string, unknown>,
+  common: RestoreRuntimeEntityCommon,
+  content: LoadedContentIndex,
+): CoreResult<PlayerRuntimeEntity> {
   if (!hasOnlyKeys(entity, RESTORE_RUNTIME_PLAYER_KEYS)) {
     return error("state.invalidShape", "player runtime entity contains unknown fields");
   }
@@ -2050,11 +2145,28 @@ function validateRestorePlayerRuntimeEntity(entity: Record<string, unknown>, con
     return error("state.invalidShape", "player runtime entity must match immutable player definition fields");
   }
 
-  return okResult(null);
+  return okResult(createRestoredPlayerRuntimeEntity({
+    id: common.id,
+    definitionId: player.id,
+    position: common.position,
+    movement: Object.freeze({
+      speed: movement.value.speed,
+      focusSpeed: movement.value.focusSpeed,
+    }),
+    collisionRadius: player.collision.radius,
+    lives: entity.lives,
+    invincibleTicksRemaining: entity.invincibleTicksRemaining,
+    shotDefinitionId: player.shot.definition,
+    nextShotAllowedTick: entity.nextShotAllowedTick,
+  }));
 }
 
 /** enemy entity 固有 field と registry reference を検証する。 */
-function validateRestoreEnemyRuntimeEntity(entity: Record<string, unknown>, content: LoadedContentIndex): CoreResult<null> {
+function validateRestoreEnemyRuntimeEntity(
+  entity: Record<string, unknown>,
+  common: RestoreRuntimeEntityCommon,
+  content: LoadedContentIndex,
+): CoreResult<EnemyRuntimeEntity> {
   if (!hasOnlyKeys(entity, RESTORE_RUNTIME_ENEMY_KEYS)) {
     return error("state.invalidShape", "enemy runtime entity contains unknown fields");
   }
@@ -2080,21 +2192,36 @@ function validateRestoreEnemyRuntimeEntity(entity: Record<string, unknown>, cont
   if (!enemy) {
     return error("state.registryInvalid", "enemy runtime entity references an unknown enemy");
   }
-  if (!content.pathsById.has(entity.pathId)) {
+  const path = content.pathsById.get(entity.pathId);
+  if (!path) {
     return error("state.registryInvalid", "enemy runtime entity references an unknown path");
   }
-  if (!content.patternsById.has(entity.patternId)) {
+  const pattern = content.patternsById.get(entity.patternId);
+  if (!pattern) {
     return error("state.registryInvalid", "enemy runtime entity references an unknown pattern");
   }
   if (entity.collisionRadius !== enemy.collision.radius || entity.scoreOnKill !== enemy.score || entity.hp > enemy.hp) {
     return error("state.invalidShape", "enemy runtime entity must match immutable enemy definition fields");
   }
 
-  return okResult(null);
+  return okResult(createRestoredEnemyRuntimeEntity({
+    id: common.id,
+    definitionId: enemy.id,
+    position: common.position,
+    pathId: path.id,
+    patternId: pattern.id,
+    collisionRadius: enemy.collision.radius,
+    hp: entity.hp,
+    scoreOnKill: enemy.score,
+  }));
 }
 
 /** enemy bullet entity 固有 field と registry reference を検証する。 */
-function validateRestoreEnemyBulletRuntimeEntity(entity: Record<string, unknown>, content: LoadedContentIndex): CoreResult<null> {
+function validateRestoreEnemyBulletRuntimeEntity(
+  entity: Record<string, unknown>,
+  common: RestoreRuntimeEntityCommon,
+  content: LoadedContentIndex,
+): CoreResult<EnemyBulletRuntimeEntity> {
   if (!hasOnlyKeys(entity, RESTORE_RUNTIME_ENEMY_BULLET_KEYS)) {
     return error("state.invalidShape", "enemy bullet runtime entity contains unknown fields");
   }
@@ -2109,12 +2236,18 @@ function validateRestoreEnemyBulletRuntimeEntity(entity: Record<string, unknown>
     return error("state.invalidShape", "enemy bullet runtime entity must match immutable bullet definition fields");
   }
 
-  return okResult(null);
+  return okResult(createRestoredEnemyBulletRuntimeEntity({
+    id: common.id,
+    definitionId: bullet.id,
+    position: common.position,
+    collisionRadius: bullet.collision.radius,
+  }));
 }
 
 /** player shot entity 固有 field と registry reference を検証する。 */
 function validateRestorePlayerShotRuntimeEntity(
   entity: Record<string, unknown>,
+  common: RestoreRuntimeEntityCommon,
   content: LoadedContentIndex,
   expectedTick: number,
 ): CoreResult<RestorePlayerShotValidation> {
@@ -2162,7 +2295,18 @@ function validateRestorePlayerShotRuntimeEntity(
     return error("state.invalidShape", "player shot remainingLifetimeTicks is not reachable from expectedTick");
   }
 
-  return okResult(Object.freeze({ spawnTick }));
+  return okResult(Object.freeze({
+    entity: createRestoredPlayerShotRuntimeEntity({
+      id: common.id,
+      definitionId: playerShot.id,
+      position: common.position,
+      velocity: velocity.value,
+      collisionRadius: playerShot.collision.radius,
+      damage: playerShot.damage,
+      remainingLifetimeTicks,
+    }),
+    spawnTick,
+  }));
 }
 
 /** serialized vector2 を有限数だけに制限する。 */
