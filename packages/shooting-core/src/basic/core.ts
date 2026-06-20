@@ -1,4 +1,10 @@
 import { isNamespacedId } from "./content/identifier.ts";
+import {
+  MAX_PLAYER_MOVEMENT_SPEED,
+  MAX_PLAYER_SHOT_LIFETIME_TICKS,
+  MAX_PLAYER_SHOT_SPEED_PER_AXIS,
+  MAX_STAGE_TIMELINE_STEPS,
+} from "./content/runtime-budgets.ts";
 import { KNOWN_ENABLED_FEATURES } from "./content/types.ts";
 import type {
   BulletDefinition,
@@ -7,6 +13,7 @@ import type {
   EnemyDefinition,
   GameDefinition,
   PathId,
+  PathDefinition,
   PatternDefinition,
   PlayerDefinition,
   PlayerId,
@@ -30,11 +37,12 @@ import type {
 } from "./serialization/types.ts";
 import { resolveCollisionAndScoring } from "./simulation/collision-system.ts";
 import { EntityAllocator } from "./simulation/entity.ts";
-import { spawnEnemyBulletsOnSpawn } from "./simulation/enemy-bullet-system.ts";
+import { resolveEnemyBulletSpawnPosition, spawnEnemyBulletsOnSpawn } from "./simulation/enemy-bullet-system.ts";
 import { advancePlayerMovement } from "./simulation/player-movement-system.ts";
 import { advancePlayerShotLifecycle } from "./simulation/player-shot-lifecycle-system.ts";
 import { spawnPlayerShotFromInput } from "./simulation/player-shot-system.ts";
 import {
+  DEFAULT_PLAYER_START_POSITION,
   createEnemyRuntimeEntity,
   createPlayerRuntimeEntity,
   toReadonlyEntityState,
@@ -43,6 +51,7 @@ import type { EnemyRuntimeEntity, PlayerRuntimeEntity, ReadonlyEntityState, Runt
 import { freezeEntitiesInIdOrder } from "./simulation/system-order.ts";
 import { XorShift32 } from "./simulation/prng.ts";
 import type { SerializedPrngState } from "./simulation/prng.ts";
+import { MAX_RESTORABLE_NEXT_ENTITY_ID } from "./simulation/entity-id-budget.ts";
 
 const MAX_SEED_LENGTH = 128;
 const INTERNAL_TEST_HOOKS_ENV = "SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS";
@@ -298,6 +307,7 @@ type LoadedContentIndex = Readonly<{
   definition: GameDefinition;
   bulletsById: ReadonlyMap<string, BulletDefinition>;
   enemiesById: ReadonlyMap<string, EnemyDefinition>;
+  pathsById: ReadonlyMap<string, PathDefinition>;
   patternsById: ReadonlyMap<string, PatternDefinition>;
   playerShotsById: ReadonlyMap<string, PlayerShotDefinition>;
   playersById: ReadonlyMap<string, PlayerDefinition>;
@@ -334,6 +344,58 @@ type UntrustedCommittedStageState = Omit<CommittedStageState, "pendingEvents" | 
 
 const MAX_RESTORE_TOP_LEVEL_STRING_LENGTH = 8_192;
 const MAX_RESTORE_ENABLED_FEATURES_LENGTH = 64;
+const MAX_RESTORE_ARRAY_LENGTH = 8_192;
+const MAX_RESTORE_RUNTIME_ENTITIES_LENGTH = 1
+  + (MAX_STAGE_TIMELINE_STEPS * 2)
+  + MAX_PLAYER_SHOT_LIFETIME_TICKS;
+type SerializedRestorePlayerEntity = Extract<SerializedRuntimeEntityState, { kind: "player" }>;
+type SerializedRestoreEnemyEntity = Extract<SerializedRuntimeEntityState, { kind: "enemy" }>;
+type SerializedRestoreEnemyBulletEntity = Extract<SerializedRuntimeEntityState, { kind: "enemyBullet" }>;
+type SerializedRestorePlayerShotEntity = Extract<SerializedRuntimeEntityState, { kind: "playerShot" }>;
+
+const RESTORE_RUNTIME_ENTITY_COMMON_KEYS = Object.freeze([
+  "id",
+  "kind",
+  "definitionId",
+  "position",
+  "collisionRadius",
+] as const satisfies ReadonlyArray<keyof SerializedRuntimeEntityState>);
+const RESTORE_RUNTIME_PLAYER_KEYS = Object.freeze([
+  ...RESTORE_RUNTIME_ENTITY_COMMON_KEYS,
+  "lives",
+  "invincibleTicksRemaining",
+  "nextShotAllowedTick",
+  "movement",
+  "shotDefinitionId",
+] as const satisfies ReadonlyArray<keyof SerializedRestorePlayerEntity>);
+const RESTORE_RUNTIME_ENEMY_KEYS = Object.freeze([
+  ...RESTORE_RUNTIME_ENTITY_COMMON_KEYS,
+  "hp",
+  "scoreOnKill",
+  "pathId",
+  "patternId",
+] as const satisfies ReadonlyArray<keyof SerializedRestoreEnemyEntity>);
+const RESTORE_RUNTIME_ENEMY_BULLET_KEYS: ReadonlyArray<keyof SerializedRestoreEnemyBulletEntity> =
+  RESTORE_RUNTIME_ENTITY_COMMON_KEYS;
+const RESTORE_RUNTIME_PLAYER_SHOT_KEYS = Object.freeze([
+  ...RESTORE_RUNTIME_ENTITY_COMMON_KEYS,
+  "velocity",
+  "remainingLifetimeTicks",
+  "damage",
+] as const satisfies ReadonlyArray<keyof SerializedRestorePlayerShotEntity>);
+const RESTORE_RUNTIME_ENTITY_ALL_KEYS = Object.freeze([
+  ...new Set([
+    ...RESTORE_RUNTIME_PLAYER_KEYS,
+    ...RESTORE_RUNTIME_ENEMY_KEYS,
+    ...RESTORE_RUNTIME_PLAYER_SHOT_KEYS,
+  ]),
+]);
+const RESTORE_RUNTIME_ENTITY_KINDS = Object.freeze([
+  "player",
+  "enemy",
+  "enemyBullet",
+  "playerShot",
+] as const satisfies ReadonlyArray<SerializedRuntimeEntityState["kind"]>);
 
 const RESTORE_TOP_LEVEL_KEY_MAP = Object.freeze({
   coreVersion: true,
@@ -426,6 +488,7 @@ function createLoadedContentIndex(definition: GameDefinition): LoadedContentInde
     definition,
     bulletsById: new Map(definition.content.bullets.map((bullet) => [bullet.id, bullet])),
     enemiesById: new Map(definition.content.enemies.map((enemy) => [enemy.id, enemy])),
+    pathsById: new Map(definition.content.paths.map((path) => [path.id, path])),
     patternsById: new Map(definition.content.patterns.map((pattern) => [pattern.id, pattern])),
     playerShotsById: new Map(definition.content.playerShots.map((playerShot) => [playerShot.id, playerShot])),
     playersById: new Map(definition.content.players.map((player) => [player.id, player])),
@@ -500,6 +563,14 @@ function createLoadedGame(
       const state = parseRestoreTopLevelState(record, fullMetadata, compatibilityMetadata.value);
       if (!state.ok) {
         return state;
+      }
+      const prng = validateRestorePrngSnapshot(state.value.prngState);
+      if (!prng.ok) {
+        return prng;
+      }
+      const payload = validateRestoreDeterministicPayload(state.value, content);
+      if (!payload.ok) {
+        return payload;
       }
 
       return error(
@@ -1339,7 +1410,12 @@ function parseRestoreTopLevelState(
   if (typeof record.expectedTick !== "number" || !Number.isSafeInteger(record.expectedTick) || record.expectedTick < 0) {
     return error("state.invalidShape", "expectedTick must be a non-negative safe integer");
   }
-  if (typeof record.nextEntityId !== "number" || !Number.isSafeInteger(record.nextEntityId) || record.nextEntityId < 1) {
+  if (
+    typeof record.nextEntityId !== "number"
+    || !Number.isSafeInteger(record.nextEntityId)
+    || record.nextEntityId < 1
+    || record.nextEntityId > MAX_RESTORABLE_NEXT_ENTITY_ID
+  ) {
     return error("state.invalidShape", "nextEntityId must be a positive safe integer");
   }
   if (!isPlainObjectContainer(record.prngState)) {
@@ -1425,6 +1501,696 @@ function validateRestoreContentCompatibility(
   }
 
   return okResult(null);
+}
+
+/** PRNG の復元失敗を LoadedGame.restore 用の public error に包む。 */
+function validateRestorePrngSnapshot(prngState: unknown): CoreResult<null> {
+  const state = cloneRestorePlainRecord(prngState, "prngState", ["state"]);
+  if (!state.ok) {
+    return state;
+  }
+  const prng = XorShift32.restore(state.value);
+  if (!prng.ok) {
+    return error("state.prngInvalid", "prngState cannot be restored by the PRNG");
+  }
+
+  return okResult(null);
+}
+
+/** deterministic payload の shape、registry reference、runtime budget を検証する。 */
+function validateRestoreDeterministicPayload(
+  state: RestoreTopLevelState,
+  content: LoadedContentIndex,
+): CoreResult<null> {
+  const record = cloneRestorePlainRecord(state.state, "state", [
+    "runtimeEntities",
+    "pendingEvents",
+    "score",
+    "timelineCursor",
+    "patternRunnerStates",
+    "enabledFeatureStates",
+  ]);
+  if (!record.ok) {
+    return record;
+  }
+
+  const runtimeEntities = cloneRestoreArray(
+    record.value.runtimeEntities,
+    "state.runtimeEntities",
+    MAX_RESTORE_RUNTIME_ENTITIES_LENGTH,
+  );
+  if (!runtimeEntities.ok) {
+    return runtimeEntities;
+  }
+  const initialEnvelope = validateRestoreInitialRuntimeEntityEnvelope(state, runtimeEntities.value.length);
+  if (!initialEnvelope.ok) {
+    return initialEnvelope;
+  }
+  const pendingEvents = cloneRestoreArray(record.value.pendingEvents, "state.pendingEvents");
+  if (!pendingEvents.ok) {
+    return pendingEvents;
+  }
+  const patternRunnerStates = cloneRestoreArray(record.value.patternRunnerStates, "state.patternRunnerStates");
+  if (!patternRunnerStates.ok) {
+    return patternRunnerStates;
+  }
+  const enabledFeatureStates = cloneRestoreArray(record.value.enabledFeatureStates, "state.enabledFeatureStates");
+  if (!enabledFeatureStates.ok) {
+    return enabledFeatureStates;
+  }
+
+  if (
+    typeof record.value.score !== "number"
+    || !Number.isSafeInteger(record.value.score)
+    || record.value.score < 0
+  ) {
+    return error("state.invalidShape", "state.score must be a non-negative safe integer");
+  }
+  if (state.expectedTick === 0 && record.value.score !== 0) {
+    return error("state.invalidShape", "initial restore state score must be zero");
+  }
+  const stage = content.stagesById.get(state.stageId);
+  if (!stage) {
+    return error("state.contentMismatch", "serialized content metadata does not match the loaded content");
+  }
+  if (
+    typeof record.value.timelineCursor !== "number"
+    || !Number.isSafeInteger(record.value.timelineCursor)
+    || record.value.timelineCursor < 0
+    || record.value.timelineCursor > stage.timeline.length
+  ) {
+    return error("state.invalidShape", "state.timelineCursor must be within the stage timeline range");
+  }
+  const expectedTimelineCursor = findExpectedTimelineCursor(stage, state.expectedTick);
+  if (record.value.timelineCursor !== expectedTimelineCursor) {
+    return error("state.invalidShape", "state.timelineCursor must match expectedTick");
+  }
+  const pendingEventsContract = validateRestorePendingEvents(state, pendingEvents.value);
+  if (!pendingEventsContract.ok) {
+    return pendingEventsContract;
+  }
+  const runtimeEntitiesContract = validateRestoreRuntimeEntities(
+    state,
+    runtimeEntities.value,
+    content,
+    stage,
+    record.value.timelineCursor,
+  );
+  if (!runtimeEntitiesContract.ok) {
+    return runtimeEntitiesContract;
+  }
+  if (patternRunnerStates.value.length > 0) {
+    return error("state.invalidShape", "state.patternRunnerStates must be empty in the basic core");
+  }
+  if (enabledFeatureStates.value.length > 0) {
+    return error("state.invalidShape", "state.enabledFeatureStates must be empty in the basic core");
+  }
+
+  return okResult(null);
+}
+
+/** startStage 直後の snapshot だけが持つ entity 数と nextEntityId の不変条件を検証する。 */
+function validateRestoreInitialRuntimeEntityEnvelope(
+  state: RestoreTopLevelState,
+  runtimeEntityCount: number,
+): CoreResult<null> {
+  if (state.expectedTick === 0 && (runtimeEntityCount !== 1 || state.nextEntityId !== 2)) {
+    return error("state.invalidShape", "initial restore state must contain only the initial player entity");
+  }
+
+  return okResult(null);
+}
+
+/** expectedTick 時点で未処理であるべき最初の timeline index を計算する。 */
+function findExpectedTimelineCursor(stage: StageDefinition, expectedTick: number): number {
+  const index = stage.timeline.findIndex((step) => step.tick >= expectedTick);
+  return index === -1 ? stage.timeline.length : index;
+}
+
+/** pendingEvents は startStage 直後の stageStarted 再通知だけを許可する。 */
+function validateRestorePendingEvents(
+  state: RestoreTopLevelState,
+  pendingEvents: readonly unknown[],
+): CoreResult<null> {
+  if (state.expectedTick > 0) {
+    if (pendingEvents.length !== 0) {
+      return error("state.invalidShape", "state.pendingEvents must be empty after tick 0");
+    }
+    return okResult(null);
+  }
+  if (pendingEvents.length !== 1) {
+    return error("state.invalidShape", "state.pendingEvents must contain stageStarted at tick 0");
+  }
+  const event = cloneRestorePlainRecord(pendingEvents[0], "state.pendingEvents[0]", ["type", "tick", "stageId"]);
+  if (!event.ok) {
+    return event;
+  }
+  if (event.value.type !== "stageStarted" || event.value.tick !== 0 || event.value.stageId !== state.stageId) {
+    return error("state.invalidShape", "state.pendingEvents[0] must be stageStarted for the restored stage");
+  }
+
+  return okResult(null);
+}
+
+/** runtimeEntities の ID order、kind 別 shape、registry reference を検証する。 */
+function validateRestoreRuntimeEntities(
+  state: RestoreTopLevelState,
+  entities: readonly unknown[],
+  content: LoadedContentIndex,
+  stage: StageDefinition,
+  timelineCursor: number,
+): CoreResult<null> {
+  const spawnBudget = createRestoreSpawnBudget(stage, timelineCursor, content);
+  if (!spawnBudget.ok) {
+    return spawnBudget;
+  }
+  const allocationEnvelope = validateRestoreAllocationEnvelope(state, spawnBudget.value);
+  if (!allocationEnvelope.ok) {
+    return allocationEnvelope;
+  }
+  let previousEntityId = 0;
+  let playerEntityCount = 0;
+  let matchingPlayerEntityCount = 0;
+  const activeEnemyMatches: RestoreMatchedSpawn[] = [];
+  const activeEnemyBulletMatches: RestoreMatchedSpawn[] = [];
+  const activePlayerShotMatches: RestoreMatchedPlayerShot[] = [];
+  for (let index = 0; index < entities.length; index += 1) {
+    const entity = cloneRestorePlainRecord(entities[index], `state.runtimeEntities[${index}]`, RESTORE_RUNTIME_ENTITY_ALL_KEYS);
+    if (!entity.ok) {
+      return entity;
+    }
+    const common = validateRestoreRuntimeEntityCommon(entity.value, previousEntityId, state.nextEntityId, index);
+    if (!common.ok) {
+      return common;
+    }
+    previousEntityId = common.value.id;
+
+    const entityKind = common.value.kind;
+    switch (entityKind) {
+      case "player": {
+        playerEntityCount += 1;
+        if (entity.value.definitionId === state.playerId) {
+          matchingPlayerEntityCount += 1;
+        }
+        if (common.value.id !== 1) {
+          return error("state.invalidShape", "player runtime entity id must be the initial entity id");
+        }
+        const player = validateRestorePlayerRuntimeEntity(entity.value, content);
+        if (!player.ok) {
+          return player;
+        }
+        if (state.expectedTick === 0) {
+          const initialPlayer = validateRestoreInitialPlayerEntity(entity.value, common.value.position, content);
+          if (!initialPlayer.ok) {
+            return initialPlayer;
+          }
+        }
+        break;
+      }
+      case "enemy": {
+        const enemy = validateRestoreEnemyRuntimeEntity(entity.value, content);
+        if (!enemy.ok) {
+          return enemy;
+        }
+        const budget = consumeRestoreEnemySpawnBudget(spawnBudget.value.enemySpawnCandidates, entity.value, common.value.position);
+        if (!budget.ok) {
+          return budget;
+        }
+        activeEnemyMatches.push(Object.freeze({ id: common.value.id, tick: budget.value.tick }));
+        break;
+      }
+      case "enemyBullet": {
+        const bullet = validateRestoreEnemyBulletRuntimeEntity(entity.value, content);
+        if (!bullet.ok) {
+          return bullet;
+        }
+        const budget = consumeRestoreEnemyBulletBudget(spawnBudget.value.enemyBulletCandidates, entity.value, common.value.position);
+        if (!budget.ok) {
+          return budget;
+        }
+        activeEnemyBulletMatches.push(Object.freeze({ id: common.value.id, tick: budget.value.tick }));
+        break;
+      }
+      case "playerShot": {
+        const shot = validateRestorePlayerShotRuntimeEntity(entity.value, content, state.expectedTick);
+        if (!shot.ok) {
+          return shot;
+        }
+        activePlayerShotMatches.push(Object.freeze({ id: common.value.id, spawnTick: shot.value.spawnTick }));
+        break;
+      }
+      default:
+        assertNever(entityKind);
+    }
+  }
+  if (playerEntityCount !== 1 || matchingPlayerEntityCount !== 1) {
+    return error("state.invalidShape", "state.runtimeEntities must contain exactly one player matching playerId");
+  }
+  const sameTickOrder = validateRestoreSameTickAllocationOrder(
+    activeEnemyMatches,
+    activeEnemyBulletMatches,
+    activePlayerShotMatches,
+  );
+  if (!sameTickOrder.ok) {
+    return sameTickOrder;
+  }
+
+  return okResult(null);
+}
+
+type RestoreSpawnBudget = Readonly<{
+  enemySpawnCandidates: RestoreEnemySpawnCandidate[];
+  enemyBulletCandidates: RestoreEnemyBulletCandidate[];
+}>;
+
+type RestoreEnemySpawnCandidate = Readonly<{
+  tick: number;
+  definitionId: string;
+  pathId: string;
+  patternId: string;
+  position: Readonly<{ x: number; y: number }>;
+}>;
+
+type RestoreEnemyBulletCandidate = Readonly<{
+  tick: number;
+  definitionId: string;
+  position: Readonly<{ x: number; y: number }>;
+}>;
+
+type RestoreMatchedSpawn = Readonly<{
+  id: number;
+  tick: number;
+}>;
+
+type RestoreMatchedPlayerShot = Readonly<{
+  id: number;
+  spawnTick: number;
+}>;
+
+type RestoreRuntimeEntityCommon = Readonly<{
+  id: number;
+  kind: SerializedRuntimeEntityState["kind"];
+  position: Readonly<{ x: number; y: number }>;
+}>;
+
+type RestorePlayerShotValidation = Readonly<{
+  spawnTick: number;
+}>;
+
+/** 処理済み timeline step から存在し得る enemy / enemyBullet の上限を作る。 */
+function createRestoreSpawnBudget(
+  stage: StageDefinition,
+  timelineCursor: number,
+  content: LoadedContentIndex,
+): CoreResult<RestoreSpawnBudget> {
+  const enemySpawnCandidates: RestoreEnemySpawnCandidate[] = [];
+  const enemyBulletCandidates: RestoreEnemyBulletCandidate[] = [];
+  for (let index = 0; index < timelineCursor; index += 1) {
+    const step = stage.timeline[index];
+    if (!step || step.action.type !== "spawnEnemy") {
+      continue;
+    }
+    enemySpawnCandidates.push({
+      tick: step.tick,
+      definitionId: step.action.enemy,
+      pathId: step.action.path,
+      patternId: step.action.pattern,
+      position: Object.freeze({ x: step.action.position.x, y: step.action.position.y }),
+    });
+
+    const pattern = content.patternsById.get(step.action.pattern);
+    if (!pattern) {
+      return error("state.registryInvalid", "stage timeline references an unknown pattern");
+    }
+    if (pattern.fireOnSpawn) {
+      const position = resolveEnemyBulletSpawnPosition(
+        "restore",
+        step.action.position,
+        pattern.id,
+        pattern.fireOnSpawn,
+      );
+      if (!position.ok) {
+        return error("state.registryInvalid", "stage timeline contains an invalid enemy bullet spawn position");
+      }
+      enemyBulletCandidates.push({
+        tick: step.tick,
+        definitionId: pattern.fireOnSpawn.bullet,
+        position: position.value,
+      });
+    }
+  }
+
+  return okResult(Object.freeze({ enemySpawnCandidates, enemyBulletCandidates }));
+}
+
+/** nextEntityId が processed timeline と入力由来 shot の最大生成数から到達可能な範囲か検証する。 */
+function validateRestoreAllocationEnvelope(
+  state: RestoreTopLevelState,
+  spawnBudget: RestoreSpawnBudget,
+): CoreResult<null> {
+  const maxPlayerShotAllocations = state.expectedTick;
+  const maxReachableNextEntityId = 2
+    + spawnBudget.enemySpawnCandidates.length
+    + spawnBudget.enemyBulletCandidates.length
+    + maxPlayerShotAllocations;
+  if (state.nextEntityId > maxReachableNextEntityId) {
+    return error("state.invalidShape", "nextEntityId exceeds the deterministic allocation envelope");
+  }
+
+  return okResult(null);
+}
+
+/** active enemy が処理済み timeline の spawn と同じ参照・位置から来ていることを検証する。 */
+function consumeRestoreEnemySpawnBudget(
+  candidates: RestoreEnemySpawnCandidate[],
+  entity: Record<string, unknown>,
+  position: Readonly<{ x: number; y: number }>,
+): CoreResult<RestoreMatchedSpawn> {
+  const index = candidates.findIndex((candidate) => (
+    candidate.definitionId === entity.definitionId
+    && candidate.pathId === entity.pathId
+    && candidate.patternId === entity.patternId
+    && isSameRestorePosition(candidate.position, position)
+  ));
+  if (index === -1) {
+    return error("state.invalidShape", "enemy runtime entity must originate from a processed timeline spawn");
+  }
+  const [candidate] = candidates.splice(index, 1);
+  if (!candidate) {
+    return error("state.invalidShape", "enemy runtime entity must originate from a processed timeline spawn");
+  }
+
+  return okResult(Object.freeze({
+    id: Number(entity.id),
+    tick: candidate.tick,
+  }));
+}
+
+/** active enemyBullet が処理済み fireOnSpawn と同じ弾・位置から来ていることを検証する。 */
+function consumeRestoreEnemyBulletBudget(
+  candidates: RestoreEnemyBulletCandidate[],
+  entity: Record<string, unknown>,
+  position: Readonly<{ x: number; y: number }>,
+): CoreResult<RestoreMatchedSpawn> {
+  const index = candidates.findIndex((candidate) => (
+    candidate.definitionId === entity.definitionId
+    && isSameRestorePosition(candidate.position, position)
+  ));
+  if (index === -1) {
+    return error("state.invalidShape", "enemy bullet runtime entity must originate from a processed timeline spawn");
+  }
+  const [candidate] = candidates.splice(index, 1);
+  if (!candidate) {
+    return error("state.invalidShape", "enemy bullet runtime entity must originate from a processed timeline spawn");
+  }
+
+  return okResult(Object.freeze({
+    id: Number(entity.id),
+    tick: candidate.tick,
+  }));
+}
+
+/** restore entity の position が timeline 由来の位置と完全一致することを検証する。 */
+function isSameRestorePosition(
+  expected: Readonly<{ x: number; y: number }>,
+  actual: Readonly<{ x: number; y: number }>,
+): boolean {
+  return actual.x === expected.x && actual.y === expected.y;
+}
+
+/** 同じ tick では enemy、enemyBullet、playerShot の順に採番されることを検証する。 */
+function validateRestoreSameTickAllocationOrder(
+  enemies: readonly RestoreMatchedSpawn[],
+  enemyBullets: readonly RestoreMatchedSpawn[],
+  playerShots: readonly RestoreMatchedPlayerShot[],
+): CoreResult<null> {
+  for (const shot of playerShots) {
+    for (const enemy of enemies) {
+      if (shot.spawnTick === enemy.tick && shot.id < enemy.id) {
+        return error("state.invalidShape", "player shot id must follow same-tick enemy allocations");
+      }
+    }
+    for (const bullet of enemyBullets) {
+      if (shot.spawnTick === bullet.tick && shot.id < bullet.id) {
+        return error("state.invalidShape", "player shot id must follow same-tick enemy bullet allocations");
+      }
+    }
+  }
+
+  return okResult(null);
+}
+
+/** startStage 直後の player snapshot が一意な初期値と一致することを検証する。 */
+function validateRestoreInitialPlayerEntity(
+  entity: Record<string, unknown>,
+  position: Readonly<{ x: number; y: number }>,
+  content: LoadedContentIndex,
+): CoreResult<null> {
+  const player = typeof entity.definitionId === "string" ? content.playersById.get(entity.definitionId) : undefined;
+  if (!player) {
+    return error("state.registryInvalid", "player runtime entity references an unknown player");
+  }
+  if (
+    !isSameRestorePosition(DEFAULT_PLAYER_START_POSITION, position)
+    || entity.lives !== player.life.initialLives
+    || entity.invincibleTicksRemaining !== 0
+    || entity.nextShotAllowedTick !== 0
+  ) {
+    return error("state.invalidShape", "initial player runtime entity must match startStage defaults");
+  }
+
+  return okResult(null);
+}
+
+/** runtime entity 共通 field と ID order contract を検証する。 */
+function validateRestoreRuntimeEntityCommon(
+  entity: Record<string, unknown>,
+  previousEntityId: number,
+  nextEntityId: number,
+  index: number,
+): CoreResult<RestoreRuntimeEntityCommon> {
+  if (
+    typeof entity.id !== "number"
+    || !Number.isSafeInteger(entity.id)
+    || entity.id <= 0
+    || entity.id <= previousEntityId
+    || entity.id >= nextEntityId
+  ) {
+    return error("state.invalidShape", `state.runtimeEntities[${index}].id must be positive, ascending, and below nextEntityId`);
+  }
+  if (!isRestoreRuntimeEntityKind(entity.kind)) {
+    return error("state.invalidShape", `state.runtimeEntities[${index}].kind is not supported`);
+  }
+  if (!isRestoreTopLevelString(entity.definitionId)) {
+    return error("state.invalidShape", `state.runtimeEntities[${index}].definitionId must be a string`);
+  }
+  const position = validateRestoreVector2(entity.position, `state.runtimeEntities[${index}].position`);
+  if (!position.ok) {
+    return position;
+  }
+  if (!isPositiveFiniteNumber(entity.collisionRadius)) {
+    return error("state.invalidShape", `state.runtimeEntities[${index}].collisionRadius must be a positive finite number`);
+  }
+
+  return okResult(Object.freeze({
+    id: entity.id,
+    kind: entity.kind,
+    position: position.value,
+  }));
+}
+
+function isRestoreRuntimeEntityKind(value: unknown): value is SerializedRuntimeEntityState["kind"] {
+  return typeof value === "string" && (RESTORE_RUNTIME_ENTITY_KINDS as readonly string[]).includes(value);
+}
+
+/** player entity 固有 field と registry reference を検証する。 */
+function validateRestorePlayerRuntimeEntity(entity: Record<string, unknown>, content: LoadedContentIndex): CoreResult<null> {
+  if (!hasOnlyKeys(entity, RESTORE_RUNTIME_PLAYER_KEYS)) {
+    return error("state.invalidShape", "player runtime entity contains unknown fields");
+  }
+  if (
+    !isNonNegativeSafeInteger(entity.lives)
+    || !isNonNegativeSafeInteger(entity.invincibleTicksRemaining)
+    || !isNonNegativeSafeInteger(entity.nextShotAllowedTick)
+  ) {
+    return error("state.invalidShape", "player runtime counters must be non-negative safe integers");
+  }
+  const movement = cloneRestorePlainRecord(entity.movement, "player runtime movement", ["speed", "focusSpeed"]);
+  if (!movement.ok) {
+    return movement;
+  }
+  if (!isPositiveFiniteNumber(movement.value.speed) || movement.value.speed > MAX_PLAYER_MOVEMENT_SPEED) {
+    return error("state.invalidShape", "player movement.speed exceeds the runtime budget");
+  }
+  if (!isPositiveFiniteNumber(movement.value.focusSpeed) || movement.value.focusSpeed > MAX_PLAYER_MOVEMENT_SPEED) {
+    return error("state.invalidShape", "player movement.focusSpeed exceeds the runtime budget");
+  }
+  if (typeof entity.shotDefinitionId !== "string") {
+    return error("state.invalidShape", "player shotDefinitionId must be a string");
+  }
+  if (!isNamespacedId(entity.shotDefinitionId, "playerShot")) {
+    return error("state.invalidShape", "player shotDefinitionId must be a valid playerShot id");
+  }
+  if (typeof entity.definitionId !== "string" || !isNamespacedId(entity.definitionId, "player")) {
+    return error("state.invalidShape", "player definitionId must be a valid player id");
+  }
+  const player = content.playersById.get(entity.definitionId);
+  if (!player) {
+    return error("state.registryInvalid", "player runtime entity references an unknown player");
+  }
+  if (!content.playerShotsById.has(entity.shotDefinitionId)) {
+    return error("state.registryInvalid", "player runtime entity references an unknown player shot");
+  }
+  if (
+    entity.collisionRadius !== player.collision.radius
+    || movement.value.speed !== player.movement.speed
+    || movement.value.focusSpeed !== player.movement.focusSpeed
+    || entity.shotDefinitionId !== player.shot.definition
+  ) {
+    return error("state.invalidShape", "player runtime entity must match immutable player definition fields");
+  }
+
+  return okResult(null);
+}
+
+/** enemy entity 固有 field と registry reference を検証する。 */
+function validateRestoreEnemyRuntimeEntity(entity: Record<string, unknown>, content: LoadedContentIndex): CoreResult<null> {
+  if (!hasOnlyKeys(entity, RESTORE_RUNTIME_ENEMY_KEYS)) {
+    return error("state.invalidShape", "enemy runtime entity contains unknown fields");
+  }
+  if (!isNonNegativeFiniteNumber(entity.hp) || !isNonNegativeSafeInteger(entity.scoreOnKill)) {
+    return error("state.invalidShape", "enemy runtime hp and scoreOnKill must be non-negative");
+  }
+  if (typeof entity.pathId !== "string") {
+    return error("state.invalidShape", "enemy pathId must be a string");
+  }
+  if (typeof entity.patternId !== "string") {
+    return error("state.invalidShape", "enemy patternId must be a string");
+  }
+  if (!isNamespacedId(entity.pathId, "path")) {
+    return error("state.invalidShape", "enemy pathId must be a valid path id");
+  }
+  if (!isNamespacedId(entity.patternId, "pattern")) {
+    return error("state.invalidShape", "enemy patternId must be a valid pattern id");
+  }
+  if (typeof entity.definitionId !== "string" || !isNamespacedId(entity.definitionId, "enemy")) {
+    return error("state.invalidShape", "enemy definitionId must be a valid enemy id");
+  }
+  const enemy = content.enemiesById.get(entity.definitionId);
+  if (!enemy) {
+    return error("state.registryInvalid", "enemy runtime entity references an unknown enemy");
+  }
+  if (!content.pathsById.has(entity.pathId)) {
+    return error("state.registryInvalid", "enemy runtime entity references an unknown path");
+  }
+  if (!content.patternsById.has(entity.patternId)) {
+    return error("state.registryInvalid", "enemy runtime entity references an unknown pattern");
+  }
+  if (entity.collisionRadius !== enemy.collision.radius || entity.scoreOnKill !== enemy.score || entity.hp > enemy.hp) {
+    return error("state.invalidShape", "enemy runtime entity must match immutable enemy definition fields");
+  }
+
+  return okResult(null);
+}
+
+/** enemy bullet entity 固有 field と registry reference を検証する。 */
+function validateRestoreEnemyBulletRuntimeEntity(entity: Record<string, unknown>, content: LoadedContentIndex): CoreResult<null> {
+  if (!hasOnlyKeys(entity, RESTORE_RUNTIME_ENEMY_BULLET_KEYS)) {
+    return error("state.invalidShape", "enemy bullet runtime entity contains unknown fields");
+  }
+  if (typeof entity.definitionId !== "string" || !isNamespacedId(entity.definitionId, "bullet")) {
+    return error("state.invalidShape", "enemy bullet definitionId must be a valid bullet id");
+  }
+  const bullet = content.bulletsById.get(entity.definitionId);
+  if (!bullet) {
+    return error("state.registryInvalid", "enemy bullet runtime entity references an unknown bullet");
+  }
+  if (entity.collisionRadius !== bullet.collision.radius) {
+    return error("state.invalidShape", "enemy bullet runtime entity must match immutable bullet definition fields");
+  }
+
+  return okResult(null);
+}
+
+/** player shot entity 固有 field と registry reference を検証する。 */
+function validateRestorePlayerShotRuntimeEntity(
+  entity: Record<string, unknown>,
+  content: LoadedContentIndex,
+  expectedTick: number,
+): CoreResult<RestorePlayerShotValidation> {
+  if (!hasOnlyKeys(entity, RESTORE_RUNTIME_PLAYER_SHOT_KEYS)) {
+    return error("state.invalidShape", "player shot runtime entity contains unknown fields");
+  }
+  const velocity = validateRestoreVector2(entity.velocity, "player shot velocity");
+  if (!velocity.ok) {
+    return velocity;
+  }
+  if (Math.abs(velocity.value.x) > MAX_PLAYER_SHOT_SPEED_PER_AXIS || Math.abs(velocity.value.y) > MAX_PLAYER_SHOT_SPEED_PER_AXIS) {
+    return error("state.invalidShape", "player shot velocity exceeds the runtime budget");
+  }
+  const remainingLifetimeTicks = entity.remainingLifetimeTicks;
+  if (
+    typeof remainingLifetimeTicks !== "number"
+    || !Number.isSafeInteger(remainingLifetimeTicks)
+    || remainingLifetimeTicks <= 0
+    || remainingLifetimeTicks > MAX_PLAYER_SHOT_LIFETIME_TICKS
+  ) {
+    return error("state.invalidShape", "player shot remainingLifetimeTicks exceeds the runtime budget");
+  }
+  if (!isPositiveFiniteNumber(entity.damage)) {
+    return error("state.invalidShape", "player shot damage must be a positive finite number");
+  }
+  if (typeof entity.definitionId !== "string" || !isNamespacedId(entity.definitionId, "playerShot")) {
+    return error("state.invalidShape", "player shot definitionId must be a valid playerShot id");
+  }
+  const playerShot = content.playerShotsById.get(entity.definitionId);
+  if (!playerShot) {
+    return error("state.registryInvalid", "player shot runtime entity references an unknown player shot");
+  }
+  if (
+    entity.collisionRadius !== playerShot.collision.radius
+    || velocity.value.x !== playerShot.projectile.velocity.x
+    || velocity.value.y !== playerShot.projectile.velocity.y
+    || entity.damage !== playerShot.damage
+    || remainingLifetimeTicks > playerShot.projectile.lifetimeTicks
+  ) {
+    return error("state.invalidShape", "player shot runtime entity must match immutable player shot definition fields");
+  }
+  const elapsedTicks = playerShot.projectile.lifetimeTicks - remainingLifetimeTicks;
+  const spawnTick = expectedTick - 1 - elapsedTicks;
+  if (!Number.isSafeInteger(spawnTick) || spawnTick < 0 || spawnTick >= expectedTick) {
+    return error("state.invalidShape", "player shot remainingLifetimeTicks is not reachable from expectedTick");
+  }
+
+  return okResult(Object.freeze({ spawnTick }));
+}
+
+/** serialized vector2 を有限数だけに制限する。 */
+function validateRestoreVector2(value: unknown, fieldName: string): CoreResult<Readonly<{ x: number; y: number }>> {
+  const vector = cloneRestorePlainRecord(value, fieldName, ["x", "y"]);
+  if (!vector.ok) {
+    return vector;
+  }
+  if (typeof vector.value.x !== "number" || !Number.isFinite(vector.value.x)) {
+    return error("state.invalidShape", `${fieldName}.x must be finite`);
+  }
+  if (typeof vector.value.y !== "number" || !Number.isFinite(vector.value.y)) {
+    return error("state.invalidShape", `${fieldName}.y must be finite`);
+  }
+
+  return okResult(Object.freeze({ x: vector.value.x, y: vector.value.y }));
+}
+
+function isPositiveFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isNonNegativeFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function parseInputFrame(value: unknown): CoreResult<InputFrame> {
@@ -1538,32 +2304,65 @@ function cloneRestoreTopLevelPlainRecord(value: unknown): CoreResult<Record<stri
   }
 }
 
-/** enabledFeatures だけは top-level metadata として one-level の dense string array に clone / freeze する。 */
-function parseRestoreEnabledFeatures(value: unknown): CoreResult<readonly string[]> {
+/** restore payload shell の plain object を getter なしの shallow clone にする。 */
+function cloneRestorePlainRecord(
+  value: unknown,
+  fieldName: string,
+  allowedKeys: readonly string[],
+): CoreResult<Record<string, unknown>> {
+  try {
+    if (!isPlainObjectContainer(value)) {
+      return error("state.invalidShape", `${fieldName} must be a plain object`);
+    }
+    const source = value as Record<string, unknown>;
+    const clone = Object.create(null) as Record<string, unknown>;
+    const propertyNames = Object.getOwnPropertyNames(source);
+    if (propertyNames.length > allowedKeys.length) {
+      return error("state.invalidShape", `${fieldName} contains unknown fields`);
+    }
+    const allowed = new Set(allowedKeys);
+    for (const key of propertyNames) {
+      if (!allowed.has(key)) {
+        return error("state.invalidShape", `${fieldName} contains unknown fields`);
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(source, key);
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+        return error("state.invalidShape", `${fieldName} must contain only enumerable data properties`);
+      }
+      clone[key] = descriptor.value;
+    }
+
+    return okResult(Object.freeze(clone));
+  } catch {
+    return error("state.invalidShape", `${fieldName} must be a plain object`);
+  }
+}
+
+/** restore payload shell の配列を dense data array として shallow clone する。 */
+function cloneRestoreArray(
+  value: unknown,
+  fieldName: string,
+  maxLength = MAX_RESTORE_ARRAY_LENGTH,
+): CoreResult<readonly unknown[]> {
   try {
     if (!Array.isArray(value)) {
-      return error("state.invalidShape", "enabledFeatures must be an array of strings");
+      return error("state.invalidShape", `${fieldName} must be an array`);
+    }
+    if (Object.getPrototypeOf(value) !== Array.prototype) {
+      return error("state.invalidShape", `${fieldName} must be a dense data array`);
     }
     const length = value.length;
     if (
       !Number.isSafeInteger(length)
       || length < 0
-      || length > MAX_RESTORE_ENABLED_FEATURES_LENGTH
+      || length > maxLength
       || Object.getOwnPropertySymbols(value).length > 0
     ) {
-      return error("state.invalidShape", "enabledFeatures must be an array of strings");
+      return error("state.invalidShape", `${fieldName} must be a dense data array`);
     }
     const propertyNames = Object.getOwnPropertyNames(value);
-    const clone: string[] = [];
-    for (let index = 0; index < length; index += 1) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable || typeof descriptor.value !== "string") {
-        return error("state.invalidShape", "enabledFeatures must be an array of strings");
-      }
-      if (descriptor.value.length > MAX_RESTORE_TOP_LEVEL_STRING_LENGTH) {
-        return error("state.invalidShape", "enabledFeatures must be an array of strings");
-      }
-      clone.push(descriptor.value);
+    if (propertyNames.length > length + 1) {
+      return error("state.invalidShape", `${fieldName} must be a dense data array`);
     }
     for (const key of propertyNames) {
       if (key === "length") {
@@ -1571,13 +2370,43 @@ function parseRestoreEnabledFeatures(value: unknown): CoreResult<readonly string
       }
       const index = Number(key);
       if (!Number.isSafeInteger(index) || index < 0 || index >= length || String(index) !== key) {
-        return error("state.invalidShape", "enabledFeatures must be an array of strings");
+        return error("state.invalidShape", `${fieldName} must be a dense data array`);
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+        return error("state.invalidShape", `${fieldName} must be a dense data array`);
       }
     }
+    const clone: unknown[] = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+        return error("state.invalidShape", `${fieldName} must be a dense data array`);
+      }
+      clone.push(descriptor.value);
+    }
+
     return okResult(Object.freeze(clone));
   } catch {
+    return error("state.invalidShape", `${fieldName} must be an array`);
+  }
+}
+
+/** enabledFeatures だけは top-level metadata として one-level の dense string array に clone / freeze する。 */
+function parseRestoreEnabledFeatures(value: unknown): CoreResult<readonly string[]> {
+  const denseFeatures = cloneRestoreArray(value, "enabledFeatures", MAX_RESTORE_ENABLED_FEATURES_LENGTH);
+  if (!denseFeatures.ok) {
     return error("state.invalidShape", "enabledFeatures must be an array of strings");
   }
+  const clone: string[] = [];
+  for (const feature of denseFeatures.value) {
+    if (typeof feature !== "string" || feature.length > MAX_RESTORE_TOP_LEVEL_STRING_LENGTH) {
+      return error("state.invalidShape", "enabledFeatures must be an array of strings");
+    }
+    clone.push(feature);
+  }
+
+  return okResult(Object.freeze(clone));
 }
 
 /** enabledFeatures の canonical order / duplicate だけを shape contract として検査する。 */

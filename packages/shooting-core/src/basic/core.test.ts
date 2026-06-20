@@ -433,6 +433,9 @@ test("restore rejects malformed enabledFeatures metadata without throwing", () =
   const nonEnumerableFeatureProperty = ["bomb"];
   Object.defineProperty(nonEnumerableFeatureProperty, "extra", { enumerable: false, value: true });
   expectInvalidShape({ ...validState, enabledFeatures: nonEnumerableFeatureProperty }, /enabledFeatures/);
+  const inheritedFeatureProperty = ["bomb"];
+  Object.setPrototypeOf(inheritedFeatureProperty, { inherited: true });
+  expectInvalidShape({ ...validState, enabledFeatures: inheritedFeatureProperty }, /enabledFeatures/);
   const symbolFeatures = ["bomb"] as unknown[];
   Object.defineProperty(symbolFeatures, Symbol("feature"), { enumerable: true, value: true });
   expectInvalidShape({ ...validState, enabledFeatures: symbolFeatures }, /enabledFeatures/);
@@ -512,6 +515,524 @@ test("restore classifies top-level compatibility mismatches", () => {
   ] as const) {
     expectRestoreError(state as unknown as SerializedGameState, code);
   }
+});
+
+test("restore validates deterministic payload before the unsupported boundary", () => {
+  const loaded = loadMinimumGame("core.test");
+  const validState = serializeInitialStageState("core.test");
+
+  const expectRestoreError = (state: unknown, code: CoreErrorCode, detail: RegExp) => {
+    const restored = loaded.restore(state as SerializedGameState);
+    assert.equal(restored.ok, false);
+    assert.equal(!restored.ok && restored.errors[0]?.code, code);
+    assert.match(!restored.ok ? restored.errors[0]?.message ?? "" : "", detail);
+  };
+
+  expectRestoreError({ ...validState, prngState: { state: 0 } }, "state.prngInvalid", /prngState/);
+  expectRestoreError({ ...validState, prngState: { state: "not-a-prng-state" } }, "state.prngInvalid", /prngState/);
+  expectRestoreError({ ...validState, prngState: { state: 1, extra: true } }, "state.invalidShape", /prngState/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, extra: true },
+  }, "state.invalidShape", /state contains unknown fields/);
+  const stateWithNonEnumerableExtra = { ...validState.state };
+  Object.defineProperty(stateWithNonEnumerableExtra, "extra", { enumerable: false, value: true });
+  expectRestoreError({
+    ...validState,
+    state: stateWithNonEnumerableExtra,
+  }, "state.invalidShape", /state contains unknown fields/);
+  const missingRuntimeEntities = { ...validState.state } as Record<string, unknown>;
+  delete missingRuntimeEntities.runtimeEntities;
+  expectRestoreError({ ...validState, state: missingRuntimeEntities }, "state.invalidShape", /runtimeEntities/);
+  for (const requiredField of [
+    "pendingEvents",
+    "score",
+    "timelineCursor",
+    "patternRunnerStates",
+    "enabledFeatureStates",
+  ] as const) {
+    const missingRequiredField = { ...validState.state } as Record<string, unknown>;
+    delete missingRequiredField[requiredField];
+    expectRestoreError({ ...validState, state: missingRequiredField }, "state.invalidShape", new RegExp(requiredField));
+  }
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: {} },
+  }, "state.invalidShape", /runtimeEntities/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      runtimeEntities: Array.from({ length: 8_494 }, () => validState.state.runtimeEntities[0]!),
+    },
+  }, "state.invalidShape", /runtimeEntities/);
+  const sparseRuntimeEntities: unknown[] = [];
+  sparseRuntimeEntities.length = 1;
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: sparseRuntimeEntities },
+  }, "state.invalidShape", /runtimeEntities/);
+  const runtimeEntitiesWithNonEnumerableExtra = [...validState.state.runtimeEntities];
+  Object.defineProperty(runtimeEntitiesWithNonEnumerableExtra, "extra", { enumerable: false, value: true });
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: runtimeEntitiesWithNonEnumerableExtra },
+  }, "state.invalidShape", /runtimeEntities/);
+  const throwingRuntimeEntitiesLength = new Proxy([...validState.state.runtimeEntities], {
+    get(target, property, receiver) {
+      if (property === "length") {
+        throw new Error("runtimeEntities boom");
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: throwingRuntimeEntitiesLength },
+  }, "state.invalidShape", /runtimeEntities/);
+  const serializedPlayer = validState.state.runtimeEntities[0];
+  assert.equal(serializedPlayer?.kind, "player");
+  if (serializedPlayer?.kind !== "player") {
+    assert.fail("expected serialized player entity");
+  }
+  const playerWithNonEnumerableExtra = { ...serializedPlayer };
+  Object.defineProperty(playerWithNonEnumerableExtra, "hp", { enumerable: false, value: 1 });
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [playerWithNonEnumerableExtra] },
+  }, "state.invalidShape", /enumerable data properties/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, id: 2 }] },
+  }, "state.invalidShape", /below nextEntityId/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, id: 0 }] },
+  }, "state.invalidShape", /below nextEntityId/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, kind: "boss" }] },
+  }, "state.invalidShape", /kind is not supported/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, collisionRadius: 0 }] },
+  }, "state.invalidShape", /collisionRadius/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, collisionRadius: Number.POSITIVE_INFINITY }] },
+  }, "state.invalidShape", /collisionRadius/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [] },
+  }, "state.invalidShape", /initial restore state/);
+  expectRestoreError({
+    ...validState,
+    nextEntityId: 3,
+    state: {
+      ...validState.state,
+      runtimeEntities: [
+        serializedPlayer,
+        { ...serializedPlayer, id: 2 },
+      ],
+    },
+  }, "state.invalidShape", /initial restore state/);
+  expectRestoreError({
+    ...validState,
+    nextEntityId: 3,
+    state: {
+      ...validState.state,
+      runtimeEntities: [
+        serializedPlayer,
+        {
+          id: 2,
+          kind: "enemy",
+          definitionId: "enemy.scout",
+          position: { x: 192, y: -16 },
+          collisionRadius: 12,
+          hp: 10,
+          scoreOnKill: 100,
+          pathId: "path.none",
+          patternId: "pattern.none",
+        },
+      ],
+    },
+  }, "state.invalidShape", /initial restore state/);
+  expectRestoreError({
+    ...validState,
+    expectedTick: 1,
+    nextEntityId: 3,
+    state: {
+      ...validState.state,
+      timelineCursor: 0,
+      pendingEvents: [],
+      runtimeEntities: [
+        serializedPlayer,
+        {
+          id: 2,
+          kind: "enemy",
+          definitionId: "enemy.scout",
+          position: { x: 192, y: -16 },
+          collisionRadius: 12,
+          hp: 10,
+          scoreOnKill: 100,
+          pathId: "path.none",
+          patternId: "pattern.none",
+        },
+      ],
+    },
+  }, "state.invalidShape", /processed timeline/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, hp: 1 }] },
+  }, "state.invalidShape", /player runtime entity/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, definitionId: "player.missing" }] },
+  }, "state.registryInvalid", /player/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, definitionId: "not-a-player-id" }] },
+  }, "state.invalidShape", /player id/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, shotDefinitionId: "playerShot.missing" }] },
+  }, "state.registryInvalid", /player shot/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, shotDefinitionId: "not-a-shot-id" }] },
+  }, "state.invalidShape", /playerShot id/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, position: { x: Infinity, y: 400 } }] },
+  }, "state.invalidShape", /position/);
+  const throwingPlayerPosition = new Proxy({ x: 192, y: 400 }, {
+    get() {
+      throw new Error("position should not be read directly after validation");
+    },
+  });
+  const restoredWithThrowingPlayerPosition = loaded.restore({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, position: throwingPlayerPosition }] },
+  } as SerializedGameState);
+  assert.equal(restoredWithThrowingPlayerPosition.ok, false);
+  assert.equal(!restoredWithThrowingPlayerPosition.ok && restoredWithThrowingPlayerPosition.errors[0]?.code, "state.unsupportedSnapshot");
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, movement: { speed: 17, focusSpeed: 1.8 } }] },
+  }, "state.invalidShape", /movement/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, movement: { speed: 5, focusSpeed: 1.8 } }] },
+  }, "state.invalidShape", /player definition fields/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, collisionRadius: 4 }] },
+  }, "state.invalidShape", /player definition fields/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, lives: -1 }] },
+  }, "state.invalidShape", /player runtime counters/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, invincibleTicksRemaining: 1.5 }] },
+  }, "state.invalidShape", /player runtime counters/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, nextShotAllowedTick: -1 }] },
+  }, "state.invalidShape", /player runtime counters/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, position: { x: 193, y: 400 } }] },
+  }, "state.invalidShape", /initial player/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, lives: 2 }] },
+  }, "state.invalidShape", /initial player/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, invincibleTicksRemaining: 1 }] },
+  }, "state.invalidShape", /initial player/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, nextShotAllowedTick: 1 }] },
+  }, "state.invalidShape", /initial player/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, score: -1 },
+  }, "state.invalidShape", /score/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, score: Number.POSITIVE_INFINITY },
+  }, "state.invalidShape", /score/);
+  expectRestoreError({
+    ...validState,
+    expectedTick: 1,
+    state: { ...validState.state, pendingEvents: [], score: 0.5 },
+  }, "state.invalidShape", /score/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, score: 1 },
+  }, "state.invalidShape", /score must be zero/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, timelineCursor: 999 },
+  }, "state.invalidShape", /timelineCursor/);
+  expectRestoreError({
+    ...validState,
+    expectedTick: 1,
+    state: { ...validState.state, timelineCursor: 1, pendingEvents: [] },
+  }, "state.invalidShape", /timelineCursor/);
+  expectRestoreError({
+    ...validState,
+    expectedTick: 61,
+    state: { ...validState.state, timelineCursor: 0, pendingEvents: [] },
+  }, "state.invalidShape", /timelineCursor/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, pendingEvents: [] },
+  }, "state.invalidShape", /pendingEvents/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      pendingEvents: [
+        { type: "stageStarted", tick: 0, stageId: "stage.stage_01" },
+        { type: "stageStarted", tick: 0, stageId: "stage.stage_01" },
+      ],
+    },
+  }, "state.invalidShape", /pendingEvents/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      pendingEvents: [{ type: "stageStarted", tick: 0, stageId: "stage.missing" }],
+    },
+  }, "state.invalidShape", /pendingEvents/);
+  const pendingEventsWithNonEnumerableExtra = [...validState.state.pendingEvents];
+  Object.defineProperty(pendingEventsWithNonEnumerableExtra, "extra", { enumerable: false, value: true });
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, pendingEvents: pendingEventsWithNonEnumerableExtra },
+  }, "state.invalidShape", /pendingEvents/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      pendingEvents: Array.from({ length: 8_193 }, () => ({ type: "stageStarted", tick: 0, stageId: "stage.stage_01" })),
+    },
+  }, "state.invalidShape", /pendingEvents/);
+  expectRestoreError({
+    ...validState,
+    expectedTick: 1,
+    state: {
+      ...validState.state,
+      pendingEvents: [{ type: "stageStarted", tick: 0, stageId: "stage.stage_01" }],
+    },
+  }, "state.invalidShape", /pendingEvents/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, patternRunnerStates: [{ runnerId: "patternRunner.x", patternId: "pattern.none", stateVersion: 1, payload: null }] },
+  }, "state.invalidShape", /patternRunnerStates/);
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, enabledFeatureStates: [{ feature: "bomb", stateVersion: 1, payload: null }] },
+  }, "state.invalidShape", /enabledFeatureStates/);
+});
+
+test("restore validates each runtime entity kind before the unsupported boundary", () => {
+  const definition = createFireOnSpawnAtZeroDefinition();
+  const loaded = createShootingCore("core.test").load(definition);
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const started = startStageFromLoadedGame(loaded.value);
+  const frame = started.tick(createShotInputFrame(0));
+  assert.equal(frame.ok, true);
+  const serialized = started.serialize();
+  assert.equal(serialized.ok, true);
+  if (!serialized.ok) {
+    assert.fail("expected serialized state");
+  }
+
+  const validRestore = loaded.value.restore(serialized.value);
+  assert.equal(validRestore.ok, false);
+  assert.equal(!validRestore.ok && validRestore.errors[0]?.code, "state.unsupportedSnapshot");
+
+  const enemy = serialized.value.state.runtimeEntities.find((entity) => entity.kind === "enemy");
+  const enemyBullet = serialized.value.state.runtimeEntities.find((entity) => entity.kind === "enemyBullet");
+  const playerShot = serialized.value.state.runtimeEntities.find((entity) => entity.kind === "playerShot");
+  assert.equal(enemy?.kind, "enemy");
+  assert.equal(enemyBullet?.kind, "enemyBullet");
+  assert.equal(playerShot?.kind, "playerShot");
+  if (enemy?.kind !== "enemy" || enemyBullet?.kind !== "enemyBullet" || playerShot?.kind !== "playerShot") {
+    assert.fail("expected enemy, enemy bullet, and player shot entities");
+  }
+
+  const expectRestoreError = (runtimeEntity: Record<string, unknown>, code: CoreErrorCode, detail: RegExp) => {
+    const restored = loaded.value.restore({
+      ...serialized.value,
+      state: {
+        ...serialized.value.state,
+        runtimeEntities: serialized.value.state.runtimeEntities.map((entity) => (
+          entity.id === runtimeEntity.id ? runtimeEntity : entity
+        )),
+      },
+    } as SerializedGameState);
+    assert.equal(restored.ok, false);
+    assert.equal(!restored.ok && restored.errors[0]?.code, code);
+    assert.match(!restored.ok ? restored.errors[0]?.message ?? "" : "", detail);
+  };
+
+  expectRestoreError({ ...enemy, projectile: {} }, "state.invalidShape", /unknown fields/);
+  expectRestoreError({ ...enemy, definitionId: "enemy.missing" }, "state.registryInvalid", /enemy/);
+  expectRestoreError({ ...enemy, definitionId: "not-an-enemy-id" }, "state.invalidShape", /enemy id/);
+  expectRestoreError({ ...enemy, pathId: 1 }, "state.invalidShape", /pathId/);
+  expectRestoreError({ ...enemy, pathId: "not-a-path-id" }, "state.invalidShape", /path id/);
+  expectRestoreError({ ...enemy, pathId: "path.missing" }, "state.registryInvalid", /path/);
+  expectRestoreError({ ...enemy, patternId: "not-a-pattern-id" }, "state.invalidShape", /pattern id/);
+  expectRestoreError({ ...enemy, patternId: "pattern.missing" }, "state.registryInvalid", /pattern/);
+  expectRestoreError({ ...enemy, hp: -1 }, "state.invalidShape", /hp and scoreOnKill/);
+  expectRestoreError({ ...enemy, hp: Number.NaN }, "state.invalidShape", /hp and scoreOnKill/);
+  expectRestoreError({ ...enemy, hp: 11 }, "state.invalidShape", /enemy runtime entity/);
+  expectRestoreError({ ...enemy, scoreOnKill: -1 }, "state.invalidShape", /hp and scoreOnKill/);
+  expectRestoreError({ ...enemy, scoreOnKill: 1.5 }, "state.invalidShape", /hp and scoreOnKill/);
+  expectRestoreError({ ...enemy, scoreOnKill: 101 }, "state.invalidShape", /enemy runtime entity/);
+  expectRestoreError({ ...enemy, collisionRadius: 13 }, "state.invalidShape", /enemy runtime entity/);
+  expectRestoreError({ ...enemy, position: { x: 193, y: 80 } }, "state.invalidShape", /processed timeline/);
+
+  expectRestoreError({ ...enemyBullet, projectile: {} }, "state.invalidShape", /unknown fields/);
+  expectRestoreError({ ...enemyBullet, definitionId: "bullet.missing" }, "state.registryInvalid", /bullet/);
+  expectRestoreError({ ...enemyBullet, definitionId: "not-a-bullet-id" }, "state.invalidShape", /bullet id/);
+  expectRestoreError({ ...enemyBullet, collisionRadius: 5 }, "state.invalidShape", /bullet definition/);
+  expectRestoreError({ ...enemyBullet, position: { x: 192, y: 89 } }, "state.invalidShape", /processed timeline/);
+
+  expectRestoreError({ ...playerShot, owner: "player" }, "state.invalidShape", /unknown fields/);
+  expectRestoreError({ ...playerShot, definitionId: "playerShot.missing" }, "state.registryInvalid", /player shot/);
+  expectRestoreError({ ...playerShot, definitionId: "not-a-player-shot-id" }, "state.invalidShape", /playerShot id/);
+  expectRestoreError({ ...playerShot, velocity: { x: 65, y: -8 } }, "state.invalidShape", /velocity/);
+  expectRestoreError({ ...playerShot, velocity: { x: 0, y: -7 } }, "state.invalidShape", /player shot definition/);
+  expectRestoreError({ ...playerShot, remainingLifetimeTicks: 0 }, "state.invalidShape", /remainingLifetimeTicks/);
+  expectRestoreError({ ...playerShot, remainingLifetimeTicks: 4 }, "state.invalidShape", /player shot definition/);
+  expectRestoreError({ ...playerShot, damage: 0 }, "state.invalidShape", /damage/);
+  expectRestoreError({ ...playerShot, damage: 6 }, "state.invalidShape", /player shot definition/);
+
+  const expectEntityOrderError = (runtimeEntities: typeof serialized.value.state.runtimeEntities) => {
+    const restored = loaded.value.restore({
+      ...serialized.value,
+      state: {
+        ...serialized.value.state,
+        runtimeEntities,
+      },
+    });
+    assert.equal(restored.ok, false);
+    assert.equal(!restored.ok && restored.errors[0]?.code, "state.invalidShape");
+    assert.match(!restored.ok ? restored.errors[0]?.message ?? "" : "", /below nextEntityId/);
+  };
+  const restoredWithShiftedPlayerId = loaded.value.restore({
+    ...serialized.value,
+    state: {
+      ...serialized.value.state,
+      runtimeEntities: serialized.value.state.runtimeEntities.map((entity) => (
+        entity.kind === "player" ? { ...entity, id: 2 } : entity
+      )),
+    },
+  });
+  assert.equal(restoredWithShiftedPlayerId.ok, false);
+  assert.equal(!restoredWithShiftedPlayerId.ok && restoredWithShiftedPlayerId.errors[0]?.code, "state.invalidShape");
+  assert.match(!restoredWithShiftedPlayerId.ok ? restoredWithShiftedPlayerId.errors[0]?.message ?? "" : "", /initial entity id/);
+  const restoredWithoutPlayer = loaded.value.restore({
+    ...serialized.value,
+    state: {
+      ...serialized.value.state,
+      runtimeEntities: serialized.value.state.runtimeEntities.filter((entity) => entity.kind !== "player"),
+    },
+  });
+  assert.equal(restoredWithoutPlayer.ok, false);
+  assert.equal(!restoredWithoutPlayer.ok && restoredWithoutPlayer.errors[0]?.code, "state.invalidShape");
+  assert.match(!restoredWithoutPlayer.ok ? restoredWithoutPlayer.errors[0]?.message ?? "" : "", /player matching playerId/);
+  const duplicateEnemyBullet = {
+    ...enemyBullet,
+    id: serialized.value.nextEntityId,
+  };
+  const restoredWithExtraEnemyBullet = loaded.value.restore({
+    ...serialized.value,
+    nextEntityId: serialized.value.nextEntityId + 1,
+    state: {
+      ...serialized.value.state,
+      runtimeEntities: [
+        ...serialized.value.state.runtimeEntities,
+        duplicateEnemyBullet,
+      ],
+    },
+  });
+  assert.equal(restoredWithExtraEnemyBullet.ok, false);
+  assert.equal(!restoredWithExtraEnemyBullet.ok && restoredWithExtraEnemyBullet.errors[0]?.code, "state.invalidShape");
+  assert.match(!restoredWithExtraEnemyBullet.ok ? restoredWithExtraEnemyBullet.errors[0]?.message ?? "" : "", /allocation envelope/);
+  const restoredWithDuplicateEnemyBullet = loaded.value.restore({
+    ...serialized.value,
+    state: {
+      ...serialized.value.state,
+      runtimeEntities: [
+        serialized.value.state.runtimeEntities[0]!,
+        enemy,
+        enemyBullet,
+        { ...enemyBullet, id: 4 },
+      ],
+    },
+  } as SerializedGameState);
+  assert.equal(restoredWithDuplicateEnemyBullet.ok, false);
+  assert.equal(!restoredWithDuplicateEnemyBullet.ok && restoredWithDuplicateEnemyBullet.errors[0]?.code, "state.invalidShape");
+  assert.match(!restoredWithDuplicateEnemyBullet.ok ? restoredWithDuplicateEnemyBullet.errors[0]?.message ?? "" : "", /enemy bullet runtime entity/);
+  const restoredWithExtraEnemy = loaded.value.restore({
+    ...serialized.value,
+    state: {
+      ...serialized.value.state,
+      runtimeEntities: [
+        serialized.value.state.runtimeEntities[0]!,
+        enemy,
+        { ...enemy, id: 3 },
+        { ...enemyBullet, id: 4 },
+      ],
+    },
+  } as SerializedGameState);
+  assert.equal(restoredWithExtraEnemy.ok, false);
+  assert.equal(!restoredWithExtraEnemy.ok && restoredWithExtraEnemy.errors[0]?.code, "state.invalidShape");
+  assert.match(!restoredWithExtraEnemy.ok ? restoredWithExtraEnemy.errors[0]?.message ?? "" : "", /enemy runtime entity/);
+  const restoredWithInflatedNextEntityId = loaded.value.restore({
+    ...serialized.value,
+    nextEntityId: serialized.value.nextEntityId + 10,
+  });
+  assert.equal(restoredWithInflatedNextEntityId.ok, false);
+  assert.equal(!restoredWithInflatedNextEntityId.ok && restoredWithInflatedNextEntityId.errors[0]?.code, "state.invalidShape");
+  assert.match(!restoredWithInflatedNextEntityId.ok ? restoredWithInflatedNextEntityId.errors[0]?.message ?? "" : "", /allocation envelope/);
+  const restoredWithSwappedBulletShotIds = loaded.value.restore({
+    ...serialized.value,
+    state: {
+      ...serialized.value.state,
+      runtimeEntities: [
+        serialized.value.state.runtimeEntities[0]!,
+        enemy,
+        { ...playerShot, id: enemyBullet.id },
+        { ...enemyBullet, id: playerShot.id },
+      ],
+    },
+  } as SerializedGameState);
+  assert.equal(restoredWithSwappedBulletShotIds.ok, false);
+  assert.equal(!restoredWithSwappedBulletShotIds.ok && restoredWithSwappedBulletShotIds.errors[0]?.code, "state.invalidShape");
+  assert.match(!restoredWithSwappedBulletShotIds.ok ? restoredWithSwappedBulletShotIds.errors[0]?.message ?? "" : "", /player shot id/);
+  expectEntityOrderError(serialized.value.state.runtimeEntities.map((entity) => (
+    entity.id === enemy.id ? { ...entity, id: serialized.value.nextEntityId } : entity
+  )));
+  expectEntityOrderError(serialized.value.state.runtimeEntities.map((entity) => (
+    entity.id === enemy.id ? { ...entity, id: enemyBullet.id } : entity
+  )));
+  expectEntityOrderError([
+    ...serialized.value.state.runtimeEntities.slice(0, 1),
+    serialized.value.state.runtimeEntities[2]!,
+    serialized.value.state.runtimeEntities[1]!,
+    ...serialized.value.state.runtimeEntities.slice(3),
+  ]);
 });
 
 test("restore defers compatible deterministic payload restore to the next slice", () => {

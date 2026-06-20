@@ -16,7 +16,8 @@ import type { CoreResult } from "../result.ts";
 import { EntityAllocator } from "./entity.ts";
 import type { EntityId } from "./entity.ts";
 
-const DEFAULT_PLAYER_START_POSITION = Object.freeze({ x: 192, y: 400 });
+/** startStage 直後の player 初期位置。restore の初期 snapshot 検証でも同じ値を使う。 */
+export const DEFAULT_PLAYER_START_POSITION = Object.freeze({ x: 192, y: 400 });
 
 type SpawnEnemyAction = Extract<StageTimelineAction, { type: "spawnEnemy" }>;
 

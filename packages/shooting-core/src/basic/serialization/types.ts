@@ -209,9 +209,11 @@ export type SerializedEnabledFeatureState = Readonly<{
 /**
  * `SerializedGameState.state` 配下に閉じ込める deterministic payload。
  *
- * `runtimeEntities` は serialize 時に entity id 昇順で出力する。Phase 1B-5 で追加する restore は順序違反、
- * 重複、`nextEntityId` 以上の ID を restore 用の shape error として拒否し、
- * collision / event order の tie-breaker を保つ。
+ * `runtimeEntities` は serialize 時に entity id 昇順で出力する。Phase 1B-5 の restore は順序違反、
+ * 重複、`nextEntityId` 以上の ID、同 tick の system order から作れない ID 並び、
+ * 到達不能な `nextEntityId` envelope を restore 用の shape error として拒否し、
+ * collision / event order の tie-breaker を保つ。`score` は fixed scoreOnKill の合計なので、
+ * non-negative safe integer として検証する。
  *
  * `patternRunnerStates` と `enabledFeatureStates` はこの slice では空配列として
  * 生成するが、型は後続 module が serialized state を追加できる形にしておく。

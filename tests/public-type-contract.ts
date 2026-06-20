@@ -143,6 +143,8 @@ const restoreInputFormatVersionMismatchErrorCode: CoreErrorCode = "state.inputFo
 const restoreStateHashVersionMismatchErrorCode: CoreErrorCode = "state.stateHashVersionMismatch";
 const restoreContentMismatchErrorCode: CoreErrorCode = "state.contentMismatch";
 const restoreFeatureMismatchErrorCode: CoreErrorCode = "state.featureMismatch";
+const restorePrngInvalidErrorCode: CoreErrorCode = "state.prngInvalid";
+const restoreRegistryInvalidErrorCode: CoreErrorCode = "state.registryInvalid";
 const unsupportedSnapshotErrorCode: CoreErrorCode = "state.unsupportedSnapshot";
 const difficulty: Difficulty = "normal";
 const enabledFeature: EnabledFeature = "bomb";
@@ -882,14 +884,8 @@ scoreChangedEvent.total = 0;
 // @ts-expect-error entity.notFound is an internal invariant, not a public CoreErrorCode.
 const invalidCoreErrorCode: CoreErrorCode = "entity.notFound";
 
-// @ts-expect-error state.registryInvalid is introduced with restore registry validation, not 5A.
-const prematureRegistryInvalidErrorCode: CoreErrorCode = "state.registryInvalid";
-
-// @ts-expect-error state.entityAllocatorInvalid is introduced with restore allocator validation, not 5A.
-const prematureEntityAllocatorInvalidErrorCode: CoreErrorCode = "state.entityAllocatorInvalid";
-
-// @ts-expect-error state.prngInvalid is introduced with restore PRNG validation, not 5A.
-const prematurePrngInvalidErrorCode: CoreErrorCode = "state.prngInvalid";
+// @ts-expect-error entityAllocator restore failures are normalized before becoming public restore errors.
+const invalidEntityAllocatorRestoreErrorCode: CoreErrorCode = "state.entityAllocatorInvalid";
 
 const invalidEmptyPlayerShotsBatch: GameEvent = {
   type: "playerShotsSpawnedBatch",
@@ -1129,9 +1125,9 @@ void invalidPlayerEntity;
 void invalidEnemyBulletEntity;
 void invalidPlayerShotEntity;
 void invalidCoreErrorCode;
-void prematureRegistryInvalidErrorCode;
-void prematureEntityAllocatorInvalidErrorCode;
-void prematurePrngInvalidErrorCode;
+void invalidEntityAllocatorRestoreErrorCode;
+void restorePrngInvalidErrorCode;
+void restoreRegistryInvalidErrorCode;
 void invalidEmptyPlayerShotsBatch;
 void invalidEnemyDestroyedByCollision;
 void invalidEnemyBulletDefeated;

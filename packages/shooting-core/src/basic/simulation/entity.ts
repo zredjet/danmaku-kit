@@ -1,8 +1,6 @@
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
-
-const MAX_ALLOCATED_ENTITY_ID = Number.MAX_SAFE_INTEGER - 1;
-const MAX_RESTORABLE_NEXT_ENTITY_ID = MAX_ALLOCATED_ENTITY_ID + 1;
+import { MAX_ALLOCATED_ENTITY_ID, MAX_RESTORABLE_NEXT_ENTITY_ID } from "./entity-id-budget.ts";
 
 /** Core 内で deterministic order を作るための entity ID。 */
 export type EntityId = number;

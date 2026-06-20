@@ -1,17 +1,19 @@
 import type { CoreError } from "../result.ts";
 import { deepFreezePlainData } from "../internal/immutable.ts";
 import { MAX_IDENTIFIER_LENGTH, isNamespacedId, isSafeAssetKey } from "./identifier.ts";
+import {
+  MAX_PLAYER_MOVEMENT_SPEED,
+  MAX_PLAYER_SHOT_FIRE_INTERVAL_TICKS,
+  MAX_PLAYER_SHOT_LIFETIME_TICKS,
+  MAX_PLAYER_SHOT_SPEED_PER_AXIS,
+  MAX_SPAWNS_PER_TICK,
+  MAX_STAGE_TIMELINE_STEPS,
+} from "./runtime-budgets.ts";
 import { KNOWN_ENABLED_FEATURES } from "./types.ts";
 import type { ContentRegistry, GameDefinition } from "./types.ts";
 
 const SUPPORTED_SCHEMA_VERSION = "1";
 const KNOWN_FEATURE_SET = new Set<string>(KNOWN_ENABLED_FEATURES);
-const MAX_STAGE_TIMELINE_STEPS = 4_096;
-const MAX_SPAWNS_PER_TICK = 100;
-const MAX_PLAYER_MOVEMENT_SPEED = 16;
-const MAX_PLAYER_SHOT_FIRE_INTERVAL_TICKS = 60;
-const MAX_PLAYER_SHOT_LIFETIME_TICKS = 300;
-const MAX_PLAYER_SHOT_SPEED_PER_AXIS = 64;
 
 /**
  * `GameDefinition` 全体の validation pipeline。

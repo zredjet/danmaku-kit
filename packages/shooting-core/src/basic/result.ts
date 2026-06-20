@@ -34,6 +34,8 @@ export type CoreErrorCode =
   | "state.featureMismatch"
   | "state.inputFormatVersionMismatch"
   | "state.invalidShape"
+  | "state.prngInvalid"
+  | "state.registryInvalid"
   | "state.schemaVersionMismatch"
   | "state.stateHashVersionMismatch"
   | "state.unsupportedSnapshot"

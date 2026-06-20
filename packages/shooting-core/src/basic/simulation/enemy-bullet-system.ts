@@ -54,7 +54,7 @@ export function spawnEnemyBulletsOnSpawn(
     if (!bullet) {
       return coreError("bullet.notFound", `Bullet not found: ${fireOnSpawn.bullet}`);
     }
-    const position = resolveEnemyBulletSpawnPosition(enemy, pattern.id, fireOnSpawn);
+    const position = resolveEnemyBulletSpawnPosition(enemy.id, enemy.position, pattern.id, fireOnSpawn);
     if (!position.ok) {
       return position;
     }
@@ -117,18 +117,24 @@ function buildEnemyBulletsSpawnedBatchEvent(
   });
 }
 
-/** enemy spawn 位置と `fireOnSpawn.offset` から敵弾生成位置を決める。 */
-function resolveEnemyBulletSpawnPosition(
-  enemy: EnemyRuntimeEntity,
+/**
+ * enemy spawn 位置と `fireOnSpawn.offset` から敵弾生成位置を決める。
+ *
+ * restore validation も同じ座標規則を使うため、runtime entity 生成前の spawn 位置から
+ * 計算できる小さな helper として公開する。
+ */
+export function resolveEnemyBulletSpawnPosition(
+  enemyId: EnemyRuntimeEntity["id"] | "restore",
+  enemyPosition: EnemyRuntimeEntity["position"],
   patternId: PatternDefinition["id"],
   fireOnSpawn: NonNullable<PatternDefinition["fireOnSpawn"]>,
 ): CoreResult<EnemyBulletRuntimeEntity["position"]> {
-  const x = enemy.position.x + fireOnSpawn.offset.x;
-  const y = enemy.position.y + fireOnSpawn.offset.y;
+  const x = enemyPosition.x + fireOnSpawn.offset.x;
+  const y = enemyPosition.y + fireOnSpawn.offset.y;
   if (!Number.isFinite(x) || !Number.isFinite(y)) {
     return coreError(
       "definition.invalidConstraint",
-      `Enemy bullet spawn position must be finite: ${enemy.id}:${patternId}`,
+      `Enemy bullet spawn position must be finite: ${enemyId}:${patternId}`,
     );
   }
 
