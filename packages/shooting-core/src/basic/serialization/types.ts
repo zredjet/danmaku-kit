@@ -217,8 +217,8 @@ export type SerializedEnabledFeatureState = Readonly<{
  *
  * `patternRunnerStates` と `enabledFeatureStates` はこの slice では空配列として
  * 生成するが、型は後続 module が serialized state を追加できる形にしておく。
- * Phase 1B-5 の basic core restore は両配列とも空配列だけを受け付け、非空なら
- * restore 用の shape error として拒否する。feature module 導入後に非空 state を許可する場合は、
+ * Phase 1B-5 の basic core restore は、非空 extension state の shape と JSON payload を検証したうえで
+ * module 非対応を `state.featureMismatch` として返す。feature module 導入後に非空 state を許可する場合は、
  * `patternRunnerStates` を `runnerId` の UTF-8 byte lexicographic order 昇順、
  * `enabledFeatureStates` を top-level `enabledFeatures` と同じ canonical feature order にし、
  * 重複、順序違反、module contract 不一致を restore validation で拒否する。

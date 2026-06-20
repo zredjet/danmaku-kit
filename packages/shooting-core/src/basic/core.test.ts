@@ -829,14 +829,239 @@ test("restore validates deterministic payload before the unsupported boundary", 
       pendingEvents: [{ type: "stageStarted", tick: 0, stageId: "stage.stage_01" }],
     },
   }, "state.invalidShape", /pendingEvents/);
+  const validPatternRunnerState = {
+    runnerId: "patternRunner.main",
+    patternId: "pattern.none",
+    stateVersion: 1,
+    payload: { cursor: 0, flags: [true, "ready", null] },
+  };
+  const validEnabledFeatureState = {
+    feature: "bomb",
+    stateVersion: 1,
+    payload: { charges: 1 },
+  };
   expectRestoreError({
     ...validState,
-    state: { ...validState.state, patternRunnerStates: [{ runnerId: "patternRunner.x", patternId: "pattern.none", stateVersion: 1, payload: null }] },
+    state: { ...validState.state, patternRunnerStates: [validPatternRunnerState] },
+  }, "state.featureMismatch", /patternRunnerStates/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: Array.from({ length: 129 }, (_, index) => ({
+        ...validPatternRunnerState,
+        runnerId: `patternRunner.${String(index).padStart(3, "0")}`,
+      })),
+    },
   }, "state.invalidShape", /patternRunnerStates/);
   expectRestoreError({
     ...validState,
-    state: { ...validState.state, enabledFeatureStates: [{ feature: "bomb", stateVersion: 1, payload: null }] },
-  }, "state.invalidShape", /enabledFeatureStates/);
+    state: { ...validState.state, enabledFeatureStates: [validEnabledFeatureState] },
+  }, "state.featureMismatch", /enabled feature/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, runnerId: "patternRunner." }],
+    },
+  }, "state.invalidShape", /runnerId/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, runnerId: `patternRunner.${"x".repeat(8_193)}` }],
+    },
+  }, "state.invalidShape", /runnerId/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [
+        { ...validPatternRunnerState, runnerId: "patternRunner.z" },
+        { ...validPatternRunnerState, runnerId: "patternRunner.a" },
+      ],
+    },
+  }, "state.invalidShape", /ordered/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [
+        { ...validPatternRunnerState, runnerId: "patternRunner.😀" },
+        { ...validPatternRunnerState, runnerId: "patternRunner.あ" },
+      ],
+    },
+  }, "state.invalidShape", /ordered/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [
+        validPatternRunnerState,
+        validPatternRunnerState,
+      ],
+    },
+  }, "state.invalidShape", /ordered/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, patternId: "path.none" }],
+    },
+  }, "state.invalidShape", /pattern id/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, patternId: "pattern.missing" }],
+    },
+  }, "state.featureMismatch", /patternRunnerStates/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, stateVersion: 0 }],
+    },
+  }, "state.invalidShape", /stateVersion/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, payload: Number.POSITIVE_INFINITY }],
+    },
+  }, "state.invalidShape", /payload/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, payload: "\ud800" }],
+    },
+  }, "state.invalidShape", /lone surrogate/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, payload: "x".repeat(8_193) }],
+    },
+  }, "state.invalidShape", /string budget/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{
+        ...validPatternRunnerState,
+        payload: Array.from({ length: 65 }, () => "x".repeat(4_096)),
+      }],
+    },
+  }, "state.invalidShape", /payload budget/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, payload: { ["x".repeat(8_193)]: 1 } }],
+    },
+  }, "state.invalidShape", /string budget/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, payload: () => 0 }],
+    },
+  }, "state.invalidShape", /JSON-compatible/);
+  const sparsePayload: unknown[] = [];
+  sparsePayload.length = 1;
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, payload: sparsePayload }],
+    },
+  }, "state.invalidShape", /payload/);
+  const tooWidePayload = Object.fromEntries(Array.from({ length: 8_192 }, (_, index) => [`k${index}`, index]));
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, payload: tooWidePayload }],
+    },
+  }, "state.invalidShape", /payload budget/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [
+        { ...validPatternRunnerState, runnerId: "patternRunner.a", payload: Array.from({ length: 8_190 }, () => null) },
+        { ...validPatternRunnerState, runnerId: "patternRunner.b", payload: Array.from({ length: 2 }, () => null) },
+      ],
+    },
+  }, "state.invalidShape", /payload budget/);
+  const getterPayload = {};
+  Object.defineProperty(getterPayload, "value", {
+    enumerable: true,
+    get() {
+      throw new Error("payload getter must not run");
+    },
+  });
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, payload: getterPayload }],
+    },
+  }, "state.invalidShape", /data properties/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      patternRunnerStates: [{ ...validPatternRunnerState, payload: Object.create({ inherited: true }) }],
+    },
+  }, "state.invalidShape", /plain JSON object/);
+  const revokedPayload = Proxy.revocable({ value: 1 }, {});
+  revokedPayload.revoke();
+  for (const invalidPayload of [
+    undefined,
+    Symbol("payload"),
+    1n,
+    new Date(0),
+    new Map([["value", 1]]),
+    revokedPayload.proxy,
+  ]) {
+    expectRestoreError({
+      ...validState,
+      state: {
+        ...validState.state,
+        patternRunnerStates: [{ ...validPatternRunnerState, payload: invalidPayload }],
+      },
+    }, "state.invalidShape", /payload|JSON|plain/);
+  }
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      enabledFeatureStates: [{ ...validEnabledFeatureState, payload: undefined }],
+    },
+  }, "state.invalidShape", /payload/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      enabledFeatureStates: [{ ...validEnabledFeatureState, feature: 1 }],
+    },
+  }, "state.invalidShape", /feature/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      enabledFeatureStates: [{ ...validEnabledFeatureState, feature: "x".repeat(8_193) }],
+    },
+  }, "state.invalidShape", /feature/);
+  expectRestoreError({
+    ...validState,
+    state: {
+      ...validState.state,
+      enabledFeatureStates: [{ ...validEnabledFeatureState, stateVersion: 0 }],
+    },
+  }, "state.invalidShape", /stateVersion/);
 });
 
 test("restore validates each runtime entity kind before the unsupported boundary", () => {

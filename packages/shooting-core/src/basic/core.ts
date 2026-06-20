@@ -31,10 +31,19 @@ import { coreError, errorResult, okResult } from "./result.ts";
 import type { CoreError, CoreErrorCode, CoreResult } from "./result.ts";
 import type {
   SerializedDeterministicState,
+  SerializedEnabledFeatureState,
   SerializedGameState,
   SerializedPendingEvent,
+  SerializedPatternRunnerState,
   SerializedRuntimeEntityState,
 } from "./serialization/types.ts";
+import {
+  compareUtf8Lexicographic,
+  createRestoreJsonBudget,
+  isRestoreJsonStringWithinSingleValueBudget,
+  validateRestoreJsonPayload,
+} from "./serialization/restore-json.ts";
+import type { RestoreJsonBudget } from "./serialization/restore-json.ts";
 import { resolveCollisionAndScoring } from "./simulation/collision-system.ts";
 import { EntityAllocator } from "./simulation/entity.ts";
 import { resolveEnemyBulletSpawnPosition, spawnEnemyBulletsOnSpawn } from "./simulation/enemy-bullet-system.ts";
@@ -407,6 +416,18 @@ const RESTORE_RUNTIME_ENTITY_KINDS = Object.freeze([
   "enemyBullet",
   "playerShot",
 ] as const satisfies ReadonlyArray<SerializedRuntimeEntityState["kind"]>);
+const RESTORE_PATTERN_RUNNER_STATE_KEYS = Object.freeze([
+  "runnerId",
+  "patternId",
+  "stateVersion",
+  "payload",
+] as const satisfies ReadonlyArray<keyof SerializedPatternRunnerState>);
+const RESTORE_ENABLED_FEATURE_STATE_KEYS = Object.freeze([
+  "feature",
+  "stateVersion",
+  "payload",
+] as const satisfies ReadonlyArray<keyof SerializedEnabledFeatureState>);
+const MAX_RESTORE_EXTENSION_STATES_LENGTH = 128;
 
 const RESTORE_TOP_LEVEL_KEY_MAP = Object.freeze({
   coreVersion: true,
@@ -438,6 +459,8 @@ type RestoreCompatibilityMetadata = Readonly<RestoreVersionMetadata & {
   difficulty: Difficulty;
   playerId: PlayerId;
 }>;
+type ValidatedRestorePatternRunnerState = SerializedPatternRunnerState;
+type ValidatedRestoreEnabledFeatureState = SerializedEnabledFeatureState;
 
 /**
  * 復元互換性を判定する top-level serialized state。
@@ -465,7 +488,9 @@ type WorkingStageState = {
 
 type ValidatedRestoreDeterministicPayload = Readonly<{
   activeEntities: readonly RuntimeEntityState[];
+  enabledFeatureStates: readonly ValidatedRestoreEnabledFeatureState[];
   pendingEvents: readonly CommittedPendingEvent[];
+  patternRunnerStates: readonly ValidatedRestorePatternRunnerState[];
   score: number;
   timelineCursor: number;
 }>;
@@ -1598,11 +1623,19 @@ function parseRestoreDeterministicPayload(
   if (!pendingEvents.ok) {
     return pendingEvents;
   }
-  const patternRunnerStates = cloneRestoreArray(record.value.patternRunnerStates, "state.patternRunnerStates");
+  const patternRunnerStates = cloneRestoreArray(
+    record.value.patternRunnerStates,
+    "state.patternRunnerStates",
+    MAX_RESTORE_EXTENSION_STATES_LENGTH,
+  );
   if (!patternRunnerStates.ok) {
     return patternRunnerStates;
   }
-  const enabledFeatureStates = cloneRestoreArray(record.value.enabledFeatureStates, "state.enabledFeatureStates");
+  const enabledFeatureStates = cloneRestoreArray(
+    record.value.enabledFeatureStates,
+    "state.enabledFeatureStates",
+    MAX_RESTORE_EXTENSION_STATES_LENGTH,
+  );
   if (!enabledFeatureStates.ok) {
     return enabledFeatureStates;
   }
@@ -1647,16 +1680,33 @@ function parseRestoreDeterministicPayload(
   if (!runtimeEntitiesContract.ok) {
     return runtimeEntitiesContract;
   }
+  const extensionPayloadBudget = createRestoreJsonBudget();
+  const patternRunnerStateContract = validateRestorePatternRunnerStates(
+    patternRunnerStates.value,
+    extensionPayloadBudget,
+  );
+  if (!patternRunnerStateContract.ok) {
+    return patternRunnerStateContract;
+  }
+  const enabledFeatureStateContract = validateRestoreEnabledFeatureStates(
+    enabledFeatureStates.value,
+    extensionPayloadBudget,
+  );
+  if (!enabledFeatureStateContract.ok) {
+    return enabledFeatureStateContract;
+  }
   if (patternRunnerStates.value.length > 0) {
-    return error("state.invalidShape", "state.patternRunnerStates must be empty in the basic core");
+    return error("state.featureMismatch", "state.patternRunnerStates require a compatible pattern runner module");
   }
   if (enabledFeatureStates.value.length > 0) {
-    return error("state.invalidShape", "state.enabledFeatureStates must be empty in the basic core");
+    return error("state.featureMismatch", "state.enabledFeatureStates require enabled feature modules");
   }
 
   return okResult(Object.freeze({
     activeEntities: runtimeEntitiesContract.value,
+    enabledFeatureStates: enabledFeatureStateContract.value,
     pendingEvents: pendingEventsContract.value,
+    patternRunnerStates: patternRunnerStateContract.value,
     score: record.value.score,
     timelineCursor: record.value.timelineCursor,
   }));
@@ -1847,6 +1897,107 @@ function validateRestoreRuntimeEntities(
   }
 
   return okResult(Object.freeze(activeEntities));
+}
+
+/** pattern runner extension state の shape、順序、payload JSON 互換性を検証する。 */
+function validateRestorePatternRunnerStates(
+  states: readonly unknown[],
+  budget: RestoreJsonBudget,
+): CoreResult<readonly ValidatedRestorePatternRunnerState[]> {
+  let previousRunnerId: string | null = null;
+  const validatedStates: ValidatedRestorePatternRunnerState[] = [];
+  for (let index = 0; index < states.length; index += 1) {
+    const state = cloneRestorePlainRecord(
+      states[index],
+      `state.patternRunnerStates[${index}]`,
+      RESTORE_PATTERN_RUNNER_STATE_KEYS,
+    );
+    if (!state.ok) {
+      return state;
+    }
+    if (typeof state.value.runnerId !== "string" || !isValidPatternRunnerId(state.value.runnerId)) {
+      return error("state.invalidShape", "pattern runner state runnerId must be patternRunner.* with a non-empty suffix");
+    }
+    if (previousRunnerId !== null && compareUtf8Lexicographic(previousRunnerId, state.value.runnerId) >= 0) {
+      return error("state.invalidShape", "state.patternRunnerStates must be ordered by unique runnerId");
+    }
+    previousRunnerId = state.value.runnerId;
+    if (typeof state.value.patternId !== "string" || !isNamespacedId(state.value.patternId, "pattern")) {
+      return error("state.invalidShape", "pattern runner state patternId must be a valid pattern id");
+    }
+    if (!isPositiveSafeInteger(state.value.stateVersion)) {
+      return error("state.invalidShape", "pattern runner stateVersion must be a positive safe integer");
+    }
+    const payload = validateRestoreJsonPayload(
+      state.value.payload,
+      `state.patternRunnerStates[${index}].payload`,
+      budget,
+    );
+    if (!payload.ok) {
+      return payload;
+    }
+    validatedStates.push(Object.freeze({
+      runnerId: state.value.runnerId as SerializedPatternRunnerState["runnerId"],
+      patternId: state.value.patternId as SerializedPatternRunnerState["patternId"],
+      stateVersion: state.value.stateVersion,
+      payload: payload.value,
+    }));
+  }
+
+  return okResult(Object.freeze(validatedStates));
+}
+
+/** enabled feature extension state の shape、順序、payload JSON 互換性を検証する。 */
+function validateRestoreEnabledFeatureStates(
+  states: readonly unknown[],
+  budget: RestoreJsonBudget,
+): CoreResult<readonly ValidatedRestoreEnabledFeatureState[]> {
+  const validatedStates: ValidatedRestoreEnabledFeatureState[] = [];
+  for (let index = 0; index < states.length; index += 1) {
+    const state = cloneRestorePlainRecord(
+      states[index],
+      `state.enabledFeatureStates[${index}]`,
+      RESTORE_ENABLED_FEATURE_STATE_KEYS,
+    );
+    if (!state.ok) {
+      return state;
+    }
+    if (
+      typeof state.value.feature !== "string"
+      || !isRestoreJsonStringWithinSingleValueBudget(state.value.feature)
+    ) {
+      return error("state.invalidShape", "enabled feature state feature must be a restore-safe string");
+    }
+    if (!isPositiveSafeInteger(state.value.stateVersion)) {
+      return error("state.invalidShape", "enabled feature stateVersion must be a positive safe integer");
+    }
+    const payload = validateRestoreJsonPayload(
+      state.value.payload,
+      `state.enabledFeatureStates[${index}].payload`,
+      budget,
+    );
+    if (!payload.ok) {
+      return payload;
+    }
+    validatedStates.push(Object.freeze({
+      feature: state.value.feature as SerializedEnabledFeatureState["feature"],
+      stateVersion: state.value.stateVersion,
+      payload: payload.value,
+    }));
+  }
+
+  return okResult(Object.freeze(validatedStates));
+}
+
+/** pattern runner id は namespace prefix と空でない suffix を runtime でも保証する。 */
+function isValidPatternRunnerId(value: string): boolean {
+  return value.startsWith("patternRunner.")
+    && value.length > "patternRunner.".length
+    && isRestoreJsonStringWithinSingleValueBudget(value);
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
 type RestoreSpawnBudget = Readonly<{
