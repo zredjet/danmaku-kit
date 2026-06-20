@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract、Phase 1B-1 の committed / working state boundary、Phase 1B-2 の fatal latch minimum、Phase 1B-3 の serialized DTO contract、Phase 1B-4 の serialize minimum、Phase 1B-5A の restore API / error boundary、Phase 1B-5B の deterministic payload shape / registry / runtime budget validation と accepted committed state 変換準備、Phase 1B-5C の extension state / JSON guard / feature mismatch は完了済みである。現在の実装スライスは Phase 1B-5D の transactional restore / roundtrip determinism へ進む。state hash、replay metadata は後続スライスとして順に扱う。
+Phase 1A の renderer 非依存 Core minimum contract、Phase 1B-1 の committed / working state boundary、Phase 1B-2 の fatal latch minimum、Phase 1B-3 の serialized DTO contract、Phase 1B-4 の serialize minimum、Phase 1B-5A の restore API / error boundary、Phase 1B-5B の deterministic payload shape / registry / runtime budget validation と accepted committed state 変換準備、Phase 1B-5C の extension state / JSON guard / feature mismatch、Phase 1B-5D の transactional restore / roundtrip determinism は完了済みである。現在の実装スライスは Phase 1B-6 の state hash minimum へ進む。replay metadata は後続スライスで扱う。
 
 Done:
 
@@ -64,21 +64,22 @@ Done:
 - serialize 結果で startStage 直後の `stageStarted` pending event、tick 後の drain 済み pending event、basic core の空 feature state、runtime entity field mapping を test する
 - fatal 後の `serialize()` が同じ fatal reason を返すことを test する
 - root export 済みの `LoadedGame` に `restore(state): CoreResult<StageSession>` を追加する
-- restore 用 `CoreErrorCode` として `state.invalidShape`、`state.unsupportedSnapshot`、version mismatch、content mismatch、feature mismatch の public union を固定する
+- restore 用 `CoreErrorCode` として `state.invalidShape`、version mismatch、content mismatch、feature mismatch の public union を固定する
 - restore 5A で top-level shape、`prngState` / `state` の object container guard、top-level `enabledFeatures` の dense array / canonical order / duplicate guard、version mismatch、`contentVersion` / `stageId` / `difficulty` / `playerId` mismatch、top-level `enabledFeatures` mismatch を `CoreResult` error に閉じ込める
-- compatible snapshot の deep deterministic payload validation は 5B 以降へ送り、5A では `state.unsupportedSnapshot` として返す
+- compatible snapshot の deep deterministic payload validation は 5B 以降へ送り、5A では一時的な未対応境界として返す
 - runtime budget 定数を `content/runtime-budgets.ts` へ切り出し、content validation と restore validation が同じ値を参照できるようにする
 - restore 5B 前半で `state.prngInvalid`、`state.registryInvalid` を public `CoreErrorCode` として固定する
 - restore 5B 前半で PRNG snapshot、EntityAllocator と共有する `nextEntityId` bound、deterministic payload shape、初期 snapshot の一意性、score、timeline cursor、pending event contract、basic core の空 extension state contract、runtime entity ID order / kind 別 shape / registry reference / runtime budget / 処理済み timeline 由来上限と位置一致を検証する
-- restore 5B 後半で検証済み deterministic payload を `CommittedStageState` へ変換し、既存 serialize 経路へ通せる accepted committed state の前段 DTO を作る。compatible snapshot は 5B 後半でもまだ `state.unsupportedSnapshot` を返し、transactional restore 成功は 5D に残す
+- restore 5B 後半で検証済み deterministic payload を `CommittedStageState` へ変換し、既存 serialize 経路へ通せる accepted committed state の前段 DTO を作る。compatible snapshot の session 化は 5D に残す
 - restore 5C で extension state の field shape、runner / feature stateVersion、UTF-8 byte order、JSON payload guard を追加し、shape が正しい非空 extension state は `state.featureMismatch` として分類する
+- restore 5D で compatible snapshot から `StageSession` を作成し、restore 直後の serialize、後続 tick、失敗 restore 後の既存 session 不変性を固定する
 
 Next:
 
-- Phase 1B-5D の transactional restore / roundtrip determinism へ進む
-- compatible snapshot から `StageSession` を作り、restore 直後の serialize と後続 tick が元 session と一致することを固定する
+- Phase 1B-6 の state hash minimum へ進む
+- `HashableGameState` と canonical encoding / digest の最小実装を追加する
 
-このスライスでは Phaser、Vite、DOM、asset loader、YAML parser、state hash、replay metadata、replay playback UI は扱わない。
+このスライスでは Phaser、Vite、DOM、asset loader、YAML parser、replay metadata、replay playback UI は扱わない。
 
 ## 設計から実装への対応表
 
@@ -109,8 +110,8 @@ Status legend:
 | `docs/design.md` Replay determinism | deterministic payload restore shape / registry / runtime budget validation | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/content/runtime-budgets.ts`, `packages/shooting-core/src/basic/result.ts` | PRNG snapshot、pending event、runtime entity、registry reference、runtime budget validation を追加 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | accepted committed state 変換準備 | Done | `packages/shooting-core/src/basic/core.ts` | validated restore DTO を `CommittedStageState` へ変換し、既存 serialize 経路へ通す | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | extension state / JSON guard / feature mismatch | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/serialization/restore-json.ts` | extension payload guard と feature mismatch 分類を追加 | `npm test`, `npm run typecheck` |
-| `docs/design.md` Replay determinism | transactional restore / roundtrip determinism | Next: Phase 1B-5D | 未実装 | restore 後 serialize / 後続 tick 一致を追加 | `npm test`, `npm run typecheck` |
-| `docs/design.md` Replay determinism | state hash minimum（Player runtime component の `nextShotAllowedTick` を含む） | Queued: Phase 1B-6 | 未実装 | canonical bytes / digest golden、PRNG state hash 同一形式、first divergent tick test を追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Replay determinism | transactional restore / roundtrip determinism | Done | `packages/shooting-core/src/basic/core.ts` | restore 後 serialize / 後続 tick 一致、失敗 restore の transactionality を追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Replay determinism | state hash minimum（Player runtime component の `nextShotAllowedTick` を含む） | Next: Phase 1B-6 | 未実装 | canonical bytes / digest golden、PRNG state hash 同一形式、first divergent tick test を追加 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | replay metadata minimum | Queued: Phase 1B-7 | 未実装 | replay file metadata と playback session は作らず、互換性 metadata 型だけ追加 | `npm test`, `npm run typecheck` |
 
 ## 次の作業順
@@ -231,14 +232,14 @@ Done:
    - 作業: fatal 後の `serialize()` は error を返すことを test する
 
 5. Phase 1B-5: restore 最小実装
-   - Next slice: Phase 1B-5D transactional restore / roundtrip determinism
+   - Done: Phase 1B-5D transactional restore / roundtrip determinism
    - Phase 1B-5A: API / error boundary
    - Done: `LoadedGame.restore(state): CoreResult<StageSession>` を stable public API として追加する。Phase 1B-4 後の root exported `StageSession` は `serialize()` を持つ。type contract では restore 戻り値に対して `value.serialize(): CoreResult<SerializedGameState>` を呼べることまで positive に固定する
-   - Done: restore 用 `CoreErrorCode` として 5A では `state.invalidShape`、`state.unsupportedSnapshot`、`state.coreVersionMismatch`、`state.schemaVersionMismatch`、`state.inputFormatVersionMismatch`、`state.stateHashVersionMismatch`、`state.contentMismatch`、`state.featureMismatch` を追加し、`tests/public-type-contract.ts` で public union を固定する。`state.invalidShape` は top-level object / required metadata field / primitive field type / top-level `enabledFeatures` の dense array・canonical order・duplicate guard / deterministic payload container の最小 shape guard に限定し、runtime entity や registry 参照などの深い validation は 5B で追加する。`state.registryInvalid`、`state.prngInvalid` は 5B の validation 実装と同時に public union へ追加する。EntityAllocator の restorable bound 違反は `state.invalidShape` に正規化し、低レベル code は public restore error として露出しない
+   - Done: restore 用 `CoreErrorCode` として `state.invalidShape`、`state.coreVersionMismatch`、`state.schemaVersionMismatch`、`state.inputFormatVersionMismatch`、`state.stateHashVersionMismatch`、`state.contentMismatch`、`state.featureMismatch` を追加し、`tests/public-type-contract.ts` で public union を固定する。`state.invalidShape` は top-level object / required metadata field / primitive field type / top-level `enabledFeatures` の dense array・canonical order・duplicate guard / deterministic payload container の最小 shape guard に限定し、runtime entity や registry 参照などの深い validation は 5B で追加する。`state.registryInvalid`、`state.prngInvalid` は 5B の validation 実装と同時に public union へ追加する。EntityAllocator の restorable bound 違反は `state.invalidShape` に正規化し、低レベル code は public restore error として露出しない
    - Done: snapshot restore は `coreVersion` 完全一致だけを受け付ける。minor mismatch の best-effort playback は replay playback 専用であり、snapshot restore には適用しない negative test を追加する。PRNG algorithm 変更は major version 変更として扱う
    - Done: `state.contentMismatch` は `contentVersion`、`stageId`、`difficulty`、`playerId` の不一致を包括する。より細かい user-facing 表示が必要になった場合だけ専用 code を追加する
    - Done: version / stage / player / top-level feature mismatch を `CoreResult` error にする
-   - Done: version / content / feature mismatch がない snapshot は 5A 時点では `state.unsupportedSnapshot` を返し、valid snapshot を `state.invalidShape` として誤分類しない
+   - Done: version / content / feature mismatch がない snapshot は 5A 時点では一時的な未対応境界として返し、valid snapshot を `state.invalidShape` として誤分類しない
    - Phase 1B-5B: deterministic payload shape / registry / runtime budget validation
    - Done: deterministic payload 内の serialized entity、stage、player、content reference が現在の registry で解決不能な場合は `state.registryInvalid` にする。top-level `stageId` / `playerId` / `difficulty` の不一致は 5A の `state.contentMismatch` に残し、5B の `state.registryInvalid` へ分類変更しない
    - Done: top-level `nextEntityId` の primitive shape は 5A で `state.invalidShape` として拒否済み。5B では EntityAllocator と同じ restorable upper bound を共有定数へ切り出し、範囲違反は `state.invalidShape` として正規化する。runtime entity 側の ID/order/`id < nextEntityId` 違反も serialized shape 契約違反として `state.invalidShape` にする
@@ -246,16 +247,16 @@ Done:
    - Done: Phase 1B の serialized enemy bullet は `definitionId`、`position`、`collisionRadius` だけを受け付ける。`projectile` のような未実装 runtime state field は unknown field として `state.invalidShape` にする
    - Done: `SerializedPendingEvent` は tick 0 の `stageStarted` だけを受け付ける。top-level `expectedTick === 0` では top-level `stageId` と一致する `stageStarted` 1 件だけを要求し、0 件、複数件、別 `stageId` は `state.invalidShape` にする。top-level `expectedTick > 0` では `pendingEvents` は空配列だけを許可し、非空なら `state.invalidShape` にする。negative test は `expectedTick 0 + empty`、`expectedTick 0 + multiple`、`expectedTick 0 + stageId mismatch`、`expectedTick > 0 + stageStarted` を含める
    - Done: restore 用 budget 定数は `content/validation.ts` や `simulation/entity.ts` の private const を複製せず、Phase 1B-5B の前半で `content/runtime-budgets.ts` などの共有 domain constants へ切り出す。`MAX_PLAYER_SHOT_SPEED_PER_AXIS = 64`、`MAX_PLAYER_MOVEMENT_SPEED = 16`、`MAX_PLAYER_SHOT_LIFETIME_TICKS = 300`、EntityAllocator の restorable upper bound は validation と restore が同じ定数を参照する
-   - Done: top-level `expectedTick` の non-negative safe integer と `nextEntityId` の positive safe integer は 5A で検証済み。5B では `nextEntityId` の restorable upper bound を EntityAllocator と共有し、`runtimeEntities` の ID が positive safe integer / strict ascending / unique / `id < nextEntityId` を満たさない場合は `state.invalidShape` にする。さらに processed timeline と入力由来 player shot の最大生成数から到達不能な `nextEntityId`、同 tick の enemy / enemyBullet / playerShot 生成順から作れない ID 並びも `state.invalidShape` にする。player entity は runtime 初期採番に合わせて `id === 1` を必須にする。`expectedTick === 0` の snapshot は score、player position、lives、invincible tick、shot cooldown が `startStage()` 直後の一意な初期値と一致することを要求する。enemy / enemyBullet は `timelineCursor` より前の処理済み timeline step から生成され得る数と位置を上限にし、未処理 timeline 由来や異なる spawn 位置の混入を `state.invalidShape` にする。position / velocity は finite number とし、player shot velocity と lifetime、player movement speed は共有 domain constants の上限を使う。Phase 1B-5 では runtime entity の `collisionRadius`、player shot の `damage`、player movement speed は positive finite number、enemy hp は schema v1 互換のため non-negative finite number、score / scoreOnKill / lives / invincibleTicksRemaining は用途に応じた non-negative safe integer として検証し、restore 専用上限は持たせない。valid gameplay から serialize された score が restore で拒否されない roundtrip test を Phase 1B-5D に含める。`timelineCursor` は stage timeline length 以下で、かつ `expectedTick` 時点で未処理であるべき最初の timeline index と一致することを検証する。`nextShotAllowedTick` は `expectedTick + MAX_PLAYER_SHOT_LIFETIME_TICKS` ではなく cooldown 用の safe integer として検証する。範囲違反はすべて `state.invalidShape` に統一する
+   - Done: top-level `expectedTick` の non-negative safe integer と `nextEntityId` の positive safe integer は 5A で検証済み。5B では `nextEntityId` の restorable upper bound を EntityAllocator と共有し、`runtimeEntities` の ID が positive safe integer / strict ascending / unique / `id < nextEntityId` を満たさない場合は `state.invalidShape` にする。さらに processed timeline と入力由来 player shot の最大生成数から到達不能な `nextEntityId`、同 tick の enemy / enemyBullet / playerShot 生成順から作れない ID 並びも `state.invalidShape` にする。player entity は runtime 初期採番に合わせて `id === 1` を必須にする。`expectedTick === 0` の snapshot は score、player position、lives、invincible tick、shot cooldown が `startStage()` 直後の一意な初期値と一致することを要求する。enemy / enemyBullet は `timelineCursor` より前の処理済み timeline step から生成され得る数と位置を上限にし、未処理 timeline 由来や異なる spawn 位置の混入を `state.invalidShape` にする。position / velocity は finite number とし、player shot velocity と lifetime、player movement speed は共有 domain constants の上限を使う。Phase 1B-5 では runtime entity の `collisionRadius`、player shot の `damage`、player movement speed、active enemy hp は positive finite number、score / scoreOnKill / lives / invincibleTicksRemaining は用途に応じた non-negative safe integer として検証する。player position は playfield 内、lives は initialLives 以下、invincibleTicksRemaining は invincibleTicksAfterHit 以下、nextShotAllowedTick は expectedTick と shot fire interval から到達可能な範囲に制限する。valid gameplay から serialize された score が restore で拒否されない roundtrip test を Phase 1B-5D に含める。`timelineCursor` は stage timeline length 以下で、かつ `expectedTick` 時点で未処理であるべき最初の timeline index と一致することを検証する。範囲違反はすべて `state.invalidShape` に統一する
    - Done: player / enemy / enemyBullet / playerShot の kind ごとの unknown field / registry / budget regression matrix を拡充する
-   - Done: 検証済み PRNG、pending event、runtime entity、score、timeline cursor を `CommittedStageState` へ変換し、既存 `serializeCommittedStageState()` に通す。5B では public restore 成功はまだ返さず、compatible snapshot は `state.unsupportedSnapshot` に留める
+   - Done: 検証済み PRNG、pending event、runtime entity、score、timeline cursor を `CommittedStageState` へ変換し、既存 `serializeCommittedStageState()` に通す。5B 時点では public restore 成功はまだ返さず、5D 完了後の現在契約では compatible snapshot から `StageSession` を返す
    - Done: Phase 1B-5C extension state / JSON guard / feature mismatch
    - Done: feature module が非空 `patternRunnerStates` / `enabledFeatureStates` を許可する段階で、field shape、重複、順序違反、`patternRunner.` のような空 suffix runner id、正の safe integer でない stateVersion、任意 extension payload の `NaN` / `Infinity`、lone surrogate、非 JSON 互換値は `state.invalidShape` にする。field shape が正しい非空 extension state については module / top-level `enabledFeatures` との整合性として扱い、basic core では `state.featureMismatch` に統一する
    - Done: extension payload の runtime guard は unknown field、`undefined`、`symbol`、`bigint`、Date、Map、sparse array、getter、revoked / throwing trap proxy、prototype 継承 property を `state.invalidShape` に閉じ込める。transparent Proxy の完全検出は JavaScript runtime 上保証しない。top-level と `enabledFeatures` の guard は 5A、runtime entity / pending event の guard は 5B で扱う
    - Phase 1B-5D: transactional restore / roundtrip determinism
-   - 作業: 失敗した restore は `LoadedGame` と既存 `StageSession` に副作用を残さない。invalid restore の前に別の active session を進め、失敗後の次 tick / serialize 結果が baseline session と一致すること、さらに valid snapshot の restore または `startStage()` が成功することを negative test にする
-   - 作業: restore 直後の再 serialize が元 snapshot と一致する test を追加する
-   - 作業: serialize 前 session と restore session に同じ入力列を複数 tick 流し、各 `GameFrame` と再 serialize 結果が一致する test を追加する
+   - Done: 失敗した restore は `LoadedGame` と既存 `StageSession` に副作用を残さない。invalid restore の前に別の active session を進め、失敗後の次 tick / serialize 結果が baseline session と一致すること、さらに valid snapshot の restore と `startStage()` が成功することを negative test にする
+   - Done: restore 直後の再 serialize が元 snapshot と一致する test を追加する
+   - Done: serialize 前 session と restore session に同じ入力を流し、各 `GameFrame` と再 serialize 結果が一致する test を追加する
 
 6. Phase 1B-6: state hash 最小実装
    - 作業: `HashableGameState` を committed state と session metadata から生成する helper を追加する。`HashableGameState` は public serialize DTO を直接参照せず、hash version ごとの内部 DTO として `stateHashVersion`、`coreVersion`、`schemaVersion`、`expectedTick`、`nextEntityId`、`timelineCursor`、`prngState`、`score`、runtime entities、pending events、pattern runner states、enabled feature states を持つ

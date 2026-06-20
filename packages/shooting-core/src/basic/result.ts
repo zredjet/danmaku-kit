@@ -38,7 +38,6 @@ export type CoreErrorCode =
   | "state.registryInvalid"
   | "state.schemaVersionMismatch"
   | "state.stateHashVersionMismatch"
-  | "state.unsupportedSnapshot"
   | "stageSession.fatal"
   | "stage.notFound"
   | "startStage.invalidShape"

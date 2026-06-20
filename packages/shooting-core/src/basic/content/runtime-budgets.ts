@@ -7,6 +7,12 @@ export const MAX_SPAWNS_PER_TICK = 100;
 /** player movement speed の runtime budget。 */
 export const MAX_PLAYER_MOVEMENT_SPEED = 16;
 
+/** player の中心座標を許可する playfield 幅。 */
+export const PLAYFIELD_WIDTH = 384;
+
+/** player の中心座標を許可する playfield 高さ。 */
+export const PLAYFIELD_HEIGHT = 448;
+
 /** player shot の連射 interval 上限。 */
 export const MAX_PLAYER_SHOT_FIRE_INTERVAL_TICKS = 60;
 

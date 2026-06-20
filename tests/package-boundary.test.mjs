@@ -95,8 +95,11 @@ test("runs the minimum gameplay flow through the workspace package export", asyn
   }
 
   const restored = loaded.value.restore(serialized.value);
-  assert.equal(restored.ok, false);
-  assert.equal(!restored.ok && restored.errors[0]?.code, "state.unsupportedSnapshot");
+  assert.equal(restored.ok, true);
+  if (!restored.ok) {
+    assert.fail("expected package import to restore serialized minimum stage");
+  }
+  assert.deepEqual(restored.value.serialize(), serialized);
 
   const mismatched = loaded.value.restore({ ...serialized.value, coreVersion: "other.core" });
   assert.equal(mismatched.ok, false);

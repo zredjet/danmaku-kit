@@ -105,9 +105,9 @@ type SerializedRuntimeEntityBase = Readonly<{
 /**
  * restore に必要な player runtime state。render-only 情報は含めない。
  *
- * Phase 1B-5 で追加する restore は lives / invincibleTicksRemaining / nextShotAllowedTick を
- * 非負 safe integer、movement speed を有限かつ content validation と同じ budget 内の値として
- * 検証する。
+ * Phase 1B-5 で追加する restore は PlayerDefinition と一致する collision / movement /
+ * shotDefinitionId を要求し、position は playfield 内、lives / invincibleTicksRemaining /
+ * nextShotAllowedTick は非負 safe integer かつ gameplay から到達可能な上限内として検証する。
  */
 type SerializedPlayerRuntimeEntityState = SerializedRuntimeEntityBase & Readonly<{
   kind: "player";
@@ -125,9 +125,10 @@ type SerializedPlayerRuntimeEntityState = SerializedRuntimeEntityBase & Readonly
 /**
  * restore に必要な enemy runtime state。sprite / view id は adapter 側の責務に残す。
  *
- * Phase 1B-5 で追加する restore は enemy hp を非負 finite number、scoreOnKill を非負 safe integer として
- * 検証する。PathRunner が segment state を持つ slice では、この payload に schema version 付きの
- * path runner state を追加し、現在座標から movement state を逆算しない。
+ * Phase 1B-5 で追加する restore は active enemy hp を正の finite number かつ EnemyDefinition
+ * の初期 hp 以下、scoreOnKill / collisionRadius / pathId / patternId は loaded EnemyDefinition
+ * と同じ immutable field として検証する。PathRunner が segment state を持つ slice では、この payload に
+ * schema version 付きの path runner state を追加し、現在座標から movement state を逆算しない。
  */
 type SerializedEnemyRuntimeEntityState = SerializedRuntimeEntityBase & Readonly<{
   kind: "enemy";
@@ -153,8 +154,9 @@ type SerializedEnemyBulletRuntimeEntityState = SerializedRuntimeEntityBase & Rea
 /**
  * restore に必要な player shot runtime state。
  *
- * Phase 1B-5 で追加する restore は velocity を有限値、remainingLifetimeTicks を正の safe integer、
- * damage を正の有限値として検証する。
+ * Phase 1B-5 で追加する restore は velocity / collisionRadius / damage を PlayerShotDefinition
+ * と一致させ、remainingLifetimeTicks は正の safe integer かつ definition lifetime 内、
+ * expectedTick から逆算した spawn tick が到達可能な値として検証する。
  */
 type SerializedPlayerShotRuntimeEntityState = SerializedRuntimeEntityBase & Readonly<{
   kind: "playerShot";

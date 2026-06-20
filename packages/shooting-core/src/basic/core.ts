@@ -1,9 +1,12 @@
 import { isNamespacedId } from "./content/identifier.ts";
 import {
   MAX_PLAYER_MOVEMENT_SPEED,
+  MAX_PLAYER_SHOT_FIRE_INTERVAL_TICKS,
   MAX_PLAYER_SHOT_LIFETIME_TICKS,
   MAX_PLAYER_SHOT_SPEED_PER_AXIS,
   MAX_STAGE_TIMELINE_STEPS,
+  PLAYFIELD_HEIGHT,
+  PLAYFIELD_WIDTH,
 } from "./content/runtime-budgets.ts";
 import { KNOWN_ENABLED_FEATURES } from "./content/types.ts";
 import type {
@@ -616,21 +619,35 @@ function createLoadedGame(
       if (!payload.ok) {
         return payload;
       }
-      const committedSnapshot = createRestoreCommittedSnapshot(
+      const serializationMetadata = createRestoreSerializationMetadata(fullMetadata, compatibilityMetadata.value, content);
+      const restoredState = createRestoreCommittedState(
         state.value,
         payload.value,
         prng.value,
-        createRestoreSerializationMetadata(fullMetadata, compatibilityMetadata.value, content),
+        serializationMetadata,
       );
-      if (!committedSnapshot.ok) {
-        return committedSnapshot;
+      if (!restoredState.ok) {
+        return restoredState;
       }
-      testingHooks.recordRestoreSerializedSnapshot?.(committedSnapshot.value);
+      testingHooks.recordRestoreSerializedSnapshot?.(restoredState.value.serializedSnapshot);
 
-      return error(
-        "state.unsupportedSnapshot",
-        "SerializedGameState deterministic payload restore is not supported by this core version",
-      );
+      const stage = content.stagesById.get(compatibilityMetadata.value.stageId);
+      const player = content.playersById.get(compatibilityMetadata.value.playerId);
+      if (!stage || !player) {
+        return error("state.contentMismatch", "serialized content metadata does not match the loaded content");
+      }
+
+      return okResult(createStageSession({
+        bulletsById: content.bulletsById,
+        enemiesById: content.enemiesById,
+        initialState: restoredState.value.committedState,
+        serializationMetadata,
+        patternsById: content.patternsById,
+        playerShotsById: content.playerShotsById,
+        stage,
+        player,
+        testingHooks: createActiveStageSessionTestingHooks(testingHooks),
+      }));
     },
     startStage(rawOptions) {
       const plainOptions = deepFreezePlainData(rawOptions);
@@ -1712,20 +1729,26 @@ function parseRestoreDeterministicPayload(
   }));
 }
 
-/** 検証済み restore DTO が既存 serialize 経路へ通ることを確認する。 */
-function createRestoreCommittedSnapshot(
+/** 検証済み restore DTO を session 初期状態へ変換し、既存 serialize 経路で再検証する。 */
+function createRestoreCommittedState(
   state: RestoreTopLevelState,
   payload: ValidatedRestoreDeterministicPayload,
   prngState: SerializedPrngState,
   metadata: StageSessionSerializationMetadata,
-): CoreResult<SerializedGameState> {
+): CoreResult<Readonly<{
+  committedState: CommittedStageState;
+  serializedSnapshot: SerializedGameState;
+}>> {
   const committedState = toRestoreCommittedStageState(state, payload, prngState);
   const committedSnapshot = serializeCommittedStageState(metadata, committedState);
   if (!committedSnapshot.ok) {
     return error("state.invalidShape", "SerializedGameState deterministic payload cannot be committed");
   }
 
-  return committedSnapshot;
+  return okResult(Object.freeze({
+    committedState,
+    serializedSnapshot: committedSnapshot.value,
+  }));
 }
 
 /** 検証済み restore DTO を committed snapshot へ変換する。 */
@@ -1832,7 +1855,7 @@ function validateRestoreRuntimeEntities(
         if (common.value.id !== 1) {
           return error("state.invalidShape", "player runtime entity id must be the initial entity id");
         }
-        const player = validateRestorePlayerRuntimeEntity(entity.value, common.value, content);
+        const player = validateRestorePlayerRuntimeEntity(entity.value, common.value, content, state.expectedTick);
         if (!player.ok) {
           return player;
         }
@@ -1854,7 +1877,7 @@ function validateRestoreRuntimeEntities(
         if (!budget.ok) {
           return budget;
         }
-        activeEnemyMatches.push(Object.freeze({ id: common.value.id, tick: budget.value.tick }));
+        activeEnemyMatches.push(budget.value);
         activeEntities.push(enemy.value);
         break;
       }
@@ -1867,7 +1890,7 @@ function validateRestoreRuntimeEntities(
         if (!budget.ok) {
           return budget;
         }
-        activeEnemyBulletMatches.push(Object.freeze({ id: common.value.id, tick: budget.value.tick }));
+        activeEnemyBulletMatches.push(budget.value);
         activeEntities.push(bullet.value);
         break;
       }
@@ -2007,6 +2030,7 @@ type RestoreSpawnBudget = Readonly<{
 
 type RestoreEnemySpawnCandidate = Readonly<{
   tick: number;
+  allocationOrder: number;
   definitionId: string;
   pathId: string;
   patternId: string;
@@ -2015,6 +2039,7 @@ type RestoreEnemySpawnCandidate = Readonly<{
 
 type RestoreEnemyBulletCandidate = Readonly<{
   tick: number;
+  allocationOrder: number;
   definitionId: string;
   position: Readonly<{ x: number; y: number }>;
 }>;
@@ -2022,6 +2047,7 @@ type RestoreEnemyBulletCandidate = Readonly<{
 type RestoreMatchedSpawn = Readonly<{
   id: number;
   tick: number;
+  allocationOrder: number;
 }>;
 
 type RestoreMatchedPlayerShot = Readonly<{
@@ -2055,6 +2081,7 @@ function createRestoreSpawnBudget(
     }
     enemySpawnCandidates.push({
       tick: step.tick,
+      allocationOrder: enemySpawnCandidates.length,
       definitionId: step.action.enemy,
       pathId: step.action.path,
       patternId: step.action.pattern,
@@ -2077,6 +2104,7 @@ function createRestoreSpawnBudget(
       }
       enemyBulletCandidates.push({
         tick: step.tick,
+        allocationOrder: enemyBulletCandidates.length,
         definitionId: pattern.fireOnSpawn.bullet,
         position: position.value,
       });
@@ -2126,6 +2154,7 @@ function consumeRestoreEnemySpawnBudget(
   return okResult(Object.freeze({
     id: Number(entity.id),
     tick: candidate.tick,
+    allocationOrder: candidate.allocationOrder,
   }));
 }
 
@@ -2150,6 +2179,7 @@ function consumeRestoreEnemyBulletBudget(
   return okResult(Object.freeze({
     id: Number(entity.id),
     tick: candidate.tick,
+    allocationOrder: candidate.allocationOrder,
   }));
 }
 
@@ -2167,6 +2197,22 @@ function validateRestoreSameTickAllocationOrder(
   enemyBullets: readonly RestoreMatchedSpawn[],
   playerShots: readonly RestoreMatchedPlayerShot[],
 ): CoreResult<null> {
+  const enemyOrder = validateRestoreSameKindAllocationOrder(enemies, "enemy");
+  if (!enemyOrder.ok) {
+    return enemyOrder;
+  }
+  const bulletOrder = validateRestoreSameKindAllocationOrder(enemyBullets, "enemy bullet");
+  if (!bulletOrder.ok) {
+    return bulletOrder;
+  }
+
+  for (const bullet of enemyBullets) {
+    for (const enemy of enemies) {
+      if (bullet.tick === enemy.tick && bullet.id < enemy.id) {
+        return error("state.invalidShape", "enemy bullet id must follow same-tick enemy allocations");
+      }
+    }
+  }
   for (const shot of playerShots) {
     for (const enemy of enemies) {
       if (shot.spawnTick === enemy.tick && shot.id < enemy.id) {
@@ -2180,7 +2226,77 @@ function validateRestoreSameTickAllocationOrder(
     }
   }
 
+  const crossTickOrder = validateRestoreCrossTickAllocationOrder(enemies, enemyBullets, playerShots);
+  if (!crossTickOrder.ok) {
+    return crossTickOrder;
+  }
+
   return okResult(null);
+}
+
+/** 同 kind / 同 tick の entity id が runtime の allocation order と同じ順序か検証する。 */
+function validateRestoreSameKindAllocationOrder(
+  matches: readonly RestoreMatchedSpawn[],
+  label: "enemy" | "enemy bullet",
+): CoreResult<null> {
+  const latestOrderByTick = new Map<number, number>();
+  for (const match of matches) {
+    const latestOrder = latestOrderByTick.get(match.tick);
+    if (latestOrder !== undefined && match.allocationOrder <= latestOrder) {
+      return error("state.invalidShape", `${label} runtime entity ids must follow same-tick allocation order`);
+    }
+    latestOrderByTick.set(match.tick, match.allocationOrder);
+  }
+
+  return okResult(null);
+}
+
+/** active entity id の昇順が tick をまたいだ allocator の生成順と一致することを検証する。 */
+function validateRestoreCrossTickAllocationOrder(
+  enemies: readonly RestoreMatchedSpawn[],
+  enemyBullets: readonly RestoreMatchedSpawn[],
+  playerShots: readonly RestoreMatchedPlayerShot[],
+): CoreResult<null> {
+  const allocations = [
+    ...enemies.map((enemy) => ({
+      id: enemy.id,
+      tick: enemy.tick,
+      phase: 0,
+      allocationOrder: enemy.allocationOrder,
+    })),
+    ...enemyBullets.map((bullet) => ({
+      id: bullet.id,
+      tick: bullet.tick,
+      phase: 1,
+      allocationOrder: bullet.allocationOrder,
+    })),
+    ...playerShots.map((shot) => ({
+      id: shot.id,
+      tick: shot.spawnTick,
+      phase: 2,
+      allocationOrder: 0,
+    })),
+  ].sort((left, right) => left.id - right.id);
+
+  let previous: (typeof allocations)[number] | null = null;
+  for (const allocation of allocations) {
+    if (previous && compareRestoreAllocationOrder(previous, allocation) >= 0) {
+      return error("state.invalidShape", "runtime entity ids must follow deterministic allocation order across ticks");
+    }
+    previous = allocation;
+  }
+
+  return okResult(null);
+}
+
+/** tick、system phase、同 phase 内 order の順で allocator 順序を比較する。 */
+function compareRestoreAllocationOrder(
+  left: Readonly<{ tick: number; phase: number; allocationOrder: number }>,
+  right: Readonly<{ tick: number; phase: number; allocationOrder: number }>,
+): number {
+  return left.tick - right.tick
+    || left.phase - right.phase
+    || left.allocationOrder - right.allocationOrder;
 }
 
 /** startStage 直後の player snapshot が一意な初期値と一致することを検証する。 */
@@ -2250,6 +2366,7 @@ function validateRestorePlayerRuntimeEntity(
   entity: Record<string, unknown>,
   common: RestoreRuntimeEntityCommon,
   content: LoadedContentIndex,
+  expectedTick: number,
 ): CoreResult<PlayerRuntimeEntity> {
   if (!hasOnlyKeys(entity, RESTORE_RUNTIME_PLAYER_KEYS)) {
     return error("state.invalidShape", "player runtime entity contains unknown fields");
@@ -2284,7 +2401,8 @@ function validateRestorePlayerRuntimeEntity(
   if (!player) {
     return error("state.registryInvalid", "player runtime entity references an unknown player");
   }
-  if (!content.playerShotsById.has(entity.shotDefinitionId)) {
+  const playerShot = content.playerShotsById.get(entity.shotDefinitionId);
+  if (!playerShot) {
     return error("state.registryInvalid", "player runtime entity references an unknown player shot");
   }
   if (
@@ -2294,6 +2412,19 @@ function validateRestorePlayerRuntimeEntity(
     || entity.shotDefinitionId !== player.shot.definition
   ) {
     return error("state.invalidShape", "player runtime entity must match immutable player definition fields");
+  }
+  if (!isPlayerPositionInsidePlayfield(common.position)) {
+    return error("state.invalidShape", "player runtime position must stay inside the playfield");
+  }
+  if (
+    entity.lives > player.life.initialLives
+    || entity.invincibleTicksRemaining > player.life.invincibleTicksAfterHit
+    || entity.nextShotAllowedTick > Math.max(0, expectedTick - 1 + Math.min(
+      playerShot.fire.intervalTicks,
+      MAX_PLAYER_SHOT_FIRE_INTERVAL_TICKS,
+    ))
+  ) {
+    return error("state.invalidShape", "player runtime counters exceed restorable gameplay bounds");
   }
 
   return okResult(createRestoredPlayerRuntimeEntity({
@@ -2312,6 +2443,11 @@ function validateRestorePlayerRuntimeEntity(
   }));
 }
 
+/** player の中心座標は movement system と同じ playfield 範囲だけを restore で受け付ける。 */
+function isPlayerPositionInsidePlayfield(position: Readonly<{ x: number; y: number }>): boolean {
+  return position.x >= 0 && position.x <= PLAYFIELD_WIDTH && position.y >= 0 && position.y <= PLAYFIELD_HEIGHT;
+}
+
 /** enemy entity 固有 field と registry reference を検証する。 */
 function validateRestoreEnemyRuntimeEntity(
   entity: Record<string, unknown>,
@@ -2321,8 +2457,8 @@ function validateRestoreEnemyRuntimeEntity(
   if (!hasOnlyKeys(entity, RESTORE_RUNTIME_ENEMY_KEYS)) {
     return error("state.invalidShape", "enemy runtime entity contains unknown fields");
   }
-  if (!isNonNegativeFiniteNumber(entity.hp) || !isNonNegativeSafeInteger(entity.scoreOnKill)) {
-    return error("state.invalidShape", "enemy runtime hp and scoreOnKill must be non-negative");
+  if (!isPositiveFiniteNumber(entity.hp) || !isNonNegativeSafeInteger(entity.scoreOnKill)) {
+    return error("state.invalidShape", "enemy runtime hp must be positive and scoreOnKill must be non-negative");
   }
   if (typeof entity.pathId !== "string") {
     return error("state.invalidShape", "enemy pathId must be a string");
@@ -2478,10 +2614,6 @@ function validateRestoreVector2(value: unknown, fieldName: string): CoreResult<R
 
 function isPositiveFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
-}
-
-function isNonNegativeFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
 function isNonNegativeSafeInteger(value: unknown): value is number {

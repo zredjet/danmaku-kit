@@ -517,7 +517,7 @@ test("restore classifies top-level compatibility mismatches", () => {
   }
 });
 
-test("restore validates deterministic payload before the unsupported boundary", () => {
+test("restore validates deterministic payload before accepting a session", () => {
   const loaded = loadMinimumGame("core.test");
   const validState = serializeInitialStageState("core.test");
 
@@ -714,8 +714,44 @@ test("restore validates deterministic payload before the unsupported boundary", 
     ...validState,
     state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, position: throwingPlayerPosition }] },
   } as SerializedGameState);
-  assert.equal(restoredWithThrowingPlayerPosition.ok, false);
-  assert.equal(!restoredWithThrowingPlayerPosition.ok && restoredWithThrowingPlayerPosition.errors[0]?.code, "state.unsupportedSnapshot");
+  assert.equal(restoredWithThrowingPlayerPosition.ok, true);
+  if (!restoredWithThrowingPlayerPosition.ok) {
+    assert.fail("expected descriptor-cloned position proxy to restore");
+  }
+  assert.deepEqual(restoredWithThrowingPlayerPosition.value.serialize(), { ok: true, value: validState, warnings: [] });
+  const movedSession = startStageFromLoadedGame(loaded);
+  const movedFrame = movedSession.tick(createMoveInputFrame(0, 1, 0, []));
+  assert.equal(movedFrame.ok, true);
+  const movedState = movedSession.serialize();
+  assert.equal(movedState.ok, true);
+  if (!movedState.ok) {
+    assert.fail("expected moved player state");
+  }
+  const movedPlayer = movedState.value.state.runtimeEntities.find((entity) => entity.kind === "player");
+  assert.equal(movedPlayer?.kind, "player");
+  if (movedPlayer?.kind !== "player") {
+    assert.fail("expected moved player entity");
+  }
+  assert.notDeepEqual(movedPlayer.position, { x: 192, y: 400 });
+  const throwingMovedPlayerPosition = new Proxy({ x: movedPlayer.position.x, y: movedPlayer.position.y }, {
+    get() {
+      throw new Error("moved player position should be descriptor-cloned");
+    },
+  });
+  const restoredMovedPlayer = loaded.restore({
+    ...movedState.value,
+    state: {
+      ...movedState.value.state,
+      runtimeEntities: movedState.value.state.runtimeEntities.map((entity) => (
+        entity.id === movedPlayer.id ? { ...movedPlayer, position: throwingMovedPlayerPosition } : entity
+      )),
+    },
+  } as SerializedGameState);
+  assert.equal(restoredMovedPlayer.ok, true);
+  if (!restoredMovedPlayer.ok) {
+    assert.fail("expected descriptor-cloned moved player position proxy to restore");
+  }
+  assert.deepEqual(restoredMovedPlayer.value.serialize(), movedState);
   expectRestoreError({
     ...validState,
     state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, movement: { speed: 17, focusSpeed: 1.8 } }] },
@@ -1064,7 +1100,7 @@ test("restore validates deterministic payload before the unsupported boundary", 
   }, "state.invalidShape", /stateVersion/);
 });
 
-test("restore validates each runtime entity kind before the unsupported boundary", () => {
+test("restore validates each runtime entity kind before accepting a session", () => {
   const definition = createFireOnSpawnAtZeroDefinition();
   const loaded = createShootingCore("core.test").load(definition);
   assert.equal(loaded.ok, true);
@@ -1081,17 +1117,22 @@ test("restore validates each runtime entity kind before the unsupported boundary
   }
 
   const validRestore = loaded.value.restore(serialized.value);
-  assert.equal(validRestore.ok, false);
-  assert.equal(!validRestore.ok && validRestore.errors[0]?.code, "state.unsupportedSnapshot");
+  assert.equal(validRestore.ok, true);
+  if (!validRestore.ok) {
+    assert.fail("expected valid restore");
+  }
+  assert.deepEqual(validRestore.value.serialize(), serialized);
 
   const enemy = serialized.value.state.runtimeEntities.find((entity) => entity.kind === "enemy");
   const enemyBullet = serialized.value.state.runtimeEntities.find((entity) => entity.kind === "enemyBullet");
+  const player = serialized.value.state.runtimeEntities.find((entity) => entity.kind === "player");
   const playerShot = serialized.value.state.runtimeEntities.find((entity) => entity.kind === "playerShot");
   assert.equal(enemy?.kind, "enemy");
   assert.equal(enemyBullet?.kind, "enemyBullet");
+  assert.equal(player?.kind, "player");
   assert.equal(playerShot?.kind, "playerShot");
-  if (enemy?.kind !== "enemy" || enemyBullet?.kind !== "enemyBullet" || playerShot?.kind !== "playerShot") {
-    assert.fail("expected enemy, enemy bullet, and player shot entities");
+  if (enemy?.kind !== "enemy" || enemyBullet?.kind !== "enemyBullet" || player?.kind !== "player" || playerShot?.kind !== "playerShot") {
+    assert.fail("expected player, enemy, enemy bullet, and player shot entities");
   }
 
   const expectRestoreError = (runtimeEntity: Record<string, unknown>, code: CoreErrorCode, detail: RegExp) => {
@@ -1117,14 +1158,38 @@ test("restore validates each runtime entity kind before the unsupported boundary
   expectRestoreError({ ...enemy, pathId: "path.missing" }, "state.registryInvalid", /path/);
   expectRestoreError({ ...enemy, patternId: "not-a-pattern-id" }, "state.invalidShape", /pattern id/);
   expectRestoreError({ ...enemy, patternId: "pattern.missing" }, "state.registryInvalid", /pattern/);
-  expectRestoreError({ ...enemy, hp: -1 }, "state.invalidShape", /hp and scoreOnKill/);
-  expectRestoreError({ ...enemy, hp: Number.NaN }, "state.invalidShape", /hp and scoreOnKill/);
+  expectRestoreError({ ...enemy, hp: -1 }, "state.invalidShape", /hp/);
+  expectRestoreError({ ...enemy, hp: Number.NaN }, "state.invalidShape", /hp/);
   expectRestoreError({ ...enemy, hp: 11 }, "state.invalidShape", /enemy runtime entity/);
-  expectRestoreError({ ...enemy, scoreOnKill: -1 }, "state.invalidShape", /hp and scoreOnKill/);
-  expectRestoreError({ ...enemy, scoreOnKill: 1.5 }, "state.invalidShape", /hp and scoreOnKill/);
+  expectRestoreError({ ...enemy, scoreOnKill: -1 }, "state.invalidShape", /scoreOnKill/);
+  expectRestoreError({ ...enemy, scoreOnKill: 1.5 }, "state.invalidShape", /scoreOnKill/);
   expectRestoreError({ ...enemy, scoreOnKill: 101 }, "state.invalidShape", /enemy runtime entity/);
   expectRestoreError({ ...enemy, collisionRadius: 13 }, "state.invalidShape", /enemy runtime entity/);
   expectRestoreError({ ...enemy, position: { x: 193, y: 80 } }, "state.invalidShape", /processed timeline/);
+  const throwingEnemyPosition = new Proxy({ x: 192, y: 80 }, {
+    get() {
+      throw new Error("enemy position should be descriptor-cloned");
+    },
+  });
+  const restoredWithThrowingEnemyPosition = loaded.value.restore({
+    ...serialized.value,
+    state: {
+      ...serialized.value.state,
+      runtimeEntities: serialized.value.state.runtimeEntities.map((entity) => (
+        entity.id === enemy.id ? { ...enemy, position: throwingEnemyPosition } : entity
+      )),
+    },
+  } as SerializedGameState);
+  assert.equal(restoredWithThrowingEnemyPosition.ok, true);
+  if (!restoredWithThrowingEnemyPosition.ok) {
+    assert.fail("expected descriptor-cloned enemy position proxy to restore");
+  }
+  assert.deepEqual(restoredWithThrowingEnemyPosition.value.serialize(), serialized);
+
+  expectRestoreError({ ...player, position: { x: 385, y: 400 } }, "state.invalidShape", /playfield/);
+  expectRestoreError({ ...player, lives: 4 }, "state.invalidShape", /counters/);
+  expectRestoreError({ ...player, invincibleTicksRemaining: 121 }, "state.invalidShape", /counters/);
+  expectRestoreError({ ...player, nextShotAllowedTick: 61 }, "state.invalidShape", /counters/);
 
   expectRestoreError({ ...enemyBullet, projectile: {} }, "state.invalidShape", /unknown fields/);
   expectRestoreError({ ...enemyBullet, definitionId: "bullet.missing" }, "state.registryInvalid", /bullet/);
@@ -1142,17 +1207,7 @@ test("restore validates each runtime entity kind before the unsupported boundary
   expectRestoreError({ ...playerShot, damage: 0 }, "state.invalidShape", /damage/);
   expectRestoreError({ ...playerShot, damage: 6 }, "state.invalidShape", /player shot definition/);
 
-  const zeroHpRestore = loaded.value.restore({
-    ...serialized.value,
-    state: {
-      ...serialized.value.state,
-      runtimeEntities: serialized.value.state.runtimeEntities.map((entity) => (
-        entity.id === enemy.id ? { ...enemy, hp: 0 } : entity
-      )),
-    },
-  } as SerializedGameState);
-  assert.equal(zeroHpRestore.ok, false);
-  assert.equal(!zeroHpRestore.ok && zeroHpRestore.errors[0]?.code, "state.unsupportedSnapshot");
+  expectRestoreError({ ...enemy, hp: 0 }, "state.invalidShape", /hp/);
 
   const expectEntityOrderError = (runtimeEntities: typeof serialized.value.state.runtimeEntities) => {
     const restored = loaded.value.restore({
@@ -1272,21 +1327,170 @@ test("restore validates each runtime entity kind before the unsupported boundary
   ]);
 });
 
-test("restore converts initial deterministic payload to committed state before the unsupported boundary", () => {
+test("restore rejects same-tick allocation order spoofing", () => {
+  const definition = createDoubleFireOnSpawnAtZeroDefinition();
+  const loaded = createShootingCore("core.test").load(definition);
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const started = startStageFromLoadedGame(loaded.value);
+  const frame = started.tick(createShotInputFrame(0));
+  assert.equal(frame.ok, true);
+  const serialized = started.serialize();
+  assert.equal(serialized.ok, true);
+  if (!serialized.ok) {
+    assert.fail("expected serialized state");
+  }
+
+  const enemies = serialized.value.state.runtimeEntities.filter((entity) => entity.kind === "enemy");
+  const enemyBullets = serialized.value.state.runtimeEntities.filter((entity) => entity.kind === "enemyBullet");
+  const playerShot = serialized.value.state.runtimeEntities.find((entity) => entity.kind === "playerShot");
+  assert.equal(enemies.length, 2);
+  assert.equal(enemyBullets.length, 2);
+  assert.equal(playerShot?.kind, "playerShot");
+  const [firstEnemy, secondEnemy] = enemies;
+  const [firstBullet, secondBullet] = enemyBullets;
+  if (
+    firstEnemy?.kind !== "enemy"
+    || secondEnemy?.kind !== "enemy"
+    || firstBullet?.kind !== "enemyBullet"
+    || secondBullet?.kind !== "enemyBullet"
+    || playerShot?.kind !== "playerShot"
+  ) {
+    assert.fail("expected two enemies, two enemy bullets, and one player shot");
+  }
+  const validRestore = loaded.value.restore(serialized.value);
+  assert.equal(validRestore.ok, true);
+  if (!validRestore.ok) {
+    assert.fail("expected valid double-spawn snapshot to restore");
+  }
+  assert.deepEqual(assertSerializeOk(validRestore.value.serialize(), "valid double-spawn restore"), serialized.value);
+
+  const restoreWithEntities = (runtimeEntities: typeof serialized.value.state.runtimeEntities) => loaded.value.restore({
+    ...serialized.value,
+    state: {
+      ...serialized.value.state,
+      runtimeEntities,
+    },
+  } as SerializedGameState);
+  const expectAllocationOrderError = (
+    runtimeEntities: typeof serialized.value.state.runtimeEntities,
+    messagePattern: RegExp,
+  ) => {
+    const restored = restoreWithEntities(runtimeEntities);
+    assert.equal(restored.ok, false);
+    assert.equal(!restored.ok && restored.errors[0]?.code, "state.invalidShape");
+    assert.match(!restored.ok ? restored.errors[0]?.message ?? "" : "", messagePattern);
+  };
+
+  const swappedEnemyIds = serialized.value.state.runtimeEntities.map((entity) => {
+    if (entity.id === firstEnemy.id) {
+      return { ...secondEnemy, id: firstEnemy.id };
+    }
+    if (entity.id === secondEnemy.id) {
+      return { ...firstEnemy, id: secondEnemy.id };
+    }
+    return entity;
+  });
+  expectAllocationOrderError(swappedEnemyIds, /enemy runtime entity ids/);
+
+  const swappedEnemyBulletIds = serialized.value.state.runtimeEntities.map((entity) => {
+    if (entity.id === firstBullet.id) {
+      return { ...secondBullet, id: firstBullet.id };
+    }
+    if (entity.id === secondBullet.id) {
+      return { ...firstBullet, id: secondBullet.id };
+    }
+    return entity;
+  });
+  expectAllocationOrderError(swappedEnemyBulletIds, /enemy bullet runtime entity ids/);
+
+  const enemyBeforeBulletOrderSpoof = [
+    serialized.value.state.runtimeEntities[0]!,
+    firstEnemy,
+    { ...firstBullet, id: secondEnemy.id },
+    { ...secondEnemy, id: firstBullet.id },
+    secondBullet,
+    playerShot,
+  ];
+  expectAllocationOrderError(enemyBeforeBulletOrderSpoof, /enemy bullet id/);
+});
+
+test("restore rejects cross-tick allocation order spoofing", () => {
+  const definition = createFutureTimelineAfterRestoreDefinition();
+  const loaded = createShootingCore("core.test").load(definition);
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const started = startStageFromLoadedGame(loaded.value);
+  assertTickOk(started.tick(createShotInputFrame(0)), "shot tick");
+  assertTickOk(started.tick(createEmptyInputFrame(1)), "advance before future spawn");
+  assertTickOk(started.tick(createEmptyInputFrame(2)), "future spawn tick");
+  const serialized = started.serialize();
+  assert.equal(serialized.ok, true);
+  if (!serialized.ok) {
+    assert.fail("expected serialized cross-tick state");
+  }
+
+  const validRestore = loaded.value.restore(serialized.value);
+  assert.equal(validRestore.ok, true);
+  if (!validRestore.ok) {
+    assert.fail("expected valid cross-tick snapshot to restore");
+  }
+  assert.deepEqual(assertSerializeOk(validRestore.value.serialize(), "valid cross-tick restore"), serialized.value);
+
+  const playerShot = serialized.value.state.runtimeEntities.find((entity) => entity.kind === "playerShot");
+  const futureEnemy = serialized.value.state.runtimeEntities.find((entity) => (
+    entity.kind === "enemy" && entity.position.x === 128 && entity.position.y === 96
+  ));
+  assert.equal(playerShot?.kind, "playerShot");
+  assert.equal(futureEnemy?.kind, "enemy");
+  if (playerShot?.kind !== "playerShot" || futureEnemy?.kind !== "enemy") {
+    assert.fail("expected earlier player shot and later enemy");
+  }
+
+  const crossTickOrderSpoof = serialized.value.state.runtimeEntities.map((entity) => {
+    if (entity.id === playerShot.id) {
+      return { ...futureEnemy, id: playerShot.id };
+    }
+    if (entity.id === futureEnemy.id) {
+      return { ...playerShot, id: futureEnemy.id };
+    }
+    return entity;
+  });
+  const restored = loaded.value.restore({
+    ...serialized.value,
+    state: {
+      ...serialized.value.state,
+      runtimeEntities: crossTickOrderSpoof,
+    },
+  } as SerializedGameState);
+  assert.equal(restored.ok, false);
+  assert.equal(!restored.ok && restored.errors[0]?.code, "state.invalidShape");
+  assert.match(!restored.ok ? restored.errors[0]?.message ?? "" : "", /allocation order across ticks/);
+});
+
+test("restore returns a session from an initial deterministic payload", () => {
   const validState = serializeInitialStageState("core.test");
   const restoreInput = toNullPrototypePlainData(validState);
   const capturedSnapshots: SerializedGameState[] = [];
   const loaded = loadGameWithRestoreCapture(createMinimumDefinition(), capturedSnapshots);
+  const baseline = startStageFromLoadedGame(loaded);
 
   assert.notDeepEqual(restoreInput, validState);
   const restored = loaded.restore(restoreInput);
-  assert.equal(restored.ok, false);
-  assert.equal(!restored.ok && restored.errors[0]?.code, "state.unsupportedSnapshot");
-  assert.match(!restored.ok ? restored.errors[0]?.message ?? "" : "", /deterministic payload restore is not supported/);
+  assert.equal(restored.ok, true);
+  if (!restored.ok) {
+    assert.fail("expected restored session");
+  }
+  assert.deepEqual(restored.value.serialize(), { ok: true, value: validState, warnings: [] });
+  assertTickAndSerializeMatch(restored.value, baseline, createEmptyInputFrame(0));
   assert.deepEqual(capturedSnapshots, [validState]);
 });
 
-test("restore converts multi-entity deterministic payload to committed state before the unsupported boundary", () => {
+test("restore resumes a multi-entity deterministic payload", () => {
   const definition = createFireOnSpawnAtZeroDefinition();
   const capturedSnapshots: SerializedGameState[] = [];
   const loaded = loadGameWithRestoreCapture(definition, capturedSnapshots);
@@ -1305,12 +1509,59 @@ test("restore converts multi-entity deterministic payload to committed state bef
   const restoreInput = toNullPrototypePlainData(serialized.value);
   assert.notDeepEqual(restoreInput, serialized.value);
   const restored = loaded.restore(restoreInput);
-  assert.equal(restored.ok, false);
-  assert.equal(!restored.ok && restored.errors[0]?.code, "state.unsupportedSnapshot");
+  assert.equal(restored.ok, true);
+  if (!restored.ok) {
+    assert.fail("expected restored session");
+  }
+  assert.deepEqual(restored.value.serialize(), serialized);
+  assertTickAndSerializeMatch(restored.value, started, createEmptyInputFrame(1));
   assert.deepEqual(capturedSnapshots, [serialized.value]);
 });
 
-test("restore conversion preserves score and timeline cursor before the unsupported boundary", () => {
+test("restore resumes through future timeline spawn deterministically", () => {
+  const definition = createFutureTimelineAfterRestoreDefinition();
+  const capturedSnapshots: SerializedGameState[] = [];
+  const loaded = loadGameWithRestoreCapture(definition, capturedSnapshots);
+  const started = startStageFromLoadedGame(loaded);
+  const frame = started.tick(createShotInputFrame(0));
+  assert.equal(frame.ok, true);
+
+  const serialized = started.serialize();
+  assert.equal(serialized.ok, true);
+  if (!serialized.ok) {
+    assert.fail("expected serialized state");
+  }
+  assert.equal(serialized.value.expectedTick, 1);
+  assert.equal(serialized.value.state.timelineCursor, 1);
+
+  const restored = loaded.restore(toNullPrototypePlainData(serialized.value));
+  assert.equal(restored.ok, true);
+  if (!restored.ok) {
+    assert.fail("expected restored future timeline session");
+  }
+
+  assertTickAndSerializeMatch(restored.value, started, createEmptyInputFrame(1));
+  const spawnFrame = assertTickAndSerializeMatch(restored.value, started, createEmptyInputFrame(2));
+  const spawnEvent = spawnFrame.events.find((event) => event.type === "entitySpawned" && event.tick === 2);
+  assert.equal(spawnEvent?.type, "entitySpawned");
+  if (spawnEvent?.type !== "entitySpawned") {
+    assert.fail("expected future timeline entitySpawned event");
+  }
+  assert.equal(spawnEvent.entityKind, "enemy");
+  assert.deepEqual(spawnEvent.position, { x: 128, y: 96 });
+  const afterSpawn = restored.value.serialize();
+  assert.equal(afterSpawn.ok, true);
+  if (!afterSpawn.ok) {
+    assert.fail("expected restored snapshot after future spawn");
+  }
+  assert.equal(afterSpawn.value.state.timelineCursor, 2);
+  const spawnedEnemy = afterSpawn.value.state.runtimeEntities.find((entity) => entity.id === spawnEvent.entityId);
+  assert.equal(spawnedEnemy?.kind, "enemy");
+  assert.deepEqual(spawnedEnemy?.kind === "enemy" && spawnedEnemy.position, { x: 128, y: 96 });
+  assert.deepEqual(capturedSnapshots, [serialized.value]);
+});
+
+test("restore preserves score and timeline cursor while resuming", () => {
   const definition = createCollisionScoreDefinition();
   const capturedSnapshots: SerializedGameState[] = [];
   const loaded = loadGameWithRestoreCapture(definition, capturedSnapshots);
@@ -1329,9 +1580,62 @@ test("restore conversion preserves score and timeline cursor before the unsuppor
   const restoreInput = toNullPrototypePlainData(serialized.value);
   assert.notDeepEqual(restoreInput, serialized.value);
   const restored = loaded.restore(restoreInput);
-  assert.equal(restored.ok, false);
-  assert.equal(!restored.ok && restored.errors[0]?.code, "state.unsupportedSnapshot");
+  assert.equal(restored.ok, true);
+  if (!restored.ok) {
+    assert.fail("expected restored session");
+  }
+  assert.deepEqual(restored.value.serialize(), serialized);
+  assertTickAndSerializeMatch(restored.value, started, createEmptyInputFrame(1));
   assert.deepEqual(capturedSnapshots, [serialized.value]);
+});
+
+test("failed restore does not mutate loaded game or active sessions", () => {
+  const loaded = loadGameWithRestoreCapture(createFireOnSpawnAtZeroDefinition(), []);
+  const baseline = startStageFromLoadedGame(loaded);
+  const active = startStageFromLoadedGame(loaded);
+
+  const activeFirstFrame = assertTickOk(active.tick(createShotInputFrame(0)), "active first tick");
+  assert.deepEqual(activeFirstFrame, assertTickOk(baseline.tick(createShotInputFrame(0)), "baseline first tick"));
+  const validSnapshot = active.serialize();
+  assert.equal(validSnapshot.ok, true);
+  if (!validSnapshot.ok) {
+    assert.fail("expected active snapshot");
+  }
+
+  const failedRestore = loaded.restore({
+    ...validSnapshot.value,
+    state: {
+      ...validSnapshot.value.state,
+      score: -1,
+    },
+  });
+  assert.equal(failedRestore.ok, false);
+  assert.equal(!failedRestore.ok && failedRestore.errors[0]?.code, "state.invalidShape");
+
+  const baselineNextFrame = assertTickOk(baseline.tick(createEmptyInputFrame(1)), "baseline next tick");
+  assert.deepEqual(assertTickOk(active.tick(createEmptyInputFrame(1)), "active next tick"), baselineNextFrame);
+  assert.deepEqual(
+    assertSerializeOk(active.serialize(), "active serialize after failed restore"),
+    assertSerializeOk(baseline.serialize(), "baseline serialize after failed restore"),
+  );
+
+  const restored = loaded.restore(validSnapshot.value);
+  assert.equal(restored.ok, true);
+  if (!restored.ok) {
+    assert.fail("expected valid restore after failed restore");
+  }
+  assert.deepEqual(assertTickOk(restored.value.tick(createEmptyInputFrame(1)), "restored next tick"), baselineNextFrame);
+  assert.deepEqual(
+    assertSerializeOk(restored.value.serialize(), "restored serialize after failed restore"),
+    assertSerializeOk(baseline.serialize(), "baseline serialize after valid restore"),
+  );
+
+  const restarted = loaded.startStage({
+    stageId: "stage.stage_01",
+    difficulty: "normal",
+    seed: "seed-1",
+  });
+  assert.equal(restarted.ok, true);
 });
 
 test("returns identical frames for identical seed and input sequence", () => {
@@ -4303,6 +4607,32 @@ function startStageFromLoadedGame(loaded: LoadedGame) {
   return started.value;
 }
 
+function assertTickAndSerializeMatch(restored: StageSession, baseline: StageSession, input: InputFrame) {
+  const restoredFrame = assertTickOk(restored.tick(input), `restored tick ${input.tick}`);
+  const baselineFrame = assertTickOk(baseline.tick(input), `baseline tick ${input.tick}`);
+  assert.deepEqual(restoredFrame, baselineFrame);
+  const restoredSnapshot = assertSerializeOk(restored.serialize(), `restored serialize ${input.tick}`);
+  const baselineSnapshot = assertSerializeOk(baseline.serialize(), `baseline serialize ${input.tick}`);
+  assert.deepEqual(restoredSnapshot, baselineSnapshot);
+  return baselineFrame;
+}
+
+function assertTickOk(frame: ReturnType<StageSession["tick"]>, label: string) {
+  if (!frame.ok) {
+    assert.fail(`${label} failed: ${JSON.stringify(frame)}`);
+  }
+
+  return frame.value;
+}
+
+function assertSerializeOk(snapshot: ReturnType<StageSession["serialize"]>, label: string) {
+  if (!snapshot.ok) {
+    assert.fail(`${label} failed: ${JSON.stringify(snapshot)}`);
+  }
+
+  return snapshot.value;
+}
+
 function createCollisionScoreDefinition(): GameDefinition {
   const definition = createMinimumDefinition();
   return {
@@ -4427,6 +4757,58 @@ function createFireOnSpawnAtZeroDefinition(): GameDefinition {
           bullet: "bullet.red_small",
           offset: { x: 0, y: 8 },
         },
+      }],
+    },
+  };
+}
+
+function createDoubleFireOnSpawnAtZeroDefinition(): GameDefinition {
+  const definition = createFireOnSpawnAtZeroDefinition();
+  return {
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        timeline: [
+          definition.content.stages[0]!.timeline[0]!,
+          {
+            tick: 0,
+            action: {
+              type: "spawnEnemy",
+              enemy: "enemy.scout",
+              path: "path.none",
+              pattern: "pattern.spawn_bullet",
+              position: { x: 128, y: 96 },
+            },
+          },
+        ],
+      }],
+    },
+  };
+}
+
+function createFutureTimelineAfterRestoreDefinition(): GameDefinition {
+  const definition = createFireOnSpawnAtZeroDefinition();
+  return {
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        timeline: [
+          ...definition.content.stages[0]!.timeline,
+          {
+            tick: 2,
+            action: {
+              type: "spawnEnemy",
+              enemy: "enemy.scout",
+              path: "path.none",
+              pattern: "pattern.spawn_bullet",
+              position: { x: 128, y: 96 },
+            },
+          },
+        ],
       }],
     },
   };
