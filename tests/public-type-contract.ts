@@ -48,6 +48,66 @@ import { createMinimumDefinition } from "./fixtures/minimum-game-definition.ts";
 // @ts-expect-error 内部 replay/hash snapshot は root public contract に含めない。
 import type { HashableGameState } from "@shooting-sample/shooting-core";
 
+// @ts-expect-error 内部 hash PRNG DTO は root public contract に含めない。
+import type { HashablePrngState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash vector DTO は root public contract に含めない。
+import type { HashableVector2 } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash player movement DTO は root public contract に含めない。
+import type { HashablePlayerMovement } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash player DTO は root public contract に含めない。
+import type { HashablePlayerRuntimeEntityState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash enemy DTO は root public contract に含めない。
+import type { HashableEnemyRuntimeEntityState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash enemy bullet DTO は root public contract に含めない。
+import type { HashableEnemyBulletRuntimeEntityState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash player shot DTO は root public contract に含めない。
+import type { HashablePlayerShotRuntimeEntityState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash runtime entity DTO は root public contract に含めない。
+import type { HashableRuntimeEntityState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash pending event DTO は root public contract に含めない。
+import type { HashablePendingEvent } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash pattern runner DTO は root public contract に含めない。
+import type { HashablePatternRunnerState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash feature state DTO は root public contract に含めない。
+import type { HashableEnabledFeatureState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash JSON DTO は root public contract に含めない。
+import type { HashableJsonValue } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash PRNG field order table は root public contract に含めない。
+import { HASHABLE_PRNG_STATE_FIELD_ORDER } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash vector field order table は root public contract に含めない。
+import { HASHABLE_VECTOR2_FIELD_ORDER } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash movement field order table は root public contract に含めない。
+import { HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash field order table は root public contract に含めない。
+import { HASHABLE_GAME_STATE_FIELD_ORDER } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash runtime entity order table は root public contract に含めない。
+import { HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash pending event order table は root public contract に含めない。
+import { HASHABLE_PENDING_EVENT_FIELD_ORDER } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash pattern runner order table は root public contract に含めない。
+import { HASHABLE_PATTERN_RUNNER_STATE_FIELD_ORDER } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash feature state order table は root public contract に含めない。
+import { HASHABLE_ENABLED_FEATURE_STATE_FIELD_ORDER } from "@shooting-sample/shooting-core";
+
 // @ts-expect-error 内部 PRNG snapshot は root public contract に含めない。
 import type { SerializedPrngState } from "@shooting-sample/shooting-core";
 
@@ -1140,6 +1200,26 @@ void invalidPlayerShotEntitySpawnedEvent;
 void assertEventExhaustive;
 void KNOWN_ENABLED_FEATURES;
 void (undefined as unknown as HashableGameState);
+void (undefined as unknown as HashablePrngState);
+void (undefined as unknown as HashableVector2);
+void (undefined as unknown as HashablePlayerMovement);
+void (undefined as unknown as HashablePlayerRuntimeEntityState);
+void (undefined as unknown as HashableEnemyRuntimeEntityState);
+void (undefined as unknown as HashableEnemyBulletRuntimeEntityState);
+void (undefined as unknown as HashablePlayerShotRuntimeEntityState);
+void (undefined as unknown as HashableRuntimeEntityState);
+void (undefined as unknown as HashablePendingEvent);
+void (undefined as unknown as HashablePatternRunnerState);
+void (undefined as unknown as HashableEnabledFeatureState);
+void (undefined as unknown as HashableJsonValue);
+void HASHABLE_PRNG_STATE_FIELD_ORDER;
+void HASHABLE_VECTOR2_FIELD_ORDER;
+void HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER;
+void HASHABLE_GAME_STATE_FIELD_ORDER;
+void HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND;
+void HASHABLE_PENDING_EVENT_FIELD_ORDER;
+void HASHABLE_PATTERN_RUNNER_STATE_FIELD_ORDER;
+void HASHABLE_ENABLED_FEATURE_STATE_FIELD_ORDER;
 void (undefined as unknown as SerializedPrngState);
 void (undefined as unknown as SerializedPatternRunnerId);
 void (undefined as unknown as EnemyRuntimeEntity);

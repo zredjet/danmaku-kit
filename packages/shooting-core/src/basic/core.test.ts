@@ -1,8 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createShootingCore, createShootingCoreWithTestingHooksForInternalTest } from "./core.ts";
-import type { LoadedGame, ShootingCore, StageSession, StartStageOptions } from "./core.ts";
+import {
+  HASHABLE_ENABLED_FEATURE_STATE_FIELD_ORDER,
+  HASHABLE_GAME_STATE_FIELD_ORDER,
+  HASHABLE_PATTERN_RUNNER_STATE_FIELD_ORDER,
+  HASHABLE_PENDING_EVENT_FIELD_ORDER,
+  HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER,
+  HASHABLE_PRNG_STATE_FIELD_ORDER,
+  HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND,
+  HASHABLE_VECTOR2_FIELD_ORDER,
+  createShootingCore,
+  createShootingCoreWithTestingHooksForInternalTest,
+} from "./core.ts";
+import type { HashableGameState, LoadedGame, ShootingCore, StageSession, StartStageOptions } from "./core.ts";
 import type { GameDefinition } from "./content/types.ts";
 import { validateGameDefinition } from "./content/validation.ts";
 import { createEmptyInputFrame } from "./input/input-frame.ts";
@@ -141,6 +152,61 @@ test("serializes initial stage state with metadata and pending startup event", (
   ]);
 });
 
+test("records hashable state from committed state without public-only metadata", () => {
+  const hashableStates: HashableGameState[] = [];
+  const loaded = createShootingCoreWithTestingHooksForTest("core.test", {
+    recordHashableStateOnSerialize: (state) => hashableStates.push(state),
+  }).load(createMinimumDefinition());
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const started = startStageFromLoadedGame(loaded.value);
+
+  const serialized = assertSerializeOk(started.serialize(), "initial serialize with hashable state");
+  assert.equal(hashableStates.length, 1);
+  assert.deepEqual(hashableStates[0], {
+    stateHashVersion: 1,
+    coreVersion: "core.test",
+    schemaVersion: "1",
+    expectedTick: 0,
+    nextEntityId: 2,
+    timelineCursor: 0,
+    prngState: { state: 3597787782 },
+    score: 0,
+    runtimeEntities: [{
+      id: 1,
+      kind: "player",
+      definitionId: "player.default",
+      position: { x: 192, y: 400 },
+      collisionRadius: 3,
+      lives: 3,
+      invincibleTicksRemaining: 0,
+      nextShotAllowedTick: 0,
+      movement: { speed: 4, focusSpeed: 1.8 },
+      shotDefinitionId: "playerShot.basic",
+    }],
+    pendingEvents: [{ type: "stageStarted", tick: 0, stageId: "stage.stage_01" }],
+    patternRunnerStates: [],
+    enabledFeatureStates: [],
+  });
+  assert.equal("contentVersion" in hashableStates[0]!, false);
+  assert.equal("inputFormatVersion" in hashableStates[0]!, false);
+  assert.equal("enabledFeatures" in hashableStates[0]!, false);
+  assert.equal("stageId" in hashableStates[0]!, false);
+  assert.equal("difficulty" in hashableStates[0]!, false);
+  assert.equal("playerId" in hashableStates[0]!, false);
+
+  const restored = loaded.value.restore(serialized);
+  assert.equal(restored.ok, true);
+  if (!restored.ok) {
+    assert.fail("expected initial snapshot restore");
+  }
+  assert.deepEqual(assertSerializeOk(restored.value.serialize(), "initial restored serialize with hashable state"), serialized);
+  assert.equal(hashableStates.length, 2);
+  assert.deepEqual(hashableStates[1], hashableStates[0]);
+});
+
 test("serializes runtime entities after tick without drained frame events", () => {
   const started = startMinimumStage();
   const frame = started.tick(createShotInputFrame(0));
@@ -179,6 +245,253 @@ test("serializes runtime entities after tick without drained frame events", () =
       damage: 5,
     },
   ]);
+});
+
+test("records identical hashable state after restore roundtrip", () => {
+  const hashableStates: HashableGameState[] = [];
+  const loaded = createShootingCoreWithTestingHooksForTest("core.test", {
+    recordHashableStateOnSerialize: (state) => hashableStates.push(state),
+  }).load(createFireOnSpawnAtZeroDefinition());
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const started = startStageFromLoadedGame(loaded.value);
+  const frame = assertTickOk(started.tick(createShotInputFrame(0)), "source tick before hashable state");
+  assert.ok(frame.events.length > 0);
+
+  const serialized = assertSerializeOk(started.serialize(), "source serialize with hashable state");
+  assert.equal(hashableStates.length, 1);
+  const expectedHashableState: HashableGameState = {
+    stateHashVersion: 1,
+    coreVersion: "core.test",
+    schemaVersion: "1",
+    expectedTick: 1,
+    nextEntityId: 5,
+    timelineCursor: 1,
+    prngState: { state: 2919998806 },
+    score: 0,
+    runtimeEntities: [
+      {
+        id: 1,
+        kind: "player",
+        definitionId: "player.default",
+        position: { x: 192, y: 400 },
+        collisionRadius: 3,
+        lives: 3,
+        invincibleTicksRemaining: 0,
+        nextShotAllowedTick: 3,
+        movement: { speed: 4, focusSpeed: 1.8 },
+        shotDefinitionId: "playerShot.basic",
+      },
+      {
+        id: 2,
+        kind: "enemy",
+        definitionId: "enemy.scout",
+        position: { x: 192, y: 80 },
+        collisionRadius: 12,
+        hp: 10,
+        scoreOnKill: 100,
+        pathId: "path.none",
+        patternId: "pattern.spawn_bullet",
+      },
+      {
+        id: 3,
+        kind: "enemyBullet",
+        definitionId: "bullet.red_small",
+        position: { x: 192, y: 88 },
+        collisionRadius: 4,
+      },
+      {
+        id: 4,
+        kind: "playerShot",
+        definitionId: "playerShot.basic",
+        position: { x: 192, y: 392 },
+        collisionRadius: 5,
+        velocity: { x: 0, y: -8 },
+        remainingLifetimeTicks: 3,
+        damage: 5,
+      },
+    ],
+    pendingEvents: [],
+    patternRunnerStates: [],
+    enabledFeatureStates: [],
+  };
+  assert.deepEqual(hashableStates[0], expectedHashableState);
+
+  const restored = loaded.value.restore(serialized);
+  assert.equal(restored.ok, true);
+  if (!restored.ok) {
+    assert.fail("expected restored session");
+  }
+  const restoredSerialized = assertSerializeOk(restored.value.serialize(), "restored serialize with hashable state");
+  assert.deepEqual(restoredSerialized, serialized);
+  assert.equal(hashableStates.length, 2);
+  assert.deepEqual(hashableStates[1], expectedHashableState);
+});
+
+test("records hashable state from committed state despite serialize-only test mutations", () => {
+  const hashableStates: HashableGameState[] = [];
+  const loaded = createShootingCoreWithTestingHooksForTest("core.test", {
+    overrideCommittedNextEntityIdOnSerialize: 100,
+    overrideCommittedPrngStateOnSerialize: { state: 1 },
+    recordHashableStateOnSerialize: (state) => hashableStates.push(state),
+  }).load(createMinimumDefinition());
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const started = startStageFromLoadedGame(loaded.value);
+
+  const serialized = assertSerializeOk(started.serialize(), "serialize with a valid test-only override");
+  assert.equal(serialized.nextEntityId, 100);
+  assert.equal(serialized.prngState.state, 1);
+  assert.equal(hashableStates.length, 1);
+  assert.equal(hashableStates[0]?.nextEntityId, 2);
+  assert.equal(hashableStates[0]?.prngState.state, 3597787782);
+
+  const committedSerialized = assertSerializeOk(started.serialize(), "repeated serialize with a test-only override");
+  assert.equal(committedSerialized.nextEntityId, 100);
+  assert.equal(committedSerialized.prngState.state, 1);
+  assert.equal(hashableStates.length, 2);
+  assert.equal(hashableStates[1]?.nextEntityId, 2);
+  assert.equal(hashableStates[1]?.prngState.state, 3597787782);
+});
+
+test("records nonzero score in hashable state after collision scoring", () => {
+  const hashableStates: HashableGameState[] = [];
+  const loaded = createShootingCoreWithTestingHooksForTest("core.test", {
+    recordHashableStateOnSerialize: (state) => hashableStates.push(state),
+  }).load(createCollisionScoreDefinition());
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const started = startStageFromLoadedGame(loaded.value);
+
+  assertTickOk(started.tick(createShotInputFrame(0)), "collision score tick before hashable state");
+  assertSerializeOk(started.serialize(), "serialize collision score state");
+
+  assert.equal(hashableStates.length, 1);
+  assert.equal(hashableStates[0]?.score, 100);
+  assert.deepEqual(hashableStates[0]?.runtimeEntities.map((entity) => entity.kind), ["player"]);
+});
+
+test("fixes and freezes hashable canonical field-order tables", () => {
+  assert.equal(Object.isFrozen(HASHABLE_PRNG_STATE_FIELD_ORDER), true);
+  assert.equal(Object.isFrozen(HASHABLE_VECTOR2_FIELD_ORDER), true);
+  assert.equal(Object.isFrozen(HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER), true);
+  assert.equal(Object.isFrozen(HASHABLE_GAME_STATE_FIELD_ORDER), true);
+  assert.equal(Object.isFrozen(HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND), true);
+  assert.equal(Object.isFrozen(HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND.player), true);
+  assert.equal(Object.isFrozen(HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND.enemy), true);
+  assert.equal(Object.isFrozen(HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND.enemyBullet), true);
+  assert.equal(Object.isFrozen(HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND.playerShot), true);
+  assert.equal(Object.isFrozen(HASHABLE_PENDING_EVENT_FIELD_ORDER), true);
+  assert.equal(Object.isFrozen(HASHABLE_PATTERN_RUNNER_STATE_FIELD_ORDER), true);
+  assert.equal(Object.isFrozen(HASHABLE_ENABLED_FEATURE_STATE_FIELD_ORDER), true);
+
+  assert.deepEqual({
+    prng: HASHABLE_PRNG_STATE_FIELD_ORDER,
+    vector2: HASHABLE_VECTOR2_FIELD_ORDER,
+    playerMovement: HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER,
+    gameState: HASHABLE_GAME_STATE_FIELD_ORDER,
+    runtimeEntities: HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND,
+    pendingEvent: HASHABLE_PENDING_EVENT_FIELD_ORDER,
+    patternRunnerState: HASHABLE_PATTERN_RUNNER_STATE_FIELD_ORDER,
+    enabledFeatureState: HASHABLE_ENABLED_FEATURE_STATE_FIELD_ORDER,
+  }, {
+    prng: ["state"],
+    vector2: ["x", "y"],
+    playerMovement: ["speed", "focusSpeed"],
+    gameState: [
+      "stateHashVersion",
+      "coreVersion",
+      "schemaVersion",
+      "expectedTick",
+      "nextEntityId",
+      "timelineCursor",
+      "prngState",
+      "score",
+      "runtimeEntities",
+      "pendingEvents",
+      "patternRunnerStates",
+      "enabledFeatureStates",
+    ],
+    runtimeEntities: {
+      player: [
+        "id",
+        "kind",
+        "definitionId",
+        "position",
+        "collisionRadius",
+        "lives",
+        "invincibleTicksRemaining",
+        "nextShotAllowedTick",
+        "movement",
+        "shotDefinitionId",
+      ],
+      enemy: [
+        "id",
+        "kind",
+        "definitionId",
+        "position",
+        "collisionRadius",
+        "hp",
+        "scoreOnKill",
+        "pathId",
+        "patternId",
+      ],
+      enemyBullet: ["id", "kind", "definitionId", "position", "collisionRadius"],
+      playerShot: [
+        "id",
+        "kind",
+        "definitionId",
+        "position",
+        "collisionRadius",
+        "velocity",
+        "remainingLifetimeTicks",
+        "damage",
+      ],
+    },
+    pendingEvent: ["type", "tick", "stageId"],
+    patternRunnerState: ["runnerId", "patternId", "stateVersion", "payload"],
+    enabledFeatureState: ["feature", "stateVersion", "payload"],
+  });
+
+  const originalGameStateOrder = [...HASHABLE_GAME_STATE_FIELD_ORDER];
+  assert.throws(
+    () => (HASHABLE_GAME_STATE_FIELD_ORDER as unknown as string[]).reverse(),
+    TypeError,
+  );
+  assert.deepEqual(HASHABLE_GAME_STATE_FIELD_ORDER, originalGameStateOrder);
+
+  assert.throws(
+    () => {
+      (HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND as unknown as { player: string[] }).player = [];
+    },
+    TypeError,
+  );
+});
+
+test("test-only hashable state hook exceptions do not latch fatal state", () => {
+  const loaded = createShootingCoreWithTestingHooksForTest("core.test", {
+    recordHashableStateOnSerialize: () => {
+      throw new Error("hashable hook failure");
+    },
+  }).load(createMinimumDefinition());
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const started = startStageFromLoadedGame(loaded.value);
+
+  assert.throws(
+    () => started.serialize(),
+    /hashable hook failure/,
+  );
+  const frame = assertTickOk(started.tick(createEmptyInputFrame(0)), "tick after throwing hashable hook");
+  assert.deepEqual(frame.events.map((event) => event.type), ["stageStarted", "tickAdvanced"]);
 });
 
 test("serializes selected player and difficulty metadata", () => {

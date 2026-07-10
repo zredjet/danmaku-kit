@@ -1506,7 +1506,27 @@ State hash は canonical encoding を固定する。hash input は `stateHashVer
 
 entity は id 昇順、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は canonical feature order で列挙する。state hash 用 DTO は public serialize DTO とは別の `HashableGameState` として定義し、`stateHashVersion`、`ShootingCore.coreVersion`、`schemaVersion`、`expectedTick`、`nextEntityId`、`timelineCursor`、`prngState`、`score`、runtime entities、pending events、pattern runner states、enabled feature states を持つ。runtime entity DTO には entity id と component values を一度だけ入れ、`entity ids` や `component values` を別配列として二重 encode しない。`lives` や `nextShotAllowedTick` は player runtime entity payload 内の field として encode する。
 
-固定 DTO は fixedStruct として encode する。fixedStruct は `0x07` tag、struct name の UTF-8 byte length u32 little-endian、struct name bytes、field count u32 little-endian、schema 定義順の field value bytes の順に出力し、object key bytes は出さない。type discriminant を持つ union DTO では `kind` などの discriminant field も schema 定義順の通常 field として encode する。nested field は flatten せず、`position` は `fixedStruct("vector2", [x, y])`、player `movement` は `fixedStruct("playerMovement", [speed, focusSpeed])` として encode する。たとえば player entity は現在の `HashableRuntimeEntityState` schema に合わせて `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`lives`、`invincibleTicksRemaining`、`nextShotAllowedTick`、`movement`、`shotDefinitionId` の順に encode する。extension payload のような任意 object だけは object tag、property count、key length + key bytes、value を UTF-8 byte sequence の lexicographic order で encode する。string value と object key はどちらも lone surrogate を拒否する。各値は 1 byte の type tag から始め、tag table は `0x00 = null`、`0x01 = false`、`0x02 = true`、`0x03 = number`、`0x04 = string`、`0x05 = array`、`0x06 = object`、`0x07 = fixedStruct` とする。可変長 payload は unsigned 32 bit little-endian の byte length または element count を付ける。string は tag、byte length、UTF-8 bytes の順に encode する。array は tag、element count、各 value の順に encode する。number は finite number のみ許可し、`-0` は `+0` に正規化したうえで IEEE-754 binary64 little-endian bytes としてエンコードする。これにより斜め移動で発生する `Math.SQRT1_2` 由来の座標も合法な hash 対象にする。浮動小数点文字列化、`localeCompare`、JavaScript の object key order には依存しない。hash algorithm は `xxHash64`、seed は safe integer に丸めず `0x53484f4f54494e47n` の BigInt literal または hi/lo uint32 pair `{ hi: 0x53484f4f, lo: 0x54494e47 }` として渡す。出力は lower-case 16 桁 hex と固定する。algorithm 変更時は `stateHashVersion` を上げる。PRNG state hash は独立した algorithm を作らないが、debug artifact 用に単独 digest が必要な場合は `fixedStruct("prngState", [state])` として、`0x07` tag、`prngState` name、field count `1`、`prngState.state` の canonical number bytes を state hash と同じ xxHash64 seed / output format で比較する。現在 tick で出力済みの `GameFrame.events` は hash 対象外とし、serialize/restore 後も残る pending queue だけを hash に含める。
+固定 DTO は fixedStruct として encode する。fixedStruct は `0x07` tag、struct name の UTF-8 byte length u32 little-endian、struct name bytes、field count u32 little-endian、schema 定義順の field value bytes の順に出力し、object key bytes は出さない。type discriminant を持つ union DTO では `kind` などの discriminant field も schema 定義順の通常 field として encode する。nested field は flatten せず、`position` は `fixedStruct("vector2", [x, y])`、player `movement` は `fixedStruct("playerMovement", [speed, focusSpeed])` として encode する。たとえば player entity は現在の `HashableRuntimeEntityState` schema に合わせて `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`lives`、`invincibleTicksRemaining`、`nextShotAllowedTick`、`movement`、`shotDefinitionId` の順に encode する。
+
+fixedStruct name は次の表を正本として固定する。
+
+| DTO | struct name |
+| --- | --- |
+| `HashableGameState` | `hashableGameState` |
+| PRNG state | `prngState` |
+| vector | `vector2` |
+| player movement | `playerMovement` |
+| player runtime entity | `playerRuntimeEntity` |
+| enemy runtime entity | `enemyRuntimeEntity` |
+| enemy bullet runtime entity | `enemyBulletRuntimeEntity` |
+| player shot runtime entity | `playerShotRuntimeEntity` |
+| pending event | `pendingEvent` |
+| pattern runner state | `patternRunnerState` |
+| enabled feature state | `enabledFeatureState` |
+
+`HashableGameState` の canonical byte sequence または digest 表記を変え得る変更は、`stateHashVersion` を更新する。これには field order、fixedStruct name、type tag、length / endian 規則、UTF-8 key sort、`-0` 正規化、number encoding、hash algorithm、seed、digest hex 表記を含む。byte / digest が不変であることを golden で確認できる内部リファクタだけは version 更新を要しない。
+
+extension payload のような任意 object だけは object tag、property count、key length + key bytes、value を UTF-8 byte sequence の lexicographic order で encode する。string value と object key はどちらも lone surrogate を拒否する。各値は 1 byte の type tag から始め、tag table は `0x00 = null`、`0x01 = false`、`0x02 = true`、`0x03 = number`、`0x04 = string`、`0x05 = array`、`0x06 = object`、`0x07 = fixedStruct` とする。可変長 payload は unsigned 32 bit little-endian の byte length または element count を付ける。string は tag、byte length、UTF-8 bytes の順に encode する。array は tag、element count、各 value の順に encode する。number は finite number のみ許可し、`-0` は `+0` に正規化したうえで IEEE-754 binary64 little-endian bytes としてエンコードする。これにより斜め移動で発生する `Math.SQRT1_2` 由来の座標も合法な hash 対象にする。浮動小数点文字列化、`localeCompare`、JavaScript の object key order には依存しない。hash algorithm は `xxHash64`、seed は safe integer に丸めず `0x53484f4f54494e47n` の BigInt literal または hi/lo uint32 pair `{ hi: 0x53484f4f, lo: 0x54494e47 }` として渡す。出力は lower-case 16 桁 hex と固定する。algorithm 変更時は `stateHashVersion` を上げる。PRNG state hash は独立した algorithm を作らないが、debug artifact 用に単独 digest が必要な場合は `fixedStruct("prngState", [state])` として、`0x07` tag、`prngState` name、field count `1`、`prngState.state` の canonical number bytes を state hash と同じ xxHash64 seed / output format で比較する。現在 tick で出力済みの `GameFrame.events` は hash 対象外とし、serialize/restore 後も残る pending queue だけを hash に含める。
 
 ## 21. 検証とテスト
 

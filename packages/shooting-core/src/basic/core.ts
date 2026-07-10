@@ -70,6 +70,7 @@ import type {
   PlayerShotRuntimeEntity,
   ReadonlyEntityState,
   RuntimeEntityState,
+  Vector2,
 } from "./simulation/runtime-entity.ts";
 import { freezeEntitiesInIdOrder } from "./simulation/system-order.ts";
 import { XorShift32 } from "./simulation/prng.ts";
@@ -115,6 +116,15 @@ export type ReadonlyPlayerState = Readonly<{
   invincibleTicksRemaining: number;
 }>;
 
+/** Hash 対象の PRNG snapshot。 */
+export type HashablePrngState = Readonly<{ state: number }>;
+
+/** Hash 対象の 2D vector。position / velocity で共通利用する。 */
+export type HashableVector2 = Readonly<{ x: number; y: number }>;
+
+/** Hash 対象の player movement 設定。vector と別 fixedStruct として encode する。 */
+export type HashablePlayerMovement = Readonly<{ speed: number; focusSpeed: number }>;
+
 /**
  * state hash 用に使う内部 deterministic snapshot。
  *
@@ -122,14 +132,14 @@ export type ReadonlyPlayerState = Readonly<{
  * public snapshot の互換性維持と hash byte stream の固定を独立させるため、この型では
  * runtime state から必要な deterministic field だけを重複なく並べる。
  */
-type HashableGameState = Readonly<{
+export type HashableGameState = Readonly<{
   stateHashVersion: typeof SERIALIZED_STATE_HASH_VERSION;
   coreVersion: string;
   schemaVersion: string;
   expectedTick: number;
   nextEntityId: number;
   timelineCursor: number;
-  prngState: Readonly<{ state: number }>;
+  prngState: HashablePrngState;
   score: number;
   runtimeEntities: ReadonlyArray<HashableRuntimeEntityState>;
   pendingEvents: ReadonlyArray<HashablePendingEvent>;
@@ -137,51 +147,63 @@ type HashableGameState = Readonly<{
   enabledFeatureStates: ReadonlyArray<HashableEnabledFeatureState>;
 }>;
 
+/** HashableGameState に含める player runtime entity の内部 hash 専用 DTO。 */
+export type HashablePlayerRuntimeEntityState = Readonly<{
+  id: number;
+  kind: "player";
+  definitionId: PlayerId;
+  position: HashableVector2;
+  collisionRadius: number;
+  lives: number;
+  invincibleTicksRemaining: number;
+  nextShotAllowedTick: number;
+  movement: HashablePlayerMovement;
+  shotDefinitionId: PlayerShotDefinition["id"];
+}>;
+
+/** HashableGameState に含める enemy runtime entity の内部 hash 専用 DTO。 */
+export type HashableEnemyRuntimeEntityState = Readonly<{
+  id: number;
+  kind: "enemy";
+  definitionId: EnemyDefinition["id"];
+  position: HashableVector2;
+  collisionRadius: number;
+  hp: number;
+  scoreOnKill: number;
+  pathId: PathId;
+  patternId: PatternDefinition["id"];
+}>;
+
+/** HashableGameState に含める enemy bullet runtime entity の内部 hash 専用 DTO。 */
+export type HashableEnemyBulletRuntimeEntityState = Readonly<{
+  id: number;
+  kind: "enemyBullet";
+  definitionId: BulletDefinition["id"];
+  position: HashableVector2;
+  collisionRadius: number;
+}>;
+
+/** HashableGameState に含める player shot runtime entity の内部 hash 専用 DTO。 */
+export type HashablePlayerShotRuntimeEntityState = Readonly<{
+  id: number;
+  kind: "playerShot";
+  definitionId: PlayerShotDefinition["id"];
+  position: HashableVector2;
+  collisionRadius: number;
+  velocity: HashableVector2;
+  remainingLifetimeTicks: number;
+  damage: number;
+}>;
+
 /** HashableGameState に含める runtime entity の内部 hash 専用 DTO。 */
-type HashableRuntimeEntityState =
-  | Readonly<{
-      id: number;
-      kind: "player";
-      definitionId: PlayerId;
-      position: Readonly<{ x: number; y: number }>;
-      collisionRadius: number;
-      lives: number;
-      invincibleTicksRemaining: number;
-      nextShotAllowedTick: number;
-      movement: Readonly<{ speed: number; focusSpeed: number }>;
-      shotDefinitionId: PlayerShotDefinition["id"];
-    }>
-  | Readonly<{
-      id: number;
-      kind: "enemy";
-      definitionId: EnemyDefinition["id"];
-      position: Readonly<{ x: number; y: number }>;
-      collisionRadius: number;
-      hp: number;
-      scoreOnKill: number;
-      pathId: PathId;
-      patternId: PatternDefinition["id"];
-    }>
-  | Readonly<{
-      id: number;
-      kind: "enemyBullet";
-      definitionId: BulletDefinition["id"];
-      position: Readonly<{ x: number; y: number }>;
-      collisionRadius: number;
-    }>
-  | Readonly<{
-      id: number;
-      kind: "playerShot";
-      definitionId: PlayerShotDefinition["id"];
-      position: Readonly<{ x: number; y: number }>;
-      collisionRadius: number;
-      velocity: Readonly<{ x: number; y: number }>;
-      remainingLifetimeTicks: number;
-      damage: number;
-    }>;
+export type HashableRuntimeEntityState =
+  | HashablePlayerRuntimeEntityState
+  | HashableEnemyRuntimeEntityState
+  | HashableEnemyBulletRuntimeEntityState
+  | HashablePlayerShotRuntimeEntityState;
 
 /** Hash 対象として次 tick に持ち越す pending event。 */
-type HashablePendingEvent = Readonly<{
+export type HashablePendingEvent = Readonly<{
   type: "stageStarted";
   tick: 0;
   stageId: StageId;
@@ -191,7 +213,7 @@ type HashablePendingEvent = Readonly<{
 type CommittedPendingEvent = HashablePendingEvent;
 
 /** Pattern runner の hash 対象 state。 */
-type HashablePatternRunnerState = Readonly<{
+export type HashablePatternRunnerState = Readonly<{
   runnerId: `patternRunner.${string}`;
   patternId: PatternDefinition["id"];
   stateVersion: number;
@@ -199,20 +221,166 @@ type HashablePatternRunnerState = Readonly<{
 }>;
 
 /** Optional feature module の hash 対象 state。 */
-type HashableEnabledFeatureState = Readonly<{
+export type HashableEnabledFeatureState = Readonly<{
   feature: EnabledFeature;
   stateVersion: number;
   payload: HashableJsonValue;
 }>;
 
 /** Hash encoder が受け付ける JSON 互換 payload。 */
-type HashableJsonValue =
+export type HashableJsonValue =
   | string
   | number
   | boolean
   | null
   | readonly HashableJsonValue[]
   | { readonly [key: string]: HashableJsonValue };
+
+type HasDuplicateField<
+  Keys extends readonly unknown[],
+  Seen extends readonly unknown[] = [],
+> = Keys extends readonly [infer Head, ...infer Tail]
+  ? Head extends Seen[number]
+    ? true
+    : HasDuplicateField<Tail, readonly [...Seen, Head]>
+  : false;
+
+type ExactFieldOrder<T, Keys extends readonly (keyof T)[]> =
+  Exclude<keyof T, Keys[number]> extends never
+    ? HasDuplicateField<Keys> extends true
+      ? never
+      : Keys
+    : never;
+
+/**
+ * hash DTO と runtime component の field set が一致することを検査する。
+ *
+ * Basic core の runtime entity は hash 対象外の cache / render state を持たないため、
+ * runtime field の追加時に hash projection だけを更新し忘れることを型エラーにする。
+ */
+type ExactFieldSet<Left, Right> =
+  Exclude<keyof Left, keyof Right> extends never
+    ? Exclude<keyof Right, keyof Left> extends never
+      ? unknown
+      : never
+    : never;
+
+const defineFieldOrder = <T, RuntimeContract = T>() => <const Keys extends readonly (keyof T)[]>(
+  keys: ExactFieldOrder<T, Keys> & ExactFieldSet<T, RuntimeContract>,
+): Readonly<Keys> => Object.freeze([...keys]) as unknown as Readonly<Keys>;
+
+/** HashablePrngState の canonical encoding 順を固定する。 */
+export const HASHABLE_PRNG_STATE_FIELD_ORDER = defineFieldOrder<HashablePrngState, SerializedPrngState>()([
+  "state",
+]);
+
+/** HashableVector2 の canonical encoding 順を固定する。 */
+export const HASHABLE_VECTOR2_FIELD_ORDER = defineFieldOrder<HashableVector2, Vector2>()([
+  "x",
+  "y",
+]);
+
+/** HashablePlayerMovement の canonical encoding 順を固定する。 */
+export const HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER = defineFieldOrder<
+  HashablePlayerMovement,
+  PlayerRuntimeEntity["movement"]
+>()([
+  "speed",
+  "focusSpeed",
+]);
+
+/** HashableGameState の canonical encoding 順を型と同じ場所で固定する。 */
+export const HASHABLE_GAME_STATE_FIELD_ORDER = defineFieldOrder<HashableGameState>()([
+  "stateHashVersion",
+  "coreVersion",
+  "schemaVersion",
+  "expectedTick",
+  "nextEntityId",
+  "timelineCursor",
+  "prngState",
+  "score",
+  "runtimeEntities",
+  "pendingEvents",
+  "patternRunnerStates",
+  "enabledFeatureStates",
+]);
+
+/** Hashable runtime entity の kind 別 canonical encoding 順を固定する。 */
+export const HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND = Object.freeze({
+  player: defineFieldOrder<HashablePlayerRuntimeEntityState, PlayerRuntimeEntity>()([
+    "id",
+    "kind",
+    "definitionId",
+    "position",
+    "collisionRadius",
+    "lives",
+    "invincibleTicksRemaining",
+    "nextShotAllowedTick",
+    "movement",
+    "shotDefinitionId",
+  ]),
+  enemy: defineFieldOrder<HashableEnemyRuntimeEntityState, EnemyRuntimeEntity>()([
+    "id",
+    "kind",
+    "definitionId",
+    "position",
+    "collisionRadius",
+    "hp",
+    "scoreOnKill",
+    "pathId",
+    "patternId",
+  ]),
+  enemyBullet: defineFieldOrder<HashableEnemyBulletRuntimeEntityState, EnemyBulletRuntimeEntity>()([
+    "id",
+    "kind",
+    "definitionId",
+    "position",
+    "collisionRadius",
+  ]),
+  playerShot: defineFieldOrder<HashablePlayerShotRuntimeEntityState, PlayerShotRuntimeEntity>()([
+    "id",
+    "kind",
+    "definitionId",
+    "position",
+    "collisionRadius",
+    "velocity",
+    "remainingLifetimeTicks",
+    "damage",
+  ]),
+} as const satisfies Readonly<{
+  [Kind in HashableRuntimeEntityState["kind"]]: readonly (keyof Extract<HashableRuntimeEntityState, { kind: Kind }>)[];
+}>);
+
+/** Hashable pending event の canonical encoding 順を固定する。 */
+export const HASHABLE_PENDING_EVENT_FIELD_ORDER = defineFieldOrder<
+  HashablePendingEvent,
+  SerializedPendingEvent
+>()([
+  "type",
+  "tick",
+  "stageId",
+]);
+
+/** Hashable pattern runner state の canonical encoding 順を固定する。 */
+export const HASHABLE_PATTERN_RUNNER_STATE_FIELD_ORDER = defineFieldOrder<
+  HashablePatternRunnerState,
+  SerializedPatternRunnerState
+>()([
+  "runnerId",
+  "patternId",
+  "stateVersion",
+  "payload",
+]);
+
+/** Hashable optional feature state の canonical encoding 順を固定する。 */
+export const HASHABLE_ENABLED_FEATURE_STATE_FIELD_ORDER = defineFieldOrder<
+  HashableEnabledFeatureState,
+  SerializedEnabledFeatureState
+>()([
+  "feature",
+  "stateVersion",
+  "payload",
+]);
 
 /**
  * serialize / restore compatibility 判定に必要な session metadata。
@@ -514,6 +682,7 @@ type StageSessionTestingHookOptions = Readonly<{
   overrideCommittedPendingEventsOnSerialize?: readonly unknown[];
   overrideCommittedPrngStateOnSerialize?: unknown;
   recordCommittedStateOnFatal?: (state: CommittedStageState) => void;
+  recordHashableStateOnSerialize?: (state: HashableGameState) => void;
   recordRestoreSerializedSnapshot?: (state: SerializedGameState) => void;
 }>;
 
@@ -527,6 +696,7 @@ type ActiveStageSessionTestingHooks = Readonly<{
   overrideCommittedPendingEventsOnSerialize?: readonly unknown[];
   overrideCommittedPrngStateOnSerialize?: unknown;
   recordCommittedStateOnFatal?: (state: CommittedStageState) => void;
+  recordHashableStateOnSerialize?: (state: HashableGameState) => void;
 }>;
 
 /** validated content を runtime lookup しやすい形へまとめる。 */
@@ -762,6 +932,13 @@ function createStageSession(options: StageSessionContext): StageSession {
       if (!serialized.ok) {
         return latchFatalErrors(serialized.errors);
       }
+      if (options.testingHooks.recordHashableStateOnSerialize) {
+        const hashableState = createHashableGameState(options.serializationMetadata, committedState);
+        if (!hashableState.ok) {
+          return latchFatalErrors(hashableState.errors);
+        }
+        options.testingHooks.recordHashableStateOnSerialize(hashableState.value);
+      }
       return serialized;
     },
     tick(rawInput) {
@@ -969,9 +1146,11 @@ function serializeCommittedStageState(
     return pendingEvents;
   }
 
+  const deterministicRuntimeEntities = committedState.activeEntities.map((entity) => projectRuntimeEntityForSerializedState(entity));
+  const deterministicPendingEvents = pendingEvents.value.map((event) => projectPendingEventForSerializedState(event));
   const state: SerializedDeterministicState = {
-    runtimeEntities: committedState.activeEntities.map((entity) => serializeRuntimeEntity(entity)),
-    pendingEvents: pendingEvents.value.map((event) => serializePendingEvent(event)),
+    runtimeEntities: deterministicRuntimeEntities,
+    pendingEvents: deterministicPendingEvents,
     score: committedState.score,
     timelineCursor: committedState.timelineCursor,
     patternRunnerStates: [],
@@ -995,6 +1174,40 @@ function serializeCommittedStageState(
   }));
 }
 
+/** committed snapshot から state hash 用の正規化済み内部 DTO を生成する。 */
+function createHashableGameState(
+  metadata: StageSessionSerializationMetadata,
+  committedState: CommittedStageState,
+): CoreResult<HashableGameState> {
+  const prng = XorShift32.restore(committedState.prngState);
+  if (!prng.ok) {
+    return prng;
+  }
+  const entityInvariant = validateCommittedEntityInvariants(committedState);
+  if (!entityInvariant.ok) {
+    return entityInvariant;
+  }
+  const pendingEvents = validateCommittedPendingEventInvariants(committedState, metadata.stageId);
+  if (!pendingEvents.ok) {
+    return pendingEvents;
+  }
+
+  return okResult(deepFreezeClone({
+    stateHashVersion: metadata.stateHashVersion,
+    coreVersion: metadata.coreVersion,
+    schemaVersion: metadata.schemaVersion,
+    expectedTick: committedState.expectedTick,
+    nextEntityId: committedState.nextEntityId,
+    timelineCursor: committedState.timelineCursor,
+    prngState: prng.value.snapshot(),
+    score: committedState.score,
+    runtimeEntities: committedState.activeEntities.map((entity) => projectRuntimeEntityForHashableState(entity)),
+    pendingEvents: pendingEvents.value.map((event) => projectPendingEventForHashableState(event)),
+    patternRunnerStates: [],
+    enabledFeatureStates: [],
+  }));
+}
+
 /** serialize 専用 fault injection を committed snapshot の clone へだけ反映する。 */
 function createSerializeSourceState(
   committedState: CommittedStageState,
@@ -1015,8 +1228,8 @@ function createSerializeSourceState(
   };
 }
 
-/** runtime entity を restore 用の discriminated union DTO に写す。 */
-function serializeRuntimeEntity(entity: RuntimeEntityState): SerializedRuntimeEntityState {
+/** runtime entity を public serialize 用 DTO に写す。 */
+function projectRuntimeEntityForSerializedState(entity: RuntimeEntityState): SerializedRuntimeEntityState {
   switch (entity.kind) {
     case "player":
       return {
@@ -1065,8 +1278,72 @@ function serializeRuntimeEntity(entity: RuntimeEntityState): SerializedRuntimeEn
   }
 }
 
-/** pending queue に残せる event を public DTO へ正規化する。 */
-function serializePendingEvent(event: CommittedPendingEvent): SerializedPendingEvent {
+/** runtime entity から hash 専用 DTO へ明示的に写す。 */
+function projectRuntimeEntityForHashableState(entity: RuntimeEntityState): HashableRuntimeEntityState {
+  switch (entity.kind) {
+    case "player":
+      return {
+        id: entity.id,
+        kind: "player",
+        definitionId: entity.definitionId,
+        position: { x: entity.position.x, y: entity.position.y },
+        collisionRadius: entity.collisionRadius,
+        lives: entity.lives,
+        invincibleTicksRemaining: entity.invincibleTicksRemaining,
+        nextShotAllowedTick: entity.nextShotAllowedTick,
+        movement: { speed: entity.movement.speed, focusSpeed: entity.movement.focusSpeed },
+        shotDefinitionId: entity.shotDefinitionId,
+      };
+    case "enemy":
+      return {
+        id: entity.id,
+        kind: "enemy",
+        definitionId: entity.definitionId,
+        position: { x: entity.position.x, y: entity.position.y },
+        collisionRadius: entity.collisionRadius,
+        hp: entity.hp,
+        scoreOnKill: entity.scoreOnKill,
+        pathId: entity.pathId,
+        patternId: entity.patternId,
+      };
+    case "enemyBullet":
+      return {
+        id: entity.id,
+        kind: "enemyBullet",
+        definitionId: entity.definitionId,
+        position: { x: entity.position.x, y: entity.position.y },
+        collisionRadius: entity.collisionRadius,
+      };
+    case "playerShot":
+      return {
+        id: entity.id,
+        kind: "playerShot",
+        definitionId: entity.definitionId,
+        position: { x: entity.position.x, y: entity.position.y },
+        collisionRadius: entity.collisionRadius,
+        velocity: { x: entity.velocity.x, y: entity.velocity.y },
+        remainingLifetimeTicks: entity.remainingLifetimeTicks,
+        damage: entity.damage,
+      };
+  }
+}
+
+/** pending queue に残せる event を public serialize 用 DTO に写す。 */
+function projectPendingEventForSerializedState(event: CommittedPendingEvent): SerializedPendingEvent {
+  switch (event.type) {
+    case "stageStarted":
+      return {
+        type: "stageStarted",
+        tick: event.tick,
+        stageId: event.stageId,
+      };
+    default:
+      return assertNever(event.type);
+  }
+}
+
+/** committed pending event から hash 専用 DTO へ明示的に写す。 */
+function projectPendingEventForHashableState(event: CommittedPendingEvent): HashablePendingEvent {
   switch (event.type) {
     case "stageStarted":
       return {
@@ -1167,6 +1444,7 @@ function createActiveStageSessionTestingHooks(
     overrideCommittedPendingEventsOnSerialize: testingHooks.overrideCommittedPendingEventsOnSerialize,
     overrideCommittedPrngStateOnSerialize: testingHooks.overrideCommittedPrngStateOnSerialize,
     recordCommittedStateOnFatal: testingHooks.recordCommittedStateOnFatal,
+    recordHashableStateOnSerialize: testingHooks.recordHashableStateOnSerialize,
   });
 }
 
