@@ -20,6 +20,8 @@ import { validateGameDefinition } from "./content/validation.ts";
 import { createEmptyInputFrame } from "./input/input-frame.ts";
 import type { InputFrame } from "./input/input-frame.ts";
 import { createShootingCoreWithTestingHooksForTest } from "./internal/testing-hooks.ts";
+import { hashHashableGameState } from "./hash/state-hash.ts";
+import { findFirstStateHashDivergence } from "./testing/state-hash-comparison.ts";
 import type { CoreErrorCode } from "./result.ts";
 import type { SerializedGameState } from "./serialization/types.ts";
 import { createMinimumDefinition } from "../../../../tests/fixtures/minimum-game-definition.ts";
@@ -329,6 +331,41 @@ test("records identical hashable state after restore roundtrip", () => {
   assert.deepEqual(restoredSerialized, serialized);
   assert.equal(hashableStates.length, 2);
   assert.deepEqual(hashableStates[1], expectedHashableState);
+  assert.equal(hashHashableGameState(hashableStates[1]!), hashHashableGameState(hashableStates[0]!));
+});
+
+test("reports the first divergent tick from deterministic game-state hashes", () => {
+  const collectTickHashes = (inputs: readonly InputFrame[]) => {
+    const states: HashableGameState[] = [];
+    const loaded = createShootingCoreWithTestingHooksForTest("core.test", {
+      recordHashableStateOnSerialize: (state) => states.push(state),
+    }).load(createFireOnSpawnAtZeroDefinition());
+    assert.equal(loaded.ok, true);
+    if (!loaded.ok) {
+      assert.fail("expected loaded game");
+    }
+    const session = startStageFromLoadedGame(loaded.value);
+    for (const input of inputs) {
+      assertTickOk(session.tick(input), `state-hash smoke tick ${input.tick}`);
+      assertSerializeOk(session.serialize(), `state-hash smoke serialize ${input.tick}`);
+    }
+    return states.map((state, index) => ({
+      tick: inputs[index]!.tick,
+      hash: hashHashableGameState(state),
+    }));
+  };
+
+  const inputs = [createShotInputFrame(0), createEmptyInputFrame(1)] as const;
+  const expected = collectTickHashes(inputs);
+  assert.equal(findFirstStateHashDivergence(expected, collectTickHashes(inputs)), null);
+
+  const divergence = findFirstStateHashDivergence(
+    expected,
+    collectTickHashes([createEmptyInputFrame(0), createEmptyInputFrame(1)]),
+  );
+  assert.notEqual(divergence, null);
+  assert.equal(divergence?.tick, 0);
+  assert.notEqual(divergence?.expectedHash, divergence?.actualHash);
 });
 
 test("records hashable state from committed state despite serialize-only test mutations", () => {

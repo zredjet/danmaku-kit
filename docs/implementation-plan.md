@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract、Phase 1B-1 の committed / working state boundary、Phase 1B-2 の fatal latch minimum、Phase 1B-3 の serialized DTO contract、Phase 1B-4 の serialize minimum、Phase 1B-5A の restore API / error boundary、Phase 1B-5B の deterministic payload shape / registry / runtime budget validation と accepted committed state 変換準備、Phase 1B-5C の extension state / JSON guard / feature mismatch、Phase 1B-5D の transactional restore / roundtrip determinism、Phase 1B-6A の HashableGameState projection は完了済みである。現在の実装スライスは Phase 1B-6B の canonical encoding minimum へ進む。replay metadata は後続スライスで扱う。
+Phase 1A の renderer 非依存 Core minimum contract、Phase 1B-1 の committed / working state boundary、Phase 1B-2 の fatal latch minimum、Phase 1B-3 の serialized DTO contract、Phase 1B-4 の serialize minimum、Phase 1B-5A の restore API / error boundary、Phase 1B-5B の deterministic payload shape / registry / runtime budget validation と accepted committed state 変換準備、Phase 1B-5C の extension state / JSON guard / feature mismatch、Phase 1B-5D の transactional restore / roundtrip determinism、Phase 1B-6A の HashableGameState projection、Phase 1B-6B の canonical encoder / adapter / xxHash64 / comparison minimum は完了済みである。現在の実装スライスでは Phase 1B-6B の gameplay smoke digest golden を追加する。replay metadata は後続スライスで扱う。
 
 Done:
 
@@ -76,12 +76,12 @@ Done:
 - state hash 6A で committed state と session metadata から `HashableGameState` を生成する helper を追加し、public serialize DTO と hash DTO が runtime state から別々に明示コピーされることを固定する
 - state hash 6A で `HashableGameState` / nested DTO / kind 別 runtime entity の canonical field order 定数を追加し、型変更時の不足・重複・kind 追加漏れを検出できるようにする。定数は凍結し、全順序を golden で固定する。順序を変えるときは `stateHashVersion` も更新する
 - state hash 6B 前半で internal canonical encoder を追加し、type tag、u32 little-endian length / count、finite binary64 little-endian number、`-0` 正規化、lone surrogate 拒否、UTF-8 key sort、array / fixedStruct / object bytes を golden で固定する。文字列 8 KiB、単一 container 10,000 entries、全 container 100,000 entries、object key 合計 256 KiB、全 byte stream 2 MiB の resource budget を設け、xxHash64 が中間 byte stream を全量保持せず更新できる streaming sink もここで用意する
+- state hash 6B 後半で `HashableGameState` adapter、fixed seed xxHash64、lower-case 16 桁 digest を追加し、Core が生成した hash DTO の restore roundtrip でも digest が一致することを固定する
+- state hash 6B 後半で test-only の hash comparison を追加し、同一 simulation の tick 列は一致し、入力差分は最初の divergent tick として検出されることを固定する
 
 Next:
 
-- Phase 1B-6B 後半として `HashableGameState` adapter、xxHash64 digest、determinism comparison へ進む
-- `HashableGameState` から schema-defined fixedStruct を組み立て、field-order / struct-name table を使う encoder golden を追加する
-- vendored `xxHash64`、固定 seed、lower-case 16 桁 hex digest、digest golden、test-only hash comparison / first divergent tick を追加する
+- gameplay smoke fixture の tick ごとの digest golden を追加する
 
 このスライスでは Phaser、Vite、DOM、asset loader、YAML parser、replay metadata、replay playback UI は扱わない。
 
@@ -116,7 +116,7 @@ Status legend:
 | `docs/design.md` Replay determinism | extension state / JSON guard / feature mismatch | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/serialization/restore-json.ts` | extension payload guard と feature mismatch 分類を追加 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | transactional restore / roundtrip determinism | Done | `packages/shooting-core/src/basic/core.ts` | restore 後 serialize / 後続 tick 一致、失敗 restore の transactionality を追加 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | state hash minimum: `HashableGameState` projection | Done | `packages/shooting-core/src/basic/core.ts` | committed state から hash DTO を生成し、public serialize DTO と型結合しない direct projection を固定 | `npm test`, `npm run typecheck` |
-| `docs/design.md` Replay determinism | state hash minimum: canonical encoding / digest | In progress: Phase 1B-6B | `packages/shooting-core/src/basic/hash/canonical-encoder.ts` | canonical value encoder と resource budget は完了。`HashableGameState` adapter、xxHash64 / digest golden、PRNG state hash、first divergent tick test を追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Replay determinism | state hash minimum: canonical encoding / digest | In progress: Phase 1B-6B | `packages/shooting-core/src/basic/hash/canonical-encoder.ts`, `hashable-game-state-adapter.ts`, `xxhash64.ts`, `state-hash.ts`, `testing/state-hash-comparison.ts` | canonical encoder、adapter、xxHash64、PRNG / game-state digest golden、first divergent tick test は完了。gameplay smoke の tick digest golden を追加 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | replay metadata minimum | Queued: Phase 1B-7 | 未実装 | replay file metadata と playback session は作らず、互換性 metadata 型だけ追加 | `npm test`, `npm run typecheck` |
 
 ## 次の作業順
@@ -265,17 +265,18 @@ Done:
 
 6. Phase 1B-6: state hash 最小実装
    - Done: `HashableGameState` を committed state と session metadata から生成する helper を追加する。`HashableGameState` は public serialize DTO と型結合せず、hash version ごとの内部 DTO として `stateHashVersion`、`coreVersion`、`schemaVersion`、`expectedTick`、`nextEntityId`、`timelineCursor`、`prngState`、`score`、runtime entities、pending events、pattern runner states、enabled feature states を持つ
-   - 作業: canonical encoder は完了済みの byte format をそのまま使い、xxHash64 の algorithm、`xxHash64 seed 0x53484f4f54494e47n` または `{ hi: 0x53484f4f, lo: 0x54494e47 }`、lower-case 16 桁 output format を固定する。`xxHash64` 実装は `packages/shooting-core/src/basic/hash/xxhash64.ts` に vendored / self-contained な uint32 pair 実装として置き、npm dependency は追加しない
    - Done: internal canonical encoder で type tag、u32 little-endian length / count、finite binary64 little-endian number、`-0` 正規化、lone surrogate 拒否、UTF-8 key sort、array / fixedStruct / object bytes を golden で固定する。Core 所有 DTO と validation 済み extension payload だけを入力とし、accessor / symbol / non-enumerable / additional property を拒否する。循環・過剰な nesting・反射 proxy failure・文字列 8 KiB・単一 container 10,000 entries・全 container 100,000 entries・object key 合計 256 KiB・全 byte stream 2 MiB も `CanonicalEncodingError` に閉じ込める。xxHash64 用 streaming sink で中間 byte stream の全量保持を避ける
+   - Done: `HashableGameState` adapter は field-order / `HASHABLE_FIXED_STRUCT_NAME_BY_DTO` table から schema-defined fixedStruct tree を構築し、runtime entity は id 昇順、pattern runner state は runnerId の UTF-8 byte 順、enabled feature state は canonical feature 順へ正規化する。adapter は caller-owned array を変更しない
+   - Done: `xxhash64.ts` は vendored / self-contained な uint32 pair 実装として、zero seed の既知 vector、`0x53484f4f54494e47n` 相当の固定 seed、32 byte をまたぐ chunk write、lower-case 16 桁 hex を golden で固定する。`state-hash.ts` は canonical streaming sink と adapter を結び、game state / PRNG state digest を中間 byte stream 全量なしで計算する
+   - Done: test-only の `findFirstStateHashDivergence()` は tick/hash 列の最初の hash・tick・列長の不一致を返す。同一 seed / input の Core session は tick ごとの hash 列が一致し、shot input の差分は tick 0 の divergence として検出する
    - 作業: canonical byte sequence または digest 表記を変え得る変更は `stateHashVersion` を更新する。field order、fixedStruct name、type tag、length / endian、UTF-8 key sort、`-0` 正規化、number encoding、algorithm、seed、hex 表記を対象にし、golden で byte / digest 不変を確認できる内部リファクタだけを例外にする
    - Done: fixedStruct name は `HASHABLE_FIXED_STRUCT_NAME_BY_DTO` で `hashableGameState`、`prngState`、`vector2`、`playerMovement`、`playerRuntimeEntity`、`enemyRuntimeEntity`、`enemyBulletRuntimeEntity`、`playerShotRuntimeEntity`、`pendingEvent`、`patternRunnerState`、`enabledFeatureState` に固定する。field order または struct name を変更するときは `stateHashVersion` を更新する
    - 作業: hash 比較は replay / snapshot metadata 検証済みの同一 `contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId` 文脈内に限定し、debug artifact 単体では metadata を併記する
    - 作業: canonical encoding の対象を `HashableGameState` の単一 DTO に限定する。runtime entity DTO には entity id と component values を一度だけ含め、`entity ids` / `component values` / `runtime entities` を別投影として重ねて encode しない。`ReadonlyGameState` / render-facing `visible` snapshot は hash DTO に含めず encode しない
    - Done: runtime entity の deterministic field projection は `StageSession.serialize()` と state hash で public DTO 型を共有しない。public serialize DTO と `HashableGameState` はそれぞれ runtime state / committed pending event から明示コピーし、hash schema の変更が public snapshot へ漏れないようにする
-   - 作業: runtime entities は entity id 昇順、pattern runner states は `runnerId` の UTF-8 byte lexicographic order 昇順、enabled feature states は canonical feature order で encode する
+   - Done: runtime entities は entity id 昇順、pattern runner states は `runnerId` の UTF-8 byte lexicographic order 昇順、enabled feature states は canonical feature order で encode する
    - Done: fixed DTO field order を immutable table fixture と golden test で固定する。`HashableGameState` は `stateHashVersion`, `coreVersion`, `schemaVersion`, `expectedTick`, `nextEntityId`, `timelineCursor`, `prngState`, `score`, `runtimeEntities`, `pendingEvents`, `patternRunnerStates`, `enabledFeatureStates`。nested vector は `fixedStruct("vector2", [x, y])`、player movement は `fixedStruct("playerMovement", [speed, focusSpeed])` として flatten しない。player entity は `id`, `kind`, `definitionId`, `position`, `collisionRadius`, `lives`, `invincibleTicksRemaining`, `nextShotAllowedTick`, `movement`, `shotDefinitionId`。enemy entity は `id`, `kind`, `definitionId`, `position`, `collisionRadius`, `hp`, `scoreOnKill`, `pathId`, `patternId`。enemy bullet は `id`, `kind`, `definitionId`, `position`, `collisionRadius`。player shot は `id`, `kind`, `definitionId`, `position`, `collisionRadius`, `velocity`, `remainingLifetimeTicks`, `damage`。pending event は `type`, `tick`, `stageId`。pattern runner state は `runnerId`, `patternId`, `stateVersion`, `payload`。enabled feature state は `feature`, `stateVersion`, `payload`。この順序を変更するときは `stateHashVersion` も更新する
    - 作業: current tick の `GameFrame.events` と drain 済み events は hash 対象外にする。hash 対象にするのは serialize / restore をまたいで残る pending queue だけとする
-   - 作業: canonical encoder 単体の golden vector として、固定 DTO field value order、extension payload の key 順差分、runner id の UTF-8 byte ordering、type tag / length boundary、representative fixedStruct bytes、representative values の canonical bytes と xxHash64 digest、`-0` と `+0` の同一化、`0.1`、`1.0`、`-1.5`、`Number.MIN_VALUE`、`Number.MAX_VALUE`、斜め移動由来の小数座標、NaN / Infinity / lone surrogate rejection、xxHash64 seed BigInt / hi-lo 表現 / lower-case 16 桁 hex、PRNG state hash が `fixedStruct("prngState", [state])` bytes と同じ format を使うことを追加する。canonical encoder の self-consistency とは別に、xxHash64 実装単体へ upstream / 既知 test vector と seed `0x53484f4f54494e47n` の代表ケースを追加し、hash 実装の誤りを golden fixture 作成前に検出する
    - 作業: MVP では active pattern runner states と enabled feature states を空配列として encode し、feature 追加時に hash 対象へ入る契約を残す
    - 作業: golden smoke fixture は shot 発射、player shot cooldown、敵撃破、score 変化、enemy bullet / player hit、lives 減少、invincibility decrement、`entityDestroyed` / `scoreChanged` event、pending event drain を通す
    - 作業: internal hash helper の export 境界を `packages/shooting-core/src/basic/testing` または test-only internal import に限定する。比較順は初期 pending event を含む hash、tick 後 drain 済み hash、restore 直後 hash、restore 後 tick hash とする
