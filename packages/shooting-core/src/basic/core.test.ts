@@ -335,37 +335,96 @@ test("records identical hashable state after restore roundtrip", () => {
 });
 
 test("reports the first divergent tick from deterministic game-state hashes", () => {
-  const collectTickHashes = (inputs: readonly InputFrame[]) => {
-    const states: HashableGameState[] = [];
-    const loaded = createShootingCoreWithTestingHooksForTest("core.test", {
-      recordHashableStateOnSerialize: (state) => states.push(state),
-    }).load(createFireOnSpawnAtZeroDefinition());
-    assert.equal(loaded.ok, true);
-    if (!loaded.ok) {
-      assert.fail("expected loaded game");
-    }
-    const session = startStageFromLoadedGame(loaded.value);
-    for (const input of inputs) {
-      assertTickOk(session.tick(input), `state-hash smoke tick ${input.tick}`);
-      assertSerializeOk(session.serialize(), `state-hash smoke serialize ${input.tick}`);
-    }
-    return states.map((state, index) => ({
-      tick: inputs[index]!.tick,
-      hash: hashHashableGameState(state),
-    }));
-  };
-
   const inputs = [createShotInputFrame(0), createEmptyInputFrame(1)] as const;
-  const expected = collectTickHashes(inputs);
-  assert.equal(findFirstStateHashDivergence(expected, collectTickHashes(inputs)), null);
+  const expected = collectStateHashSamples(createFireOnSpawnAtZeroDefinition(), inputs);
+  assert.equal(findFirstStateHashDivergence(expected, collectStateHashSamples(createFireOnSpawnAtZeroDefinition(), inputs)), null);
 
   const divergence = findFirstStateHashDivergence(
     expected,
-    collectTickHashes([createEmptyInputFrame(0), createEmptyInputFrame(1)]),
+    collectStateHashSamples(createFireOnSpawnAtZeroDefinition(), [createEmptyInputFrame(0), createEmptyInputFrame(1)]),
   );
   assert.notEqual(divergence, null);
   assert.equal(divergence?.tick, 0);
   assert.notEqual(divergence?.expectedHash, divergence?.actualHash);
+});
+
+test("fixes gameplay state-hash digest goldens for score and player-hit transitions", () => {
+  assert.deepEqual(
+    collectStateHashSamples(createCollisionScoreDefinition(), [createShotInputFrame(0), createShotInputFrame(1)])
+      .map((sample) => sample.hash),
+    ["2490a1ae8b02c18a", "b19bf9f28b4f72c0"],
+  );
+  assert.deepEqual(
+    collectStateHashSamples(createEnemyBulletHitDefinition(), [createEmptyInputFrame(0), createEmptyInputFrame(1)])
+      .map((sample) => sample.hash),
+    ["ff1d29955eb1f798", "4cc55a8a9ff6b4e9"],
+  );
+});
+
+test("keeps state-hash digests equal after restore across later ticks", () => {
+  const states: HashableGameState[] = [];
+  const loaded = createShootingCoreWithTestingHooksForTest("core.test", {
+    recordHashableStateOnSerialize: (state) => states.push(state),
+  }).load(createFireOnSpawnAtZeroDefinition());
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const source = startStageFromLoadedGame(loaded.value);
+  assertTickOk(source.tick(createShotInputFrame(0)), "state-hash source tick 0");
+  const sourceSnapshot = serializeAndCaptureStateHash(source, states, "state-hash source snapshot");
+  const restored = loaded.value.restore(sourceSnapshot.snapshot);
+  assert.equal(restored.ok, true);
+  if (!restored.ok) {
+    assert.fail("expected restored session");
+  }
+
+  const sourceDigests: string[] = [];
+  const restoredDigests: string[] = [];
+  for (const input of [createEmptyInputFrame(1), createEmptyInputFrame(2)]) {
+    assertTickOk(source.tick(input), `state-hash source tick ${input.tick}`);
+    sourceDigests.push(serializeAndCaptureStateHash(source, states, `state-hash source serialize ${input.tick}`).hash);
+
+    assertTickOk(restored.value.tick(input), `state-hash restored tick ${input.tick}`);
+    restoredDigests.push(serializeAndCaptureStateHash(
+      restored.value,
+      states,
+      `state-hash restored serialize ${input.tick}`,
+    ).hash);
+  }
+  assert.deepEqual(restoredDigests, sourceDigests);
+});
+
+test("excludes drained collision events from the restored state-hash digest", () => {
+  const states: HashableGameState[] = [];
+  const loaded = createShootingCoreWithTestingHooksForTest("core.test", {
+    recordHashableStateOnSerialize: (state) => states.push(state),
+  }).load(createCollisionScoreDefinition());
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const source = startStageFromLoadedGame(loaded.value);
+  const frame = assertTickOk(source.tick(createShotInputFrame(0)), "state-hash collision tick");
+  assert.deepEqual(frame.events.map((event) => event.type), [
+    "stageStarted",
+    "entitySpawned",
+    "playerShotsSpawnedBatch",
+    "entityDestroyed",
+    "entityDestroyed",
+    "scoreChanged",
+    "tickAdvanced",
+  ]);
+  const sourceSnapshot = serializeAndCaptureStateHash(source, states, "state-hash collision snapshot");
+  assert.deepEqual(sourceSnapshot.snapshot.state.pendingEvents, []);
+
+  const restored = loaded.value.restore(sourceSnapshot.snapshot);
+  assert.equal(restored.ok, true);
+  if (!restored.ok) {
+    assert.fail("expected restored collision session");
+  }
+  const restoredSnapshot = serializeAndCaptureStateHash(restored.value, states, "state-hash restored collision snapshot");
+  assert.equal(restoredSnapshot.hash, sourceSnapshot.hash);
 });
 
 test("records hashable state from committed state despite serialize-only test mutations", () => {
@@ -3018,34 +3077,7 @@ test("resolves player shot enemy collision and score in the core tick", () => {
 });
 
 test("resolves enemy bullet player collision in the core tick", () => {
-  const definition = createMinimumDefinition();
-  const loaded = createShootingCore("0.0.0").load({
-    ...definition,
-    content: {
-      ...definition.content,
-      stages: [{
-        ...definition.content.stages[0]!,
-        timeline: [{
-          tick: 0,
-          action: {
-            type: "spawnEnemy",
-            enemy: "enemy.scout",
-            path: "path.none",
-            pattern: "pattern.spawn_bullet",
-            position: { x: 192, y: 392 },
-          },
-        }],
-      }],
-      patterns: [{
-        id: "pattern.spawn_bullet",
-        version: 1,
-        fireOnSpawn: {
-          bullet: "bullet.red_small",
-          offset: { x: 0, y: 8 },
-        },
-      }],
-    },
-  });
+  const loaded = createShootingCore("0.0.0").load(createEnemyBulletHitDefinition());
   assert.equal(loaded.ok, true);
   if (!loaded.ok) {
     assert.fail("expected loaded game");
@@ -4999,6 +5031,41 @@ function assertSerializeOk(snapshot: ReturnType<StageSession["serialize"]>, labe
   return snapshot.value;
 }
 
+/** tick 後の committed hash DTO を serialize hook から収集し、tick/hash 比較用へ変換する。 */
+function collectStateHashSamples(definition: GameDefinition, inputs: readonly InputFrame[]) {
+  const states: HashableGameState[] = [];
+  const loaded = createShootingCoreWithTestingHooksForTest("core.test", {
+    recordHashableStateOnSerialize: (state) => states.push(state),
+  }).load(definition);
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const session = startStageFromLoadedGame(loaded.value);
+  return inputs.map((input) => {
+    assertTickOk(session.tick(input), `state-hash smoke tick ${input.tick}`);
+    return {
+      tick: input.tick,
+      hash: serializeAndCaptureStateHash(session, states, `state-hash smoke serialize ${input.tick}`).hash,
+    };
+  });
+}
+
+/** serialize hook が今回の serialize で hash DTO を一件だけ追加したことを検証する。 */
+function serializeAndCaptureStateHash(
+  session: StageSession,
+  states: readonly HashableGameState[],
+  label: string,
+): Readonly<{ snapshot: SerializedGameState; hash: string }> {
+  const stateIndex = states.length;
+  const snapshot = assertSerializeOk(session.serialize(), label);
+  assert.equal(states.length, stateIndex + 1, `${label} must record exactly one hashable state`);
+  return Object.freeze({
+    snapshot,
+    hash: hashHashableGameState(states[stateIndex]!),
+  });
+}
+
 function createCollisionScoreDefinition(): GameDefinition {
   const definition = createMinimumDefinition();
   return {
@@ -5021,6 +5088,37 @@ function createCollisionScoreDefinition(): GameDefinition {
       playerShots: [{
         ...definition.content.playerShots[0]!,
         damage: 10,
+      }],
+    },
+  };
+}
+
+function createEnemyBulletHitDefinition(): GameDefinition {
+  const definition = createMinimumDefinition();
+  return {
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        timeline: [{
+          tick: 0,
+          action: {
+            type: "spawnEnemy",
+            enemy: "enemy.scout",
+            path: "path.none",
+            pattern: "pattern.spawn_bullet",
+            position: { x: 192, y: 392 },
+          },
+        }],
+      }],
+      patterns: [{
+        id: "pattern.spawn_bullet",
+        version: 1,
+        fireOnSpawn: {
+          bullet: "bullet.red_small",
+          offset: { x: 0, y: 8 },
+        },
       }],
     },
   };
