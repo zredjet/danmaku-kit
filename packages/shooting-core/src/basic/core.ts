@@ -269,6 +269,34 @@ const defineFieldOrder = <T, RuntimeContract = T>() => <const Keys extends reado
   keys: ExactFieldOrder<T, Keys> & ExactFieldSet<T, RuntimeContract>,
 ): Readonly<Keys> => Object.freeze([...keys]) as unknown as Readonly<Keys>;
 
+type HashableFixedStructDtoKey =
+  | "gameState"
+  | "prngState"
+  | "vector2"
+  | "playerMovement"
+  | "playerRuntimeEntity"
+  | "enemyRuntimeEntity"
+  | "enemyBulletRuntimeEntity"
+  | "playerShotRuntimeEntity"
+  | "pendingEvent"
+  | "patternRunnerState"
+  | "enabledFeatureState";
+
+/** HashableGameState adapter が参照する fixedStruct 名の実行時正本。 */
+export const HASHABLE_FIXED_STRUCT_NAME_BY_DTO = Object.freeze({
+  gameState: "hashableGameState",
+  prngState: "prngState",
+  vector2: "vector2",
+  playerMovement: "playerMovement",
+  playerRuntimeEntity: "playerRuntimeEntity",
+  enemyRuntimeEntity: "enemyRuntimeEntity",
+  enemyBulletRuntimeEntity: "enemyBulletRuntimeEntity",
+  playerShotRuntimeEntity: "playerShotRuntimeEntity",
+  pendingEvent: "pendingEvent",
+  patternRunnerState: "patternRunnerState",
+  enabledFeatureState: "enabledFeatureState",
+} as const satisfies Readonly<Record<HashableFixedStructDtoKey, string>>);
+
 /** HashablePrngState の canonical encoding 順を固定する。 */
 export const HASHABLE_PRNG_STATE_FIELD_ORDER = defineFieldOrder<HashablePrngState, SerializedPrngState>()([
   "state",

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   HASHABLE_ENABLED_FEATURE_STATE_FIELD_ORDER,
+  HASHABLE_FIXED_STRUCT_NAME_BY_DTO,
   HASHABLE_GAME_STATE_FIELD_ORDER,
   HASHABLE_PATTERN_RUNNER_STATE_FIELD_ORDER,
   HASHABLE_PENDING_EVENT_FIELD_ORDER,
@@ -377,7 +378,8 @@ test("records nonzero score in hashable state after collision scoring", () => {
   assert.deepEqual(hashableStates[0]?.runtimeEntities.map((entity) => entity.kind), ["player"]);
 });
 
-test("fixes and freezes hashable canonical field-order tables", () => {
+test("fixes and freezes hashable canonical schema tables", () => {
+  assert.equal(Object.isFrozen(HASHABLE_FIXED_STRUCT_NAME_BY_DTO), true);
   assert.equal(Object.isFrozen(HASHABLE_PRNG_STATE_FIELD_ORDER), true);
   assert.equal(Object.isFrozen(HASHABLE_VECTOR2_FIELD_ORDER), true);
   assert.equal(Object.isFrozen(HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER), true);
@@ -392,6 +394,7 @@ test("fixes and freezes hashable canonical field-order tables", () => {
   assert.equal(Object.isFrozen(HASHABLE_ENABLED_FEATURE_STATE_FIELD_ORDER), true);
 
   assert.deepEqual({
+    fixedStructNames: HASHABLE_FIXED_STRUCT_NAME_BY_DTO,
     prng: HASHABLE_PRNG_STATE_FIELD_ORDER,
     vector2: HASHABLE_VECTOR2_FIELD_ORDER,
     playerMovement: HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER,
@@ -401,6 +404,19 @@ test("fixes and freezes hashable canonical field-order tables", () => {
     patternRunnerState: HASHABLE_PATTERN_RUNNER_STATE_FIELD_ORDER,
     enabledFeatureState: HASHABLE_ENABLED_FEATURE_STATE_FIELD_ORDER,
   }, {
+    fixedStructNames: {
+      gameState: "hashableGameState",
+      prngState: "prngState",
+      vector2: "vector2",
+      playerMovement: "playerMovement",
+      playerRuntimeEntity: "playerRuntimeEntity",
+      enemyRuntimeEntity: "enemyRuntimeEntity",
+      enemyBulletRuntimeEntity: "enemyBulletRuntimeEntity",
+      playerShotRuntimeEntity: "playerShotRuntimeEntity",
+      pendingEvent: "pendingEvent",
+      patternRunnerState: "patternRunnerState",
+      enabledFeatureState: "enabledFeatureState",
+    },
     prng: ["state"],
     vector2: ["x", "y"],
     playerMovement: ["speed", "focusSpeed"],
