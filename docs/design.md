@@ -1098,42 +1098,87 @@ Hot reload の適用範囲:
 JSON diagnostic schema:
 
 ```ts
-type ContentDiagnostic = {
+type ContentDiagnosticKind = "parse" | "schema" | "reference" | "featureGate" | "tool";
+
+type ContentDiagnosticBase = Readonly<{
   code: string;
   severity: "error" | "warning" | "info";
   message: string;
-  sourceId?: string;
-  path?: string;
-  line?: number;
-  column?: number;
-  endLine?: number;
-  endColumn?: number;
-  schemaPath?: string;
-  referrerId?: string;
-  targetId?: string;
-};
+}>;
 
-type ValidateContentJsonOutput = {
+type DiagnosticSourceEnd =
+  | Readonly<{ endLine?: never; endColumn?: never }>
+  | Readonly<{ endLine: number; endColumn: number }>;
+
+type DiagnosticSourceSpan = Readonly<{
+  path: string;
+  line: number;
+  column: number;
+}> & DiagnosticSourceEnd;
+
+type ParseOrSchemaContentDiagnostic = ContentDiagnosticBase & DiagnosticSourceSpan & Readonly<{
+  kind: "parse" | "schema";
+  schemaPath: string;
+  sourceId?: string;
+}>;
+
+type ReferenceContentDiagnostic = ContentDiagnosticBase & DiagnosticSourceSpan & Readonly<{
+  kind: "reference";
+  referrerId: string;
+  targetId: string;
+  schemaPath?: string;
+  sourceId?: string;
+}>;
+
+type FeatureGateContentDiagnostic = ContentDiagnosticBase & Readonly<{
+  kind: "featureGate";
+  sourceId: string;
+  schemaPath: string;
+}>;
+
+type ToolContentDiagnostic = ContentDiagnosticBase & Readonly<{ kind: "tool" }>;
+
+type ContentDiagnostic =
+  | ParseOrSchemaContentDiagnostic
+  | ReferenceContentDiagnostic
+  | FeatureGateContentDiagnostic
+  | ToolContentDiagnostic;
+
+type ValidateContentJsonOutputBase = Readonly<{
   schemaVersion: "1";
   contentRoot: string;
-  ok: boolean;
-  diagnostics: ContentDiagnostic[];
-  summary: {
+  diagnostics: readonly ContentDiagnostic[];
+  summary: Readonly<{
     errors: number;
     warnings: number;
     infos: number;
-  };
-};
+  }>;
+}>;
+
+type ValidateContentJsonOutput =
+  | (ValidateContentJsonOutputBase & Readonly<{ ok: true }>)
+  | (ValidateContentJsonOutputBase & Readonly<{ ok: false }>);
+
+type ValidateContentRunResult =
+  | Readonly<{ exitCode: 0; output: ValidateContentJsonOutput & Readonly<{ ok: true }> }>
+  | Readonly<{ exitCode: 1; output: ValidateContentJsonOutput & Readonly<{ ok: false }> }>
+  | Readonly<{ exitCode: 2; output: ValidateContentJsonOutput & Readonly<{ ok: false }> }>;
 ```
+
+`createValidationRunResult()` は `tool` を除く validation diagnostic だけを受け取り、型と runtime projection の両方で下表の field を必須化する。source span の終了位置は `endLine` / `endColumn` を一組で指定する。runtime projection は own enumerable data property を一度だけ snapshot し、accessor、symbol property、未知 property を公開 JSON schema へ流さない。unknown kind / severity、不完全な必須 field、`tool` diagnostic の混入は tool/runtime error として exit code 2 へ分類する。tool/runtime error は `createToolErrorRunResult()` から生成する。
+
+formatter は公開 DTO を直接構築した呼び出し元に対しても同じ runtime projection、canonical sort、summary 再計算を適用し、不整合な `ok` / `summary` や diagnostic をそのまま出力しない。Phase 1C-2 の parser / Core validation adapter は、外部診断を必ず上記 factory 境界へ渡す。
 
 Diagnostic required fields:
 
 | Diagnostic kind | Required fields |
 | --- | --- |
-| parse/schema | `code`、`severity`、`message`、`path`、`line`、`column`、`schemaPath` |
-| cross-file reference | `code`、`severity`、`message`、`path`、`line`、`column`、`referrerId`、`targetId` |
-| feature gate | `code`、`severity`、`message`、`sourceId`、`schemaPath` |
-| tool/runtime | `code`、`severity`、`message` |
+| parse/schema | `kind`、`code`、`severity`、`message`、`path`、`line`、`column`、`schemaPath` |
+| cross-file reference | `kind`、`code`、`severity`、`message`、`path`、`line`、`column`、`referrerId`、`targetId` |
+| feature gate | `kind`、`code`、`severity`、`message`、`sourceId`、`schemaPath` |
+| tool/runtime | `kind`、`code`、`severity`、`message` |
+
+診断順は source path / source ID、開始位置、終了位置、kind、severity、code、message、schema / reference context の順で canonical に固定し、入力列挙順へ依存させない。human output は終了位置、`schemaPath`、`sourceId`、`referrerId`、`targetId` を表示し、改行、ANSI escape、制御文字を可視化して1 diagnostic を1行に保つ。
 
 CI では `GameDefinition.enabledFeatures` と default ids を `--game-definition` で CLI に渡す。Phase 1C では sample app に依存しない `validate-content --game-definition fixtures/game-definition.minimum.yaml --content-root fixtures/content-minimum --format json` を実行する。Phase 2A 以降は `validate-content --game-definition config/game-definition.yaml --content-root apps/sample-title/content --format json` も追加する。`error` が 1 件以上あれば exit code 1 にする。warning は初期段階では non-blocking とし、editor integration は `path` / `line` / `column` を診断位置へ、`code` と `message` を表示本文へ mapping する。
 
@@ -1827,6 +1872,6 @@ MVP では対象外だが、再利用基盤として以下を追跡する。
 
 Phase 1A の Core minimum contract は、TypeScript package、最小 content schema、registry validation、fixed tick、InputFrame、immutable event log、Entity/Component、seed/PRNG、Player / Enemy / EnemyBullet / PlayerShot、minimum Pattern `fireOnSpawn`、MVP collision resolution pair、fixed `scoreOnKill`、package boundary test まで実装済みである。collision broad phase は Phase 1A 完了条件ではなく、playable runtime へ向けた後続性能タスクとして残す。
 
-Phase 1B-5D として、`LoadedGame.restore(state): CoreResult<StageSession>` の public API、top-level error boundary、PRNG snapshot の public restore error 変換、deterministic payload の shape、pending event、runtime entity の kind 別 shape / registry / runtime budget validation、accepted committed state 変換、非空 extension state の shape / JSON guard / feature mismatch 分類、transactional restore、roundtrip determinism は実装済みである。`nextEntityId` は EntityAllocator と共有する上限まで含めて `state.invalidShape` として正規化する。続く Phase 1B-6 の state hash minimum も canonical encoder、fixed seed xxHash64、gameplay digest golden、restore 後の複数 tick 一致まで実装済みである。Phase 1B-7 では metadata-only の `ReplayMetadata` を root type export し、未検証 `enabledFeatures` を replay 互換性 field として含め、snapshot 専用 `stateHashVersion` と replay playback API は公開しない境界を型契約で固定した。canonical order / 重複禁止と version 文字列の runtime validation は playback 境界で行う。次の作業は設計済みの Phase 1C tooling minimum を実装スライスへ分割し、最初のスライスを選定することとする。
+Phase 1B-5D として、`LoadedGame.restore(state): CoreResult<StageSession>` の public API、top-level error boundary、PRNG snapshot の public restore error 変換、deterministic payload の shape、pending event、runtime entity の kind 別 shape / registry / runtime budget validation、accepted committed state 変換、非空 extension state の shape / JSON guard / feature mismatch 分類、transactional restore、roundtrip determinism は実装済みである。`nextEntityId` は EntityAllocator と共有する上限まで含めて `state.invalidShape` として正規化する。続く Phase 1B-6 の state hash minimum も canonical encoder、fixed seed xxHash64、gameplay digest golden、restore 後の複数 tick 一致まで実装済みである。Phase 1B-7 では metadata-only の `ReplayMetadata` を root type export し、未検証 `enabledFeatures` を replay 互換性 field として含め、snapshot 専用 `stateHashVersion` と replay playback API は公開しない境界を型契約で固定した。Phase 1C-1 では `tools/validate-content` package と immutable diagnostic / JSON / human / exit code contract を追加した。次の作業は Phase 1C-2 の YAML parser、source span、CLI / filesystem boundary、Core validation adapter とする。
 
 state hash は `docs/implementation-plan.md` の Phase 1B-6、replay metadata minimum は同計画の Phase 1B-7 で実装済みである。

@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract、Phase 1B-1 の committed / working state boundary、Phase 1B-2 の fatal latch minimum、Phase 1B-3 の serialized DTO contract、Phase 1B-4 の serialize minimum、Phase 1B-5A の restore API / error boundary、Phase 1B-5B の deterministic payload shape / registry / runtime budget validation と accepted committed state 変換準備、Phase 1B-5C の extension state / JSON guard / feature mismatch、Phase 1B-5D の transactional restore / roundtrip determinism、Phase 1B-6A の HashableGameState projection、Phase 1B-6B の canonical encoder / adapter / xxHash64 / comparison / gameplay digest golden、Phase 1B-7 の replay metadata minimum は完了済みである。次は設計済みの Phase 1C tooling minimum を実装スライスへ分割し、最初のスライスを選定する。
+Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract も完了し、次の実装スライスは Phase 1C-2 の parser / CLI boundary とする。
 
 Done:
 
@@ -80,12 +80,13 @@ Done:
 - state hash 6B 後半で test-only の hash comparison を追加し、同一 simulation の tick 列は一致し、入力差分は最初の divergent tick として検出されることを固定する
 - state hash 6B 後半で score、shot cooldown、player hit、lives、invincibility decrement を含む gameplay tick digest golden と、restore 後の複数 tick digest 一致を固定する
 - replay metadata 1B-7 で `ReplayMetadata` の readonly DTO と root type export を追加し、未検証 `enabledFeatures` を含む replay 互換性 metadata と、snapshot 専用 `stateHashVersion` / playback API を公開しない境界を exact type contract で固定する。canonical order / 重複禁止は playback validator の責務とする
+- validate-content 1C-1 で tooling package、immutable diagnostic / JSON output、human formatter、validation / tool error の exit code contract を追加する
 
 Next:
 
-- Phase 1C tooling minimum を実装スライスへ分割し、最初のスライスを選定する
+- YAML parser、source span、CLI argument / filesystem boundary、Core validation adapter を追加する
 
-完了した Phase 1B-7 では Phaser、Vite、DOM、asset loader、YAML parser、replay playback UI は扱わない。`ReplayMetadata` の型と public export だけを扱い、playback、入力列 validation、runtime guard は後続スライスへ送る。Phase 1C の成果物と完了条件は設計書で定義済みのため、次は CLI 契約、fixture、debug dump を依存順に分割する。
+Phase 1C-1 は外部依存、filesystem、YAML parser、source span、Core validation 接続を扱わず、診断と出力の安定した契約だけを固定した。Phase 1C-2 は実績ある YAML parser を導入し、外部ファイルを source span 付き診断へ変換して既存 formatter と exit code 判定へ接続する。
 
 ## 設計から実装への対応表
 
@@ -292,6 +293,27 @@ Done:
    - Done: `ReplayMetadata` が共有する互換性 field は `coreVersion`、`schemaVersion`、`contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、未検証 `enabledFeatures` に限定する。`contentVersion` は title / content pack をまたいで一意な immutable release identity とする。`SerializedGameState` 専用の `stateHashVersion` は snapshot validation 用 field として扱う
    - Done: Phase 1B-7 は metadata-only DTO だけを root export する。`ReplayPlayback` type、入力列 validation、`createReplayPlayback()`、`ReplaySession`、runtime dropped tick diagnostics、full replay の `inputs: InputFrame[]` は root export せず Phase 1B の外に残す
    - Done: `ReplayMetadata` に playback inputs や `RuntimeDroppedTicks` を含めない契約は、Phase 1B では `@ts-expect-error` による type-only negative contract に限定する。runtime guard は replay playback 実装時に追加する
+
+## Phase 1C タスク分割
+
+1. Phase 1C-1: validate-content output contract
+   - Done: `tools/validate-content` を独立 workspace package として追加し、Core / sample app から package 境界を分ける
+   - Done: `ContentDiagnostic` を kind 別必須 field の discriminated union、`ValidateContentJsonOutput` と severity summary を readonly public contract として固定する
+   - Done: exit code と `output.ok` を discriminated union で相関させ、warning / info だけなら exit code 0、validation error は 1、tool/runtime error は 2 とする
+   - Done: diagnostic の own enumerable data property を一度だけ snapshot して既知 field へ runtime projection し、accessor、symbol property、unknown kind / severity、不完全な必須 field、validation factory への tool diagnostic 混入を tool error にする。caller-owned object は freeze しない
+   - Done: validation factory と tool error factory を型で分離し、formatter へ直接渡された公開 DTO も再 projection、canonical sort、summary 再計算して不整合な `ok` / `summary` を出力しない
+   - Done: diagnostic を source / position / kind / severity / code / message の canonical order に並べ、JSON text 全体と human formatter の source / reference context、制御文字 escape を test で固定する
+   - Done: root の value / type export allowlist、deep import 拒否、package dependency allowlist、source import と依存宣言の一致を package boundary test で固定する
+2. Phase 1C-2: parser / CLI boundary
+   - Next: 実績ある YAML parser を dependency として導入し、YAML parse error を source span 付き diagnostic へ変換する。MVP では JSON 入力を追加しない
+   - Next: `--game-definition`、`--content-root`、`--format human|json` の引数契約、filesystem adapter、stdout / stderr、exit code を実装する
+   - Next: Core validation の error code を schema / reference / feature diagnostic へ mapping し、source span が必要な diagnostic kind の必須 field を adapter 境界で検証する
+3. Phase 1C-3: fixture / CLI integration
+   - Queued: `fixtures/game-definition.minimum.yaml` と `fixtures/content-minimum/` を追加し、valid、parse error、schema error、reference error、budget error の CLI integration test を追加する
+   - Queued: JSON output を CI / editor contract、human output を content authoring contract として golden test で固定する
+4. Phase 1C-4: headless debug state dump
+   - Queued: test helper から取得する `DebugStateDump` schema、artifact naming、state hash divergence の最小調査 field を実装する
+   - Queued: debug dump は renderer / browser field を含めず、browser runtime extension は Phase 2A へ分離する
 
 ## Phase 2A へ進む条件
 

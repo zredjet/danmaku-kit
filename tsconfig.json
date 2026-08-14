@@ -14,10 +14,12 @@
     "target": "ES2024"
   },
   "include": [
-    "packages/shooting-core/src/basic/**/*.ts",
+    "packages/*/src/**/*.ts",
+    "tools/*/src/**/*.ts",
     "tests/**/*.ts"
   ],
   "exclude": [
-    "packages/shooting-core/src/basic/**/*.test.ts"
+    "packages/*/src/**/*.test.ts",
+    "tools/*/src/**/*.test.ts"
   ]
 }
