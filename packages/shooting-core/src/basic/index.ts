@@ -15,6 +15,7 @@ export type {
   StartStageOptions,
 } from "./core.ts";
 export type { ReadonlyEntityState } from "./simulation/runtime-entity.ts";
+export type { ReplayMetadata } from "./replay/metadata.ts";
 export type {
   AssetKeyRegistry,
   BulletDefinition,

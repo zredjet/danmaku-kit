@@ -101,7 +101,7 @@ test("serializes initial stage state with metadata and pending startup event", (
   assert.deepEqual(serialized.value, {
     coreVersion: "core.test",
     schemaVersion: "1",
-    contentVersion: "content.0",
+    contentVersion: "shooting-sample@content.0",
     inputFormatVersion: "1",
     stateHashVersion: 1,
     enabledFeatures: [],

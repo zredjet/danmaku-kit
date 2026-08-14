@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract、Phase 1B-1 の committed / working state boundary、Phase 1B-2 の fatal latch minimum、Phase 1B-3 の serialized DTO contract、Phase 1B-4 の serialize minimum、Phase 1B-5A の restore API / error boundary、Phase 1B-5B の deterministic payload shape / registry / runtime budget validation と accepted committed state 変換準備、Phase 1B-5C の extension state / JSON guard / feature mismatch、Phase 1B-5D の transactional restore / roundtrip determinism、Phase 1B-6A の HashableGameState projection、Phase 1B-6B の canonical encoder / adapter / xxHash64 / comparison / gameplay digest golden は完了済みである。現在の実装スライスは Phase 1B-7 の replay metadata minimum へ進む。
+Phase 1A の renderer 非依存 Core minimum contract、Phase 1B-1 の committed / working state boundary、Phase 1B-2 の fatal latch minimum、Phase 1B-3 の serialized DTO contract、Phase 1B-4 の serialize minimum、Phase 1B-5A の restore API / error boundary、Phase 1B-5B の deterministic payload shape / registry / runtime budget validation と accepted committed state 変換準備、Phase 1B-5C の extension state / JSON guard / feature mismatch、Phase 1B-5D の transactional restore / roundtrip determinism、Phase 1B-6A の HashableGameState projection、Phase 1B-6B の canonical encoder / adapter / xxHash64 / comparison / gameplay digest golden、Phase 1B-7 の replay metadata minimum は完了済みである。次は設計済みの Phase 1C tooling minimum を実装スライスへ分割し、最初のスライスを選定する。
 
 Done:
 
@@ -79,12 +79,13 @@ Done:
 - state hash 6B 後半で `HashableGameState` adapter、fixed seed xxHash64、lower-case 16 桁 digest を追加し、Core が生成した hash DTO の restore roundtrip でも digest が一致することを固定する
 - state hash 6B 後半で test-only の hash comparison を追加し、同一 simulation の tick 列は一致し、入力差分は最初の divergent tick として検出されることを固定する
 - state hash 6B 後半で score、shot cooldown、player hit、lives、invincibility decrement を含む gameplay tick digest golden と、restore 後の複数 tick digest 一致を固定する
+- replay metadata 1B-7 で `ReplayMetadata` の readonly DTO と root type export を追加し、未検証 `enabledFeatures` を含む replay 互換性 metadata と、snapshot 専用 `stateHashVersion` / playback API を公開しない境界を exact type contract で固定する。canonical order / 重複禁止は playback validator の責務とする
 
 Next:
 
-- Phase 1B-7 の replay metadata minimum を追加する
+- Phase 1C tooling minimum を実装スライスへ分割し、最初のスライスを選定する
 
-このスライスでは Phaser、Vite、DOM、asset loader、YAML parser、replay playback UI は扱わない。Phase 1B-7 は `ReplayMetadata` の型と public export だけを扱い、playback、入力列 validation、runtime guard は後続スライスへ送る。
+完了した Phase 1B-7 では Phaser、Vite、DOM、asset loader、YAML parser、replay playback UI は扱わない。`ReplayMetadata` の型と public export だけを扱い、playback、入力列 validation、runtime guard は後続スライスへ送る。Phase 1C の成果物と完了条件は設計書で定義済みのため、次は CLI 契約、fixture、debug dump を依存順に分割する。
 
 ## 設計から実装への対応表
 
@@ -118,7 +119,7 @@ Status legend:
 | `docs/design.md` Replay determinism | transactional restore / roundtrip determinism | Done | `packages/shooting-core/src/basic/core.ts` | restore 後 serialize / 後続 tick 一致、失敗 restore の transactionality を追加 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | state hash minimum: `HashableGameState` projection | Done | `packages/shooting-core/src/basic/core.ts` | committed state から hash DTO を生成し、public serialize DTO と型結合しない direct projection を固定 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | state hash minimum: canonical encoding / digest | Done | `packages/shooting-core/src/basic/hash/canonical-encoder.ts`, `hashable-game-state-adapter.ts`, `xxhash64.ts`, `state-hash.ts`, `testing/state-hash-comparison.ts` | canonical encoder、adapter、xxHash64、PRNG / game-state digest golden、first divergent tick、gameplay smoke、restore 後の hash 一致を固定 | `npm test`, `npm run typecheck` |
-| `docs/design.md` Replay determinism | replay metadata minimum | Next: Phase 1B-7 | 未実装 | replay file metadata と playback session は作らず、互換性 metadata 型だけ追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Replay determinism | replay metadata minimum | Done | `packages/shooting-core/src/basic/replay/metadata.ts`, `packages/shooting-core/src/basic/index.ts` | replay file metadata と playback session は作らず、互換性 metadata 型だけ追加 | `npm test`, `npm run typecheck` |
 
 ## 次の作業順
 
@@ -179,7 +180,7 @@ Status legend:
 - `npm install` 後の `npm test` が通る
 - `npm run typecheck` が通る
 
-Phase 1B では fatal latch を固定済みであり、以降は state serialize / restore / state hash と replay metadata minimum の determinism contract を追加する。Replay input list、playback session、optional diagnostics は Phase 1B の外へ分け、ここでは `SerializedGameState` と `ReplayMetadata` の互換性 field として必要な version 情報だけを扱う。
+Phase 1B では fatal latch を固定済みであり、以降は state serialize / restore / state hash と replay metadata minimum の determinism contract を追加する。Replay input list、playback session、optional diagnostics は Phase 1B の外へ分け、ここでは `SerializedGameState` と `ReplayMetadata` の互換性 field として必要な version 情報と未検証 `enabledFeatures` だけを扱う。canonical 性の runtime validation は playback 境界へ送る。
 
 ## Phase 1B タスク分割
 
@@ -272,7 +273,7 @@ Done:
    - Done: test-only の `findFirstStateHashDivergence()` は tick/hash 列の最初の hash・tick・列長の不一致を返す。同一 seed / input の Core session は tick ごとの hash 列が一致し、shot input の差分は tick 0 の divergence として検出する
    - Done: canonical byte sequence または digest 表記を変え得る変更は `stateHashVersion` を更新する。field order、fixedStruct name、type tag、length / endian、UTF-8 key sort、`-0` 正規化、number encoding、algorithm、seed、hex 表記を対象にし、golden で byte / digest 不変を確認できる内部リファクタだけを例外にする
    - Done: fixedStruct name は `HASHABLE_FIXED_STRUCT_NAME_BY_DTO` で `hashableGameState`、`prngState`、`vector2`、`playerMovement`、`playerRuntimeEntity`、`enemyRuntimeEntity`、`enemyBulletRuntimeEntity`、`playerShotRuntimeEntity`、`pendingEvent`、`patternRunnerState`、`enabledFeatureState` に固定する。field order または struct name を変更するときは `stateHashVersion` を更新する
-   - Queued: replay playback 実装は hash 比較を metadata 検証済みの同一 `contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId` 文脈内に限定する。Phase 1B-7 の metadata-only DTO はこの比較を実行・検証せず、debug artifact 単体では metadata を併記する
+   - Queued: replay playback 実装は hash 比較を metadata 検証済みの同一 `contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、canonical `enabledFeatures` 文脈内に限定する。raw `ReplayMetadata` の feature 列は canonical 性を型だけでは保証しないため、未知値、重複、順序違反を拒否した検証済み値だけを比較へ渡す。Phase 1B-7 の metadata-only DTO はこの比較を実行・検証せず、debug artifact 単体では metadata を併記する
    - Done: canonical encoding の対象を `HashableGameState` の単一 DTO に限定する。runtime entity DTO には entity id と component values を一度だけ含め、`entity ids` / `component values` / `runtime entities` を別投影として重ねて encode しない。`ReadonlyGameState` / render-facing `visible` snapshot は hash DTO に含めず encode しない
    - Done: runtime entity の deterministic field projection は `StageSession.serialize()` と state hash で public DTO 型を共有しない。public serialize DTO と `HashableGameState` はそれぞれ runtime state / committed pending event から明示コピーし、hash schema の変更が public snapshot へ漏れないようにする
    - Done: runtime entities は entity id 昇順、pattern runner states は `runnerId` の UTF-8 byte lexicographic order 昇順、enabled feature states は canonical feature order で encode する
@@ -286,11 +287,11 @@ Done:
    - Done: Phase 1B は test assertion 内の hash 比較と first divergent tick の最小報告までに留める。entity diff / event diff / PRNG diff artifact、debug state dump、validate-content CLI 連携は Phase 1C で扱う
 
 7. Phase 1B-7: replay metadata 最小実装
-   - 作業: `ReplayMetadata` の minimum DTO として `coreVersion`、`schemaVersion`、`contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、platform-independent `seed` を定義する。PRNG state hash は独立 field として追加せず、Replay 検証 artifact が必要な場合は Phase 1B-6 の state hash format 内の `prngState` field を使う
-   - 作業: `ReplayMetadata` は root export し、`tests/public-type-contract.ts` で positive import、required readonly field、`seed` の型と値域を固定する
-   - 作業: `ReplayMetadata` が共有する互換性 field は `coreVersion`、`schemaVersion`、`contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId` に限定する。`SerializedGameState` 専用の `stateHashVersion` と `enabledFeatures` は共有 field ではなく snapshot validation 用 field として扱う
-   - 作業: Phase 1B-7 は metadata-only DTO だけを root export する。`ReplayPlayback` type、入力列 validation、`createReplayPlayback()`、`ReplaySession`、runtime dropped tick diagnostics、full replay の `inputs: InputFrame[]` は root export せず Phase 1B の外に残す
-   - 作業: `ReplayMetadata` に playback inputs や `RuntimeDroppedTicks` を含めない契約は、Phase 1B では `satisfies ReplayMetadata` と `@ts-expect-error` による type-only negative contract に限定する。runtime guard は replay playback 実装時に追加する
+   - Done: `ReplayMetadata` の minimum DTO として `coreVersion`、`schemaVersion`、`contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、未検証 `enabledFeatures`、platform-independent `seed` を定義する。PRNG state hash は独立 field として追加せず、Replay 検証 artifact が必要な場合は Phase 1B-6 の state hash format 内の `prngState` field を使う
+   - Done: `ReplayMetadata` は root export し、`tests/public-type-contract.ts` で positive import、exact property type、required readonly field、禁止 key、既知 feature の positive case、`seed` の型を固定する。seed の値域と runtime validation は replay playback 実装時に、`StartStageOptions.seed` と同じ runtime contract で追加する
+   - Done: `ReplayMetadata` が共有する互換性 field は `coreVersion`、`schemaVersion`、`contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、未検証 `enabledFeatures` に限定する。`contentVersion` は title / content pack をまたいで一意な immutable release identity とする。`SerializedGameState` 専用の `stateHashVersion` は snapshot validation 用 field として扱う
+   - Done: Phase 1B-7 は metadata-only DTO だけを root export する。`ReplayPlayback` type、入力列 validation、`createReplayPlayback()`、`ReplaySession`、runtime dropped tick diagnostics、full replay の `inputs: InputFrame[]` は root export せず Phase 1B の外に残す
+   - Done: `ReplayMetadata` に playback inputs や `RuntimeDroppedTicks` を含めない契約は、Phase 1B では `@ts-expect-error` による type-only negative contract に限定する。runtime guard は replay playback 実装時に追加する
 
 ## Phase 2A へ進む条件
 

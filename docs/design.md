@@ -1225,6 +1225,7 @@ type ReplayMetadata = Readonly<{
   stageId: StageId;
   difficulty: Difficulty;
   playerId: PlayerId;
+  enabledFeatures: readonly EnabledFeature[];
   seed: string;
 }>;
 
@@ -1409,7 +1410,7 @@ Phase 1B の `SerializedRuntimeEntityState` は現行 runtime が正本を持つ
 
 Core API は transactional とする。現在実装済みの `load()`、`startStage()`、`restore()` は成功時だけ新しい handle を返し、失敗時に既存の `LoadedGame` / `StageSession` を部分更新しない。Phase 1B-5A の `restore()` は top-level metadata と互換性 error boundary を固定し、Phase 1B-5B は compatible snapshot の deterministic payload を validate / convert / re-serialize して accepted committed state の前段まで確認した。Phase 1B-5D では compatible snapshot から `StageSession` を返し、restore 直後の serialize と後続 tick が元 session と一致することを固定した。post-1B replay playback で追加する `createReplayPlayback()` / `restoreReplayPlayback()` も同じ方針にする。Core version は `ShootingCore.coreVersion` が持ち、content が申告する値ではない。`StageSession.tick()` は session 内の `expectedTick` を持ち、`input.tick !== expectedTick`、重複 tick、欠番 tick を caller precondition error として返すが、session を fatal にしない。Runtime は dropped tick を replay 入力として補完せず、実際に Simulation へ渡した `InputFrame` だけを保存する。
 
-`ContentRegistry` は外部データの参照関係を検証する境界でもある。Stage の `music`、`background`、timeline 内の `enemy` と `path`、`clearCondition.bossDefeated.enemy`、Enemy の `asset`、`behavior.pattern`、Boss phase の `phases[].pattern`、Pattern の `fireOnSpawn.bullet`、Bullet/Player/PlayerShot の `asset` はすべて registry 経由で解決し、未定義 ID を schema test で検出する。Feature registry が登録された場合だけ、Pickup、Bomb、Affinity、Rank、advanced scoring の参照を追加検証する。
+`ContentRegistry` は外部データの参照関係を検証する境界でもある。`content.version` は単なる title 内の連番ではなく、title / content pack をまたいで一意な immutable release identity とし、異なる content payload に同じ値を再利用しない。Stage の `music`、`background`、timeline 内の `enemy` と `path`、`clearCondition.bossDefeated.enemy`、Enemy の `asset`、`behavior.pattern`、Boss phase の `phases[].pattern`、Pattern の `fireOnSpawn.bullet`、Bullet/Player/PlayerShot の `asset` はすべて registry 経由で解決し、未定義 ID を schema test で検出する。Feature registry が登録された場合だけ、Pickup、Bomb、Affinity、Rank、advanced scoring の参照を追加検証する。
 
 `load()` は registry index を生成する時点で、namespace ごとの `id` 一意性を検証する。同一 namespace 内で重複 ID があれば失敗する。別 namespace 間で同じ suffix を使うことはできるが、完全な ID は `enemy.scout`、`bullet.red_small` のように namespace prefix を含める。参照解決は配列順に依存させず、検証済み index だけを使う。
 
@@ -1465,16 +1466,16 @@ Optional module は論理分離だけでなく source / export 境界も分け�
 
 `StageSession.tick()` は stage session が active でない場合、`gameOver` / `stageCleared` 後、または tick mismatch 時に `CoreResult` の error を返す。precondition violation を silent no-op にしない。`gameOver` / `stageCleared` 後の余分な tick と tick mismatch は caller precondition error であり、session を fatal にしない。budget invariant 破壊、不正 state、内部 system order 違反は fatal error とし、以後の `tick()` は同じ fatal reason を返す。tick 更新は commit 前の working state で実行し、成功時だけ committed state に swap するため、部分更新された state は公開しない。Phase 1B-4 で追加済みの `serialize()` は fatal 後に error を返す。Phase 1B-5A で追加済みの `restore()` は version mismatch、top-level content / feature mismatch、top-level shape error を `CoreError[]` として返し、失敗時に既存 handle へ副作用を残さない。runtime entity、pending event、PRNG、allocator、registry reference の deep validation は Phase 1B-5B、feature state の欠落・余剰・wrong feature は Phase 1B-5C の extension state validation で扱う。
 
-post-1B replay playback API の `createReplayPlayback()` は開始前に `ReplayPlayback.inputs` の tick が 0 から始まる連続列であること、重複と欠番がないこと、metadata の `stageId` / `difficulty` / `playerId` と一致することを検証する。また、`ShootingCore.coreVersion`、`schemaVersion`、`content.version`、`inputFormatVersion` の互換性を検証し、完全一致は保証対象、minor mismatch は warning 付き best-effort、major mismatch は error とする。`ReplaySession.tick()` は現在 cursor の input を消費し、cursor を 1 進める。入力列をすべて消費した時点で stage が terminal state なら `replayFinished` terminal frame を 1 回返し、それ以後の `tick()` は terminal precondition error を返す。入力列を消費し切っても stage が active の場合は replay truncation error を返す。`ReplaySession.serialize()` は `SerializedReplayPlaybackState` として replay cursor を含め、`restoreReplayPlayback()` は次に読む input index を復元する。
+post-1B replay playback API の `createReplayPlayback()` は開始前に `ReplayPlayback.inputs` の tick が 0 から始まる連続列であること、重複と欠番がないこと、metadata の `stageId` / `difficulty` / `playerId` と一致することを検証する。さらに `enabledFeatures` が dense array で、既知 feature だけを重複なく canonical order で持つことを検証し、非 canonical な入力は並べ替えず error とする。互換性比較はこの検証に成功した metadata だけを対象にする。`coreVersion` は SemVer として検証し、完全一致は保証対象、同一 major の不一致は warning 付き best-effort、major mismatch は error とする。`schemaVersion` と `inputFormatVersion` は opaque epoch、`contentVersion` は title / content pack をまたいで一意な immutable release identity として扱い、いずれも完全一致だけを許可する。`ReplaySession.tick()` は現在 cursor の input を消費し、cursor を 1 進める。入力列をすべて消費した時点で stage が terminal state なら `replayFinished` terminal frame を 1 回返し、それ以後の `tick()` は terminal precondition error を返す。入力列を消費し切っても stage が active の場合は replay truncation error を返す。`ReplaySession.serialize()` は `SerializedReplayPlaybackState` として replay cursor を含め、`restoreReplayPlayback()` は次に読む input index を復元する。
 
-Replay metadata は用途ごとに分ける。`ReplayMetadata` は互換性確認と表示用、`ReplayPlayback` は metadata と入力列を持つ再生入力、`RuntimeDroppedTicks` は Runtime 診断 metadata であり Simulation の入力列ではない。
+Replay metadata は用途ごとに分ける。`ReplayMetadata` は互換性確認と表示用の未検証 DTO であり、型は `enabledFeatures` の要素型と readonly 性だけを保証する。canonical order と重複禁止は playback validator が保証し、検証前の DTO を互換性比較へ渡さない。`ReplayPlayback` は metadata と入力列を持つ再生入力、`RuntimeDroppedTicks` は Runtime 診断 metadata であり Simulation の入力列ではない。
 
-- Full replay 必須: `ShootingCore.coreVersion` から記録した `coreVersion`、`schemaVersion`、`content.version`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、platform-independent `seed`、入力列。
+- Full replay 必須: `ShootingCore.coreVersion` から記録した `coreVersion`、`schemaVersion`、`content.version`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、canonical `enabledFeatures`、platform-independent `seed`、入力列。
 - optional diagnostics: `RuntimeDroppedTicks` log、runtime build info、browser timing summary。
 - 検証用: tick ごとの state hash、PRNG state hash（独立 algorithm ではなく state hash format 内の `prngState` field を使う）。
 - Resume 用 snapshot: `SerializedGameState` と完全な PRNG state。
 
-完全再生は seed と入力列から再構築し、PRNG snapshot を必須にしない。途中再開 replay だけ snapshot を使う。完全再生を保証するのは同一 `ShootingCore.coreVersion`、`schemaVersion`、`content.version`、`inputFormatVersion` の replay だけとする。minor version 差分では `CoreResult.ok.warnings` に互換性 warning を返して best-effort playback として開始できるが、determinism 保証対象外とする。major version 差分では再生不可にする。`SerializedGameState` からの snapshot restore は PRNG state を直接復元するため、`coreVersion` 完全一致だけを受け付ける。PRNG algorithm の変更は必ず major version 変更として扱い、minor mismatch の best-effort playback 対象にしない。
+完全再生は seed と入力列から再構築し、PRNG snapshot を必須にしない。途中再開 replay だけ snapshot を使う。完全再生を保証するのは `coreVersion`、`schemaVersion`、`contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、検証済み canonical `enabledFeatures` がすべて完全一致する replay だけとする。SemVer として妥当な `coreVersion` の同一 major 不一致だけは `CoreResult.ok.warnings` を返して best-effort playback として開始できるが、determinism 保証対象外とする。`coreVersion` の major mismatch、または opaque epoch / release identity である他の version field の不一致は再生不可にする。`SerializedGameState` からの snapshot restore は PRNG state を直接復元するため、`coreVersion` 完全一致だけを受け付ける。PRNG algorithm の変更は必ず major version 変更として扱い、同一 major mismatch の best-effort playback 対象にしない。
 
 State hash は replay determinism test の正本とする。
 
@@ -1502,7 +1503,7 @@ Hash 対象外:
 
 Rank が無効な MVP では rank value を hash に含めない。Rank module が有効な場合だけ score/rank state として hash に含める。
 
-State hash は canonical encoding を固定する。hash input は `stateHashVersion`、`ShootingCore.coreVersion`、`schemaVersion`、`expectedTick` を先頭に置く。`expectedTick` は次に受け付ける input tick であり、最後に完了した frame tick ではない。hash は replay / snapshot metadata の互換性検証が完了した同一 `contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId` 文脈内でだけ比較する。debug artifact 単体で異なる文脈を比較したい場合は、state hash 本体ではなく artifact metadata にこれらの互換性 field を必ず併記する。
+State hash は canonical encoding を固定する。hash input は `stateHashVersion`、`ShootingCore.coreVersion`、`schemaVersion`、`expectedTick` を先頭に置く。`expectedTick` は次に受け付ける input tick であり、最後に完了した frame tick ではない。hash は replay / snapshot metadata の互換性検証が完了した同一 `contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、canonical `enabledFeatures` 文脈内でだけ比較する。debug artifact 単体で異なる文脈を比較したい場合は、state hash 本体ではなく artifact metadata にこれらの互換性 field を必ず併記する。
 
 entity は id 昇順、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は canonical feature order で列挙する。state hash 用 DTO は public serialize DTO とは別の `HashableGameState` として定義し、`stateHashVersion`、`ShootingCore.coreVersion`、`schemaVersion`、`expectedTick`、`nextEntityId`、`timelineCursor`、`prngState`、`score`、runtime entities、pending events、pattern runner states、enabled feature states を持つ。runtime entity DTO には entity id と component values を一度だけ入れ、`entity ids` や `component values` を別配列として二重 encode しない。`lives` や `nextShotAllowedTick` は player runtime entity payload 内の field として encode する。
 
@@ -1711,7 +1712,7 @@ Phase 1A の完了条件は、Core minimum が renderer なしで deterministic 
 - golden test
 - locked system order と state hash の互換性検証
 
-Phase 1B の完了条件は、同一 seed と入力列で state hash が一致し、restore 後も同じ tick 結果を返すこととする。
+Phase 1B の完了条件は、同一 seed と入力列で state hash が一致し、restore 後も同じ tick 結果を返すことに加え、完全 replay に必要な readonly `ReplayMetadata` の field と root type export 境界が型契約で固定されていることとする。
 
 ### Phase 1C: Tooling minimum
 
@@ -1826,6 +1827,6 @@ MVP では対象外だが、再利用基盤として以下を追跡する。
 
 Phase 1A の Core minimum contract は、TypeScript package、最小 content schema、registry validation、fixed tick、InputFrame、immutable event log、Entity/Component、seed/PRNG、Player / Enemy / EnemyBullet / PlayerShot、minimum Pattern `fireOnSpawn`、MVP collision resolution pair、fixed `scoreOnKill`、package boundary test まで実装済みである。collision broad phase は Phase 1A 完了条件ではなく、playable runtime へ向けた後続性能タスクとして残す。
 
-Phase 1B-5D として、`LoadedGame.restore(state): CoreResult<StageSession>` の public API、top-level error boundary、PRNG snapshot の public restore error 変換、deterministic payload の shape、pending event、runtime entity の kind 別 shape / registry / runtime budget validation、accepted committed state 変換、非空 extension state の shape / JSON payload guard / feature mismatch 分類、transactional restore、roundtrip determinism は実装済みである。`nextEntityId` は EntityAllocator と共有する上限まで含めて `state.invalidShape` として正規化する。続く Phase 1B-6 の state hash minimum も canonical encoder、fixed seed xxHash64、gameplay digest golden、restore 後の複数 tick 一致まで実装済みである。次の作業は Phase 1B-7 の replay metadata minimum とする。
+Phase 1B-5D として、`LoadedGame.restore(state): CoreResult<StageSession>` の public API、top-level error boundary、PRNG snapshot の public restore error 変換、deterministic payload の shape、pending event、runtime entity の kind 別 shape / registry / runtime budget validation、accepted committed state 変換、非空 extension state の shape / JSON guard / feature mismatch 分類、transactional restore、roundtrip determinism は実装済みである。`nextEntityId` は EntityAllocator と共有する上限まで含めて `state.invalidShape` として正規化する。続く Phase 1B-6 の state hash minimum も canonical encoder、fixed seed xxHash64、gameplay digest golden、restore 後の複数 tick 一致まで実装済みである。Phase 1B-7 では metadata-only の `ReplayMetadata` を root type export し、未検証 `enabledFeatures` を replay 互換性 field として含め、snapshot 専用 `stateHashVersion` と replay playback API は公開しない境界を型契約で固定した。canonical order / 重複禁止と version 文字列の runtime validation は playback 境界で行う。次の作業は設計済みの Phase 1C tooling minimum を実装スライスへ分割し、最初のスライスを選定することとする。
 
-state hash は `docs/implementation-plan.md` の Phase 1B-6 で実装済みであり、replay metadata は同計画の Phase 1B-7 で扱う。
+state hash は `docs/implementation-plan.md` の Phase 1B-6、replay metadata minimum は同計画の Phase 1B-7 で実装済みである。

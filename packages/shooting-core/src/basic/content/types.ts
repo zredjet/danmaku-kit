@@ -167,6 +167,10 @@ export type PathDefinition = {
  * 配列順は deterministic な処理順へ影響しうるため、load 時に validated snapshot として固定する。
  */
 export type ContentRegistry = {
+  /**
+   * title / content pack をまたいで一意な immutable release identity。
+   * 単なるローカル連番は使わず、同じ値を異なる content payload に再利用しない。
+   */
   version: string;
   assetKeys: AssetKeyRegistry;
   players: readonly PlayerDefinition[];

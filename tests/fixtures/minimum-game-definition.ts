@@ -7,7 +7,7 @@ export function createMinimumDefinition(): GameDefinition {
     enabledFeatures: [],
     defaultPlayerId: "player.default",
     content: {
-      version: "content.0",
+      version: "shooting-sample@content.0",
       assetKeys: {
         keys: [
           "player.default",
