@@ -4,6 +4,7 @@ import type {
   BulletDefinition,
   BulletId,
   ContentRegistry,
+  CoreError,
   CoreErrorCode,
   CoreResult,
   Difficulty,
@@ -242,6 +243,13 @@ const input: InputFrame = {
 };
 const loaded = core.load(definition);
 const loadedAsResult: CoreResult<unknown> = loaded;
+const contextualCoreError: CoreError = {
+  code: "enemy.notFound",
+  message: "Enemy not found: enemy.missing",
+  schemaPath: "content.stages[0].timeline[0].action.enemy",
+  referrerId: "stage.stage_01",
+  targetId: "enemy.missing",
+};
 const errorCode: CoreErrorCode = "input.invalidShape";
 const bulletErrorCode: CoreErrorCode = "bullet.notFound";
 const invalidConstraintErrorCode: CoreErrorCode = "definition.invalidConstraint";
@@ -1341,6 +1349,7 @@ void invalidPlayerEntity;
 void invalidEnemyBulletEntity;
 void invalidPlayerShotEntity;
 void invalidCoreErrorCode;
+void contextualCoreError;
 void invalidEntityAllocatorRestoreErrorCode;
 void restorePrngInvalidErrorCode;
 void restoreRegistryInvalidErrorCode;

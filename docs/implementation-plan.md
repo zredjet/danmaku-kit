@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract も完了し、次の実装スライスは Phase 1C-2 の parser / CLI boundary とする。
+Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract と Phase 1C-2 の parser / CLI boundary も完了し、次の実装スライスは Phase 1C-3 の fixture / CLI integration とする。
 
 Done:
 
@@ -305,9 +305,12 @@ Done:
    - Done: diagnostic を source / position / kind / severity / code / message の canonical order に並べ、JSON text 全体と human formatter の source / reference context、制御文字 escape を test で固定する
    - Done: root の value / type export allowlist、deep import 拒否、package dependency allowlist、source import と依存宣言の一致を package boundary test で固定する
 2. Phase 1C-2: parser / CLI boundary
-   - Next: 実績ある YAML parser を dependency として導入し、YAML parse error を source span 付き diagnostic へ変換する。MVP では JSON 入力を追加しない
-   - Next: `--game-definition`、`--content-root`、`--format human|json` の引数契約、filesystem adapter、stdout / stderr、exit code を実装する
-   - Next: Core validation の error code を schema / reference / feature diagnostic へ mapping し、source span が必要な diagnostic kind の必須 field を adapter 境界で検証する
+   - Done: `yaml@2.9.0` を tool package dependency として導入し、strict YAML 1.2 single-document parse、YAML 1.1 directive / non-core tag / duplicate / non-string key / alias rejection、strict UTF-8、source byte / AST node / depth budget、parse error / warning の source span 変換を追加する。MVP では JSON 入力を追加しない
+   - Done: game-definition の `contentVersion` と、`content-root` 以下の 1 file 1 definition を Core `GameDefinition` へ組み立てる。collection file と asset key は UTF-8 byte order で canonical に並べる
+   - Done: `assets/manifest.yaml` を必須にし、`assets` mapping から Core asset key catalog を生成する。完全な Runtime asset manifest validation は後続 slice へ残す
+   - Done: `--game-definition`、`--content-root`、`--format human|json`、`--help` の引数契約、Node filesystem adapter、stdout / stderr、exit code、package bin entry を実装する
+   - Done: Core validation error に index 付き `schemaPath` / `referrerId` / `targetId` contextを追加し、schema / reference / feature diagnostic と分割 YAML の正確な source span へ mappingする。contextのないerror / warningはschema pathとroot fallbackで必須fieldを満たす
+   - Done: Core の Node 非依存 tsconfig と tool の Node 用 tsconfig を分け、package dependency / source import boundary test を維持する
 3. Phase 1C-3: fixture / CLI integration
    - Queued: `fixtures/game-definition.minimum.yaml` と `fixtures/content-minimum/` を追加し、valid、parse error、schema error、reference error、budget error の CLI integration test を追加する
    - Queued: JSON output を CI / editor contract、human output を content authoring contract として golden test で固定する

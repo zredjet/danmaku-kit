@@ -1095,6 +1095,46 @@ Hot reload の適用範囲:
 - exit code 2: tool/runtime error
 - severity: `error`、`warning`、`info`
 
+CLI MVP input contract:
+
+```yaml
+# config/game-definition.yaml
+schemaVersion: "1"
+enabledFeatures: []
+defaultPlayerId: player.default
+contentVersion: shooting-sample@content.1
+```
+
+`contentVersion` は CLI input 専用 field であり、組み立て後は `GameDefinition.content.version` になる。`content` field を game-definition file に直接書くことは禁止し、`--content-root` 以下からだけ組み立てる。MVP は `.yaml` のみを受け付け、JSON と `.yml` は追加しない。
+
+```text
+content-root/
+  assets/manifest.yaml
+  players/*.yaml
+  stages/*.yaml
+  enemies/*.yaml
+  bullets/*.yaml
+  player-shots/*.yaml
+  patterns/*.yaml
+  paths/*.yaml
+```
+
+各 collection file は 1 file 1 definition とする。collection directory が存在しない場合は空配列として扱う。存在する collection directory 内の entry は `.yaml` regular file だけを許可し、未知の content-root entry、nested directory、`.yml`、symbolic link は schema error にする。file path と asset key は locale 非依存の UTF-8 byte order へ並べ、filesystem の列挙順に依存させない。
+
+`content/assets/manifest.yaml` は必須で、Core へ渡す `assetKeys.keys` は `assets` mapping の key から生成する。Runtime 用 manifest entry の完全な shape、fallback、license validation は asset validation slice で追加し、Phase 1C-2 は object shape と Core が必要な key catalog の生成までを担当する。
+
+YAML parser は `yaml` package の strict YAML 1.2 single-document mode を使う。YAML 1.1 directive、core schema 外の既知 tag、duplicate key、非 string key、複数 document、alias を parse error にする。alias は小さいsourceから大きなobject graphを作りsource index走査を増幅できるため、authoring YAMLでは使用しない。1 file は strict UTF-8 で 1 MiB、AST は 50,000 node、collection depth は 64 を上限とし、Node filesystem adapter は 1 MiB + 1 byte までの bounded readとfatal UTF-8 decodeで全量確保・置換受理を防ぐ。parse error と warning は parser offset を 1-based line / column へ変換する。
+
+Core の content validation error は optional context として index 付き `schemaPath`、`referrerId`、`targetId` を返す。CLI はこの構造化情報を分割 YAML の source index へ接続し、同じ scalar 値を持つ無関係な field や別 definition へ診断を誤配置しない。旧 Core error や context を持たない warning は message から path を抽出し、game-definition または該当 definition root へ fallback して source span 必須契約を維持する。error code は `schema`、`reference`、`featureGate` へ分類する。
+
+CLI process contract:
+
+- `--game-definition` と `--content-root` は必須、`--format human|json` は省略時 `human` とする。
+- 未知 option、重複 option、値欠落、未知 format は `tool.invalidArguments`、exit code 2 とする。
+- help 以外の formatted result は validation error と tool error を含め stdout へ 1 回だけ出す。JSON 利用者が同じ stream だけで結果を読めることを優先する。
+- stderr は entry point 自身が結果を format / write できない最終 failure だけに予約する。stdout / stderr の stream callback と非同期 error event を待機し、pipe 切断時も未処理例外ではなく exit code 2 へ正規化する。
+- file read、permission、directory read failure は `tool.readFailed`、予期しない例外は `tool.unexpected`、ともに exit code 2 とする。
+
 JSON diagnostic schema:
 
 ```ts
@@ -1180,7 +1220,7 @@ Diagnostic required fields:
 
 診断順は source path / source ID、開始位置、終了位置、kind、severity、code、message、schema / reference context の順で canonical に固定し、入力列挙順へ依存させない。human output は終了位置、`schemaPath`、`sourceId`、`referrerId`、`targetId` を表示し、改行、ANSI escape、制御文字を可視化して1 diagnostic を1行に保つ。
 
-CI では `GameDefinition.enabledFeatures` と default ids を `--game-definition` で CLI に渡す。Phase 1C では sample app に依存しない `validate-content --game-definition fixtures/game-definition.minimum.yaml --content-root fixtures/content-minimum --format json` を実行する。Phase 2A 以降は `validate-content --game-definition config/game-definition.yaml --content-root apps/sample-title/content --format json` も追加する。`error` が 1 件以上あれば exit code 1 にする。warning は初期段階では non-blocking とし、editor integration は `path` / `line` / `column` を診断位置へ、`code` と `message` を表示本文へ mapping する。
+CI では `GameDefinition.enabledFeatures` と default ids を `--game-definition` で CLI に渡す。Phase 1C では sample app に依存しない `npm run validate-content -- --game-definition fixtures/game-definition.minimum.yaml --content-root fixtures/content-minimum --format json` を実行する。Phase 2A 以降は `npm run validate-content -- --game-definition config/game-definition.yaml --content-root apps/sample-title/content --format json` も追加する。`error` が 1 件以上あれば exit code 1 にする。warning は初期段階では non-blocking とし、editor integration は `path` / `line` / `column` を診断位置へ、`code` と `message` を表示本文へ mapping する。
 
 DSL の失敗時挙動:
 
@@ -1872,6 +1912,6 @@ MVP では対象外だが、再利用基盤として以下を追跡する。
 
 Phase 1A の Core minimum contract は、TypeScript package、最小 content schema、registry validation、fixed tick、InputFrame、immutable event log、Entity/Component、seed/PRNG、Player / Enemy / EnemyBullet / PlayerShot、minimum Pattern `fireOnSpawn`、MVP collision resolution pair、fixed `scoreOnKill`、package boundary test まで実装済みである。collision broad phase は Phase 1A 完了条件ではなく、playable runtime へ向けた後続性能タスクとして残す。
 
-Phase 1B-5D として、`LoadedGame.restore(state): CoreResult<StageSession>` の public API、top-level error boundary、PRNG snapshot の public restore error 変換、deterministic payload の shape、pending event、runtime entity の kind 別 shape / registry / runtime budget validation、accepted committed state 変換、非空 extension state の shape / JSON guard / feature mismatch 分類、transactional restore、roundtrip determinism は実装済みである。`nextEntityId` は EntityAllocator と共有する上限まで含めて `state.invalidShape` として正規化する。続く Phase 1B-6 の state hash minimum も canonical encoder、fixed seed xxHash64、gameplay digest golden、restore 後の複数 tick 一致まで実装済みである。Phase 1B-7 では metadata-only の `ReplayMetadata` を root type export し、未検証 `enabledFeatures` を replay 互換性 field として含め、snapshot 専用 `stateHashVersion` と replay playback API は公開しない境界を型契約で固定した。Phase 1C-1 では `tools/validate-content` package と immutable diagnostic / JSON / human / exit code contract を追加した。次の作業は Phase 1C-2 の YAML parser、source span、CLI / filesystem boundary、Core validation adapter とする。
+Phase 1B-5D として、`LoadedGame.restore(state): CoreResult<StageSession>` の public API、top-level error boundary、PRNG snapshot の public restore error 変換、deterministic payload の shape、pending event、runtime entity の kind 別 shape / registry / runtime budget validation、accepted committed state 変換、非空 extension state の shape / JSON guard / feature mismatch 分類、transactional restore、roundtrip determinism は実装済みである。`nextEntityId` は EntityAllocator と共有する上限まで含めて `state.invalidShape` として正規化する。続く Phase 1B-6 の state hash minimum も canonical encoder、fixed seed xxHash64、gameplay digest golden、restore 後の複数 tick 一致まで実装済みである。Phase 1B-7 では metadata-only の `ReplayMetadata` を root type export し、未検証 `enabledFeatures` を replay 互換性 field として含め、snapshot 専用 `stateHashVersion` と replay playback API は公開しない境界を型契約で固定した。Phase 1C-1 では `tools/validate-content` package と immutable diagnostic / JSON / human / exit code contract を追加し、Phase 1C-2 では YAML parser、source span、CLI / filesystem boundary、Core validation adapter を追加した。次の作業は Phase 1C-3 の fixture / CLI integration とする。
 
 state hash は `docs/implementation-plan.md` の Phase 1B-6、replay metadata minimum は同計画の Phase 1B-7 で実装済みである。

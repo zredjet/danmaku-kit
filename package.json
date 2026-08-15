@@ -15,7 +15,8 @@
   "scripts": {
     "check": "npm run typecheck && npm test",
     "test": "node --experimental-strip-types --test \"packages/*/src/**/*.test.ts\" \"tools/*/src/**/*.test.ts\" \"apps/*/src/**/*.test.ts\" \"tests/**/*.test.ts\" \"tests/**/*.test.mjs\"",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tools/validate-content/tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "validate-content": "node --experimental-strip-types tools/validate-content/src/cli-entry.ts"
   },
   "devDependencies": {
     "@types/node": "^25.9.2",

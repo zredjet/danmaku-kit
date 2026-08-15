@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -43,6 +45,39 @@ test("exposes only the validate-content root package export", async () => {
   const packageJson = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8"));
 
   assert.deepEqual(Object.keys(packageJson.exports).sort(), ["."]);
+  assert.deepEqual(packageJson.bin, { "validate-content": "./src/cli-entry.ts" });
+});
+
+test("runs the declared validate-content bin as a real process", async (context) => {
+  const packageJson = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8"));
+  const cliPath = path.join(packageRoot, packageJson.bin["validate-content"]);
+  const root = await mkdtemp(path.join(tmpdir(), "validate-content-bin-"));
+  context.after(async () => rm(root, { recursive: true, force: true }));
+  const contentRoot = path.join(root, "content");
+  const gameDefinitionPath = path.join(root, "game-definition.yaml");
+  await mkdir(path.join(contentRoot, "assets"), { recursive: true });
+  await writeFile(gameDefinitionPath, [
+    'schemaVersion: "1"',
+    "enabledFeatures: []",
+    "defaultPlayerId: player.missing",
+    "contentVersion: sample@content.1",
+    "",
+  ].join("\n"), "utf8");
+  await writeFile(path.join(contentRoot, "assets", "manifest.yaml"), "version: 1\nassets: {}\n", "utf8");
+
+  const help = spawnSync(cliPath, ["--help"], { encoding: "utf8" });
+  const invalid = spawnSync(cliPath, [
+    "--game-definition", gameDefinitionPath,
+    "--content-root", contentRoot,
+    "--format", "json",
+  ], { encoding: "utf8" });
+
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /^Usage: validate-content/);
+  assert.equal(help.stderr, "");
+  assert.equal(invalid.status, 1, invalid.stderr);
+  assert.equal(JSON.parse(invalid.stdout).diagnostics[0].code, "player.defaultNotFound");
+  assert.equal(invalid.stderr, "");
 });
 
 test("rejects validate-content deep imports outside the public export map", async () => {

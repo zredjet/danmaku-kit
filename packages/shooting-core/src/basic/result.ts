@@ -46,10 +46,19 @@ export type CoreErrorCode =
   | "timeline.tooManySpawnsPerTick"
   | "timeline.tooManySteps";
 
-/** Core が返す検証・実行エラー。 */
+/**
+ * Core が返す検証・実行エラー。
+ *
+ * content validation は renderer や filesystem を知らないため、実ファイル位置ではなく
+ * schema path と参照関係だけを optional context として返す。authoring tool はこの情報を
+ * 分割 content の source index へ接続し、推測に頼らず診断位置を決定できる。
+ */
 export type CoreError = {
   code: CoreErrorCode;
   message: string;
+  schemaPath?: string;
+  referrerId?: string;
+  targetId?: string;
 };
 
 /**
@@ -94,7 +103,13 @@ export function coreError<T>(code: CoreErrorCode, message: string): CoreResult<T
 }
 
 function freezeErrors(errors: readonly CoreError[]): readonly CoreError[] {
-  return Object.freeze(errors.map((error) => Object.freeze({ code: error.code, message: error.message })));
+  return Object.freeze(errors.map((error) => Object.freeze({
+    code: error.code,
+    message: error.message,
+    ...(error.schemaPath === undefined ? {} : { schemaPath: error.schemaPath }),
+    ...(error.referrerId === undefined ? {} : { referrerId: error.referrerId }),
+    ...(error.targetId === undefined ? {} : { targetId: error.targetId }),
+  })));
 }
 
 function freezeWarnings(warnings: readonly CoreWarning[]): readonly CoreWarning[] {

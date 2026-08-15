@@ -33,19 +33,28 @@ export function validateGameDefinition(definition: unknown): CoreError[] {
     return errors;
   }
 
-  validateUniqueIds("player", validated.content.players, errors);
-  validateUniqueIds("stage", validated.content.stages, errors);
-  validateUniqueIds("enemy", validated.content.enemies, errors);
-  validateUniqueIds("bullet", validated.content.bullets, errors);
-  validateUniqueIds("playerShot", validated.content.playerShots, errors);
-  validateUniqueIds("pattern", validated.content.patterns, errors);
-  validateUniqueIds("path", validated.content.paths, errors);
+  validateUniqueIds("player", "players", validated.content.players, errors);
+  validateUniqueIds("stage", "stages", validated.content.stages, errors);
+  validateUniqueIds("enemy", "enemies", validated.content.enemies, errors);
+  validateUniqueIds("bullet", "bullets", validated.content.bullets, errors);
+  validateUniqueIds("playerShot", "playerShots", validated.content.playerShots, errors);
+  validateUniqueIds("pattern", "patterns", validated.content.patterns, errors);
+  validateUniqueIds("path", "paths", validated.content.paths, errors);
 
-  const defaultPlayerIdIsValid = validateNamespacedReference("defaultPlayerId", "player", validated.defaultPlayerId, errors);
+  const defaultPlayerIdIsValid = validateNamespacedReference(
+    "defaultPlayerId",
+    "player",
+    validated.defaultPlayerId,
+    errors,
+    { schemaPath: "defaultPlayerId", referrerId: "gameDefinition", targetId: validated.defaultPlayerId },
+  );
   if (defaultPlayerIdIsValid && !validated.content.players.some((player) => player.id === validated.defaultPlayerId)) {
     errors.push({
       code: "player.defaultNotFound",
       message: `Default player not found: ${validated.defaultPlayerId}`,
+      schemaPath: "defaultPlayerId",
+      referrerId: "gameDefinition",
+      targetId: validated.defaultPlayerId,
     });
   }
 
@@ -77,6 +86,7 @@ function validateDefinitionShape(definition: unknown, errors: CoreError[]): Game
     errors.push({
       code: "schema.unsupportedVersion",
       message: `Unsupported schema version: ${String(root.schemaVersion)}`,
+      schemaPath: "schemaVersion",
     });
   }
 
@@ -90,18 +100,29 @@ function validateDefinitionShape(definition: unknown, errors: CoreError[]): Game
         continue;
       }
       if (seenFeatures.has(feature)) {
-        errors.push({ code: "feature.duplicate", message: `Duplicate optional feature: ${feature}` });
+        errors.push({
+          code: "feature.duplicate",
+          message: `Duplicate optional feature: ${feature}`,
+          schemaPath: "enabledFeatures",
+          targetId: feature,
+        });
         continue;
       }
       seenFeatures.add(feature);
       if (!KNOWN_FEATURE_SET.has(feature)) {
-        errors.push({ code: "feature.unknown", message: `Unknown optional feature: ${feature}` });
+        errors.push({
+          code: "feature.unknown",
+          message: `Unknown optional feature: ${feature}`,
+          schemaPath: "enabledFeatures",
+          targetId: feature,
+        });
       }
     }
     if (root.enabledFeatures.some((feature) => typeof feature === "string" && KNOWN_FEATURE_SET.has(feature))) {
       errors.push({
         code: "feature.unsupported",
         message: "Basic core does not support optional features yet",
+        schemaPath: "enabledFeatures",
       });
     }
   }
@@ -136,51 +157,68 @@ function validateDefinitionShape(definition: unknown, errors: CoreError[]): Game
   const patterns = validateObjectArray("content.patterns", content.patterns, errors);
   const paths = validateObjectArray("content.paths", content.paths, errors);
 
-  for (const player of players) {
-    validatePlayerShape(player, errors);
-  }
-  for (const stage of stages) {
-    validateStageShape(stage, errors);
-  }
-  for (const enemy of enemies) {
-    validateAllowedKeys("enemy", enemy, ["id", "version", "asset", "collision", "hp", "score"], errors);
-    validateNonEmptyString("enemy.id", enemy.id, errors);
-    validatePositiveInteger("enemy.version", enemy.version, errors);
-    validateNonEmptyString("enemy.asset", enemy.asset, errors);
-    validateCollisionShape("enemy.collision", enemy.collision, errors);
-    validatePositiveNumber("enemy.hp", enemy.hp, errors);
-    validateNonNegativeInteger("enemy.score", enemy.score, errors);
-  }
-  for (const bullet of bullets) {
-    validateAllowedKeys("bullet", bullet, ["id", "version", "asset", "collision"], errors);
-    validateNonEmptyString("bullet.id", bullet.id, errors);
-    validatePositiveInteger("bullet.version", bullet.version, errors);
-    validateNonEmptyString("bullet.asset", bullet.asset, errors);
-    validateCollisionShape("bullet.collision", bullet.collision, errors);
-  }
-  for (const playerShot of playerShots) {
-    validateAllowedKeys("playerShot", playerShot, ["id", "version", "asset", "collision", "damage", "fire", "projectile"], errors);
-    validateNonEmptyString("playerShot.id", playerShot.id, errors);
-    validatePositiveInteger("playerShot.version", playerShot.version, errors);
-    validateNonEmptyString("playerShot.asset", playerShot.asset, errors);
-    validateCollisionShape("playerShot.collision", playerShot.collision, errors);
-    validatePositiveNumber("playerShot.damage", playerShot.damage, errors);
-    validatePlayerShotFireShape(playerShot.fire, errors);
-    validatePlayerShotProjectileShape(playerShot.projectile, errors);
-  }
-  for (const pattern of patterns) {
-    validateAllowedKeys("pattern", pattern, ["id", "version", "fireOnSpawn"], errors);
-    validateNonEmptyString("pattern.id", pattern.id, errors);
-    validatePositiveInteger("pattern.version", pattern.version, errors);
-    if (pattern.fireOnSpawn !== undefined) {
-      validatePatternFireOnSpawnShape(pattern.fireOnSpawn, errors);
-    }
-  }
-  for (const path of paths) {
-    validateAllowedKeys("path", path, ["id", "version"], errors);
-    validateNonEmptyString("path.id", path.id, errors);
-    validatePositiveInteger("path.version", path.version, errors);
-  }
+  players.items.forEach(({ record: player, index }) => validateContentItem(
+    `content.players[${index}]`, "player", player, errors,
+    () => validatePlayerShape(player, errors),
+  ));
+  stages.items.forEach(({ record: stage, index }) => validateContentItem(
+    `content.stages[${index}]`, "stage", stage, errors,
+    () => validateStageShape(stage, errors),
+  ));
+  enemies.items.forEach(({ record: enemy, index }) => validateContentItem(
+    `content.enemies[${index}]`, "enemy", enemy, errors,
+    () => {
+      validateAllowedKeys("enemy", enemy, ["id", "version", "asset", "collision", "hp", "score"], errors);
+      validateNonEmptyString("enemy.id", enemy.id, errors);
+      validatePositiveInteger("enemy.version", enemy.version, errors);
+      validateNonEmptyString("enemy.asset", enemy.asset, errors);
+      validateCollisionShape("enemy.collision", enemy.collision, errors);
+      validatePositiveNumber("enemy.hp", enemy.hp, errors);
+      validateNonNegativeInteger("enemy.score", enemy.score, errors);
+    },
+  ));
+  bullets.items.forEach(({ record: bullet, index }) => validateContentItem(
+    `content.bullets[${index}]`, "bullet", bullet, errors,
+    () => {
+      validateAllowedKeys("bullet", bullet, ["id", "version", "asset", "collision"], errors);
+      validateNonEmptyString("bullet.id", bullet.id, errors);
+      validatePositiveInteger("bullet.version", bullet.version, errors);
+      validateNonEmptyString("bullet.asset", bullet.asset, errors);
+      validateCollisionShape("bullet.collision", bullet.collision, errors);
+    },
+  ));
+  playerShots.items.forEach(({ record: playerShot, index }) => validateContentItem(
+    `content.playerShots[${index}]`, "playerShot", playerShot, errors,
+    () => {
+      validateAllowedKeys("playerShot", playerShot, ["id", "version", "asset", "collision", "damage", "fire", "projectile"], errors);
+      validateNonEmptyString("playerShot.id", playerShot.id, errors);
+      validatePositiveInteger("playerShot.version", playerShot.version, errors);
+      validateNonEmptyString("playerShot.asset", playerShot.asset, errors);
+      validateCollisionShape("playerShot.collision", playerShot.collision, errors);
+      validatePositiveNumber("playerShot.damage", playerShot.damage, errors);
+      validatePlayerShotFireShape(playerShot.fire, errors);
+      validatePlayerShotProjectileShape(playerShot.projectile, errors);
+    },
+  ));
+  patterns.items.forEach(({ record: pattern, index }) => validateContentItem(
+    `content.patterns[${index}]`, "pattern", pattern, errors,
+    () => {
+      validateAllowedKeys("pattern", pattern, ["id", "version", "fireOnSpawn"], errors);
+      validateNonEmptyString("pattern.id", pattern.id, errors);
+      validatePositiveInteger("pattern.version", pattern.version, errors);
+      if (pattern.fireOnSpawn !== undefined) {
+        validatePatternFireOnSpawnShape(pattern.fireOnSpawn, errors);
+      }
+    },
+  ));
+  paths.items.forEach(({ record: path, index }) => validateContentItem(
+    `content.paths[${index}]`, "path", path, errors,
+    () => {
+      validateAllowedKeys("path", path, ["id", "version"], errors);
+      validateNonEmptyString("path.id", path.id, errors);
+      validatePositiveInteger("path.version", path.version, errors);
+    },
+  ));
 
   if (errors.length > shapeErrorCount) {
     return null;
@@ -326,13 +364,14 @@ function validateStageShape(stage: Record<string, unknown>, errors: CoreError[])
   let currentTick = -1;
   let spawnsInCurrentTick = 0;
   const timeline = validateObjectArray("stage.timeline", stage.timeline, errors);
-  if (timeline.length > MAX_STAGE_TIMELINE_STEPS) {
+  if (timeline.sourceLength > MAX_STAGE_TIMELINE_STEPS) {
     errors.push({
       code: "timeline.tooManySteps",
       message: `stage.timeline must contain at most ${MAX_STAGE_TIMELINE_STEPS} steps`,
     });
   }
-  for (const step of timeline) {
+  for (const { record: step, index: stepIndex } of timeline.items) {
+    const stepErrorStart = errors.length;
     validateAllowedKeys("stage.timeline[]", step, ["tick", "action"], errors);
     validateNonNegativeInteger("stage.timeline[].tick", step.tick, errors);
     if (typeof step.tick === "number" && Number.isInteger(step.tick) && step.tick < previousTick) {
@@ -352,6 +391,7 @@ function validateStageShape(stage: Record<string, unknown>, errors: CoreError[])
     const action = asRecord(step.action);
     if (!action) {
       errors.push({ code: "definition.invalidShape", message: "stage.timeline[].action must be an object" });
+      addSchemaContext(errors, stepErrorStart, `stage.timeline[${stepIndex}]`, "stage.timeline[]");
       continue;
     }
     validateAllowedKeys("stage.timeline[].action", action, ["type", "enemy", "path", "pattern", "position"], errors);
@@ -374,32 +414,103 @@ function validateStageShape(stage: Record<string, unknown>, errors: CoreError[])
     const position = asRecord(action.position);
     if (!position) {
       errors.push({ code: "definition.invalidShape", message: "stage.timeline[].action.position must be an object" });
+      addSchemaContext(errors, stepErrorStart, `stage.timeline[${stepIndex}]`, "stage.timeline[]");
       continue;
     }
     validateAllowedKeys("stage.timeline[].action.position", position, ["x", "y"], errors);
     validateFiniteNumber("stage.timeline[].action.position.x", position.x, errors);
     validateFiniteNumber("stage.timeline[].action.position.y", position.y, errors);
+    addSchemaContext(errors, stepErrorStart, `stage.timeline[${stepIndex}]`, "stage.timeline[]");
   }
+}
+
+/**
+ * 1つのcontent definitionを検証し、その間に生成されたerrorへ配列indexとsource IDを付ける。
+ * validator本体の読みやすいlocal pathは維持し、public error境界で一意なschema pathへ展開する。
+ */
+function validateContentItem(
+  contentPath: string,
+  localPrefix: string,
+  definition: Record<string, unknown>,
+  errors: CoreError[],
+  validate: () => void,
+): void {
+  const errorStart = errors.length;
+  validate();
+  const referrerId = typeof definition.id === "string" && definition.id.length > 0
+    ? definition.id
+    : undefined;
+  addSchemaContext(errors, errorStart, contentPath, localPrefix, referrerId);
+}
+
+/** error messageのlocal pathを、呼び出し元が持つ一意なcontent pathへ変換する。 */
+function addSchemaContext(
+  errors: CoreError[],
+  errorStart: number,
+  contentPath: string,
+  localPrefix: string,
+  referrerId?: string,
+): void {
+  for (let index = errorStart; index < errors.length; index += 1) {
+    const error = errors[index]!;
+    const localPath = error.schemaPath ?? inferValidationPath(error.message);
+    const schemaPath = remapSchemaPath(localPath, localPrefix, contentPath) ?? contentPath;
+    errors[index] = {
+      ...error,
+      schemaPath,
+      ...(error.referrerId !== undefined ? {} : referrerId === undefined ? {} : { referrerId }),
+    };
+  }
+}
+
+/** Core validation messageの先頭から、既存のlocal schema path表現だけを抽出する。 */
+function inferValidationPath(message: string): string | null {
+  const unknownField = /^Unknown field at (.+)$/.exec(message);
+  if (unknownField) {
+    return unknownField[1]!;
+  }
+  return /^([A-Za-z][A-Za-z0-9.[\]]*) (?:must|exceeds|is )/.exec(message)?.[1] ?? null;
+}
+
+/** local prefix以下のpathを、index付きcontent path以下へ付け替える。 */
+function remapSchemaPath(localPath: string | null, localPrefix: string, contentPath: string): string | null {
+  if (localPath === null) {
+    return null;
+  }
+  if (localPath === localPrefix) {
+    return contentPath;
+  }
+  return localPath.startsWith(`${localPrefix}.`) || localPath.startsWith(`${localPrefix}[`)
+    ? `${contentPath}${localPath.slice(localPrefix.length)}`
+    : localPath;
 }
 
 /** namespace prefix と重複 ID を検証する。 */
 function validateUniqueIds(
   namespace: string,
+  collection: keyof Omit<ContentRegistry, "version" | "assetKeys">,
   definitions: readonly { id: string }[],
   errors: CoreError[],
 ): void {
   const seen = new Set<string>();
-  for (const definition of definitions) {
+  for (const [index, definition] of definitions.entries()) {
+    const context = {
+      schemaPath: `content.${collection}[${index}].id`,
+      referrerId: definition.id,
+      targetId: definition.id,
+    } as const;
     if (!isNamespacedId(definition.id, namespace)) {
       errors.push({
         code: "id.invalidNamespace",
         message: `Expected ${namespace}. prefix for id: ${definition.id}`,
+        ...context,
       });
     }
     if (seen.has(definition.id)) {
       errors.push({
         code: "id.duplicate",
         message: `Duplicate id: ${definition.id}`,
+        ...context,
       });
     }
     seen.add(definition.id);
@@ -410,21 +521,39 @@ function validateUniqueIds(
 function validateAssetReferences(registry: ContentRegistry, errors: CoreError[]): void {
   const assetKeys = new Set(registry.assetKeys.keys);
   const referenced = [
-    ...registry.players.map((definition) => definition.asset),
-    ...registry.enemies.map((definition) => definition.asset),
-    ...registry.bullets.map((definition) => definition.asset),
-    ...registry.playerShots.map((definition) => definition.asset),
+    ...registry.players.map((definition, index) => ({
+      asset: definition.asset,
+      schemaPath: `content.players[${index}].asset`,
+      referrerId: definition.id,
+    })),
+    ...registry.enemies.map((definition, index) => ({
+      asset: definition.asset,
+      schemaPath: `content.enemies[${index}].asset`,
+      referrerId: definition.id,
+    })),
+    ...registry.bullets.map((definition, index) => ({
+      asset: definition.asset,
+      schemaPath: `content.bullets[${index}].asset`,
+      referrerId: definition.id,
+    })),
+    ...registry.playerShots.map((definition, index) => ({
+      asset: definition.asset,
+      schemaPath: `content.playerShots[${index}].asset`,
+      referrerId: definition.id,
+    })),
   ];
 
-  for (const asset of referenced) {
+  for (const { asset, schemaPath, referrerId } of referenced) {
+    const context = { schemaPath, referrerId, targetId: asset } as const;
     if (!isSafeAssetKey(asset)) {
-      errors.push({ code: "asset.invalidKey", message: `Invalid asset key reference: ${asset}` });
+      errors.push({ code: "asset.invalidKey", message: `Invalid asset key reference: ${asset}`, ...context });
       continue;
     }
     if (!assetKeys.has(asset)) {
       errors.push({
         code: "asset.notFound",
         message: `Asset not found: ${asset}`,
+        ...context,
       });
     }
   }
@@ -433,14 +562,22 @@ function validateAssetReferences(registry: ContentRegistry, errors: CoreError[])
 /** PlayerDefinition から参照される player shot が registry に存在するか検証する。 */
 function validatePlayerShotReferences(registry: ContentRegistry, errors: CoreError[]): void {
   const playerShotIds = new Set(registry.playerShots.map((definition) => definition.id));
-  for (const player of registry.players) {
-    if (!validateNamespacedReference("player.shot.definition", "playerShot", player.shot.definition, errors)) {
+  for (const [index, player] of registry.players.entries()) {
+    const context = {
+      schemaPath: `content.players[${index}].shot.definition`,
+      referrerId: player.id,
+      targetId: player.shot.definition,
+    } as const;
+    if (!validateNamespacedReference(
+      "player.shot.definition", "playerShot", player.shot.definition, errors, context,
+    )) {
       continue;
     }
     if (!playerShotIds.has(player.shot.definition)) {
       errors.push({
         code: "playerShot.notFound",
         message: `Player shot not found: ${player.shot.definition}`,
+        ...context,
       });
     }
   }
@@ -449,16 +586,21 @@ function validatePlayerShotReferences(registry: ContentRegistry, errors: CoreErr
 /** PatternDefinition から参照される enemy bullet が registry に存在するか検証する。 */
 function validatePatternBulletReferences(registry: ContentRegistry, errors: CoreError[]): void {
   const bulletIds = new Set(registry.bullets.map((definition) => definition.id));
-  for (const pattern of registry.patterns) {
+  for (const [index, pattern] of registry.patterns.entries()) {
     const bulletId = pattern.fireOnSpawn?.bullet;
     if (bulletId === undefined) {
       continue;
     }
-    if (!validateNamespacedReference("pattern.fireOnSpawn.bullet", "bullet", bulletId, errors)) {
+    const context = {
+      schemaPath: `content.patterns[${index}].fireOnSpawn.bullet`,
+      referrerId: pattern.id,
+      targetId: bulletId,
+    } as const;
+    if (!validateNamespacedReference("pattern.fireOnSpawn.bullet", "bullet", bulletId, errors, context)) {
       continue;
     }
     if (!bulletIds.has(bulletId)) {
-      errors.push({ code: "bullet.notFound", message: `Bullet not found: ${bulletId}` });
+      errors.push({ code: "bullet.notFound", message: `Bullet not found: ${bulletId}`, ...context });
     }
   }
 }
@@ -469,38 +611,57 @@ function validateStageTimelineReferences(registry: ContentRegistry, errors: Core
   const patternsById = new Map(registry.patterns.map((definition) => [definition.id, definition]));
   const pathIds = new Set(registry.paths.map((definition) => definition.id));
 
-  for (const stage of registry.stages) {
-    for (const step of stage.timeline) {
+  for (const [stageIndex, stage] of registry.stages.entries()) {
+    for (const [stepIndex, step] of stage.timeline.entries()) {
+      const actionPath = `content.stages[${stageIndex}].timeline[${stepIndex}].action`;
+      const enemyContext = {
+        schemaPath: `${actionPath}.enemy`, referrerId: stage.id, targetId: step.action.enemy,
+      } as const;
+      const patternContext = {
+        schemaPath: `${actionPath}.pattern`, referrerId: stage.id, targetId: step.action.pattern,
+      } as const;
+      const pathContext = {
+        schemaPath: `${actionPath}.path`, referrerId: stage.id, targetId: step.action.path,
+      } as const;
       const enemyReferenceIsValid = validateNamespacedReference(
         "stage.timeline[].action.enemy",
         "enemy",
         step.action.enemy,
         errors,
+        enemyContext,
       );
       const patternReferenceIsValid = validateNamespacedReference(
         "stage.timeline[].action.pattern",
         "pattern",
         step.action.pattern,
         errors,
+        patternContext,
       );
       const pathReferenceIsValid = validateNamespacedReference(
         "stage.timeline[].action.path",
         "path",
         step.action.path,
         errors,
+        pathContext,
       );
       if (enemyReferenceIsValid && !enemyIds.has(step.action.enemy)) {
-        errors.push({ code: "enemy.notFound", message: `Enemy not found: ${step.action.enemy}` });
+        errors.push({ code: "enemy.notFound", message: `Enemy not found: ${step.action.enemy}`, ...enemyContext });
       }
       const pattern = patternsById.get(step.action.pattern);
       if (patternReferenceIsValid && !pattern) {
-        errors.push({ code: "pattern.notFound", message: `Pattern not found: ${step.action.pattern}` });
+        errors.push({ code: "pattern.notFound", message: `Pattern not found: ${step.action.pattern}`, ...patternContext });
       }
       if (patternReferenceIsValid && pattern?.fireOnSpawn) {
-        validateFireOnSpawnPosition("stage.timeline[].action.position + pattern.fireOnSpawn.offset", step.action.position, pattern.fireOnSpawn, errors);
+        validateFireOnSpawnPosition(
+          "stage.timeline[].action.position + pattern.fireOnSpawn.offset",
+          step.action.position,
+          pattern.fireOnSpawn,
+          errors,
+          { schemaPath: `${actionPath}.position`, referrerId: stage.id },
+        );
       }
       if (pathReferenceIsValid && !pathIds.has(step.action.path)) {
-        errors.push({ code: "path.notFound", message: `Path not found: ${step.action.path}` });
+        errors.push({ code: "path.notFound", message: `Path not found: ${step.action.path}`, ...pathContext });
       }
     }
   }
@@ -512,11 +673,16 @@ function validateFireOnSpawnPosition(
   position: { x: number; y: number },
   fireOnSpawn: NonNullable<ContentRegistry["patterns"][number]["fireOnSpawn"]>,
   errors: CoreError[],
+  context?: Readonly<Pick<CoreError, "schemaPath" | "referrerId">>,
 ): void {
   const x = position.x + fireOnSpawn.offset.x;
   const y = position.y + fireOnSpawn.offset.y;
   if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    errors.push({ code: "definition.invalidConstraint", message: `${path} must produce a finite position` });
+    errors.push({
+      code: "definition.invalidConstraint",
+      message: `${path} must produce a finite position`,
+      ...context,
+    });
   }
 }
 
@@ -538,23 +704,32 @@ function validateAllowedKeys(
   }
 }
 
-/** unknown value を object array として取り出す。 */
-function validateObjectArray(path: string, value: unknown, errors: CoreError[]): Record<string, unknown>[] {
+type IndexedObjectArray = Readonly<{
+  items: readonly Readonly<{ index: number; record: Record<string, unknown> }>[];
+  sourceLength: number;
+}>;
+
+/** unknown valueをobject arrayとして検証し、除外した要素があっても元indexを保持する。 */
+function validateObjectArray(path: string, value: unknown, errors: CoreError[]): IndexedObjectArray {
   if (!Array.isArray(value)) {
-    errors.push({ code: "definition.invalidShape", message: `${path} must be an array` });
-    return [];
+    errors.push({ code: "definition.invalidShape", message: `${path} must be an array`, schemaPath: path });
+    return Object.freeze({ items: Object.freeze([]), sourceLength: 0 });
   }
 
-  const records: Record<string, unknown>[] = [];
-  for (const item of value) {
+  const items: Array<Readonly<{ index: number; record: Record<string, unknown> }>> = [];
+  for (const [index, item] of value.entries()) {
     const record = asRecord(item);
     if (!record) {
-      errors.push({ code: "definition.invalidShape", message: `${path} must contain objects` });
+      errors.push({
+        code: "definition.invalidShape",
+        message: `${path} must contain objects`,
+        schemaPath: `${path}[${index}]`,
+      });
       continue;
     }
-    records.push(record);
+    items.push(Object.freeze({ index, record }));
   }
-  return records;
+  return Object.freeze({ items: Object.freeze(items), sourceLength: value.length });
 }
 
 /** asset key 配列として使える内容か検証する。 */
@@ -614,6 +789,7 @@ function validateNamespacedReference(
   namespace: string,
   value: string,
   errors: CoreError[],
+  context?: Readonly<Pick<CoreError, "schemaPath" | "referrerId" | "targetId">>,
 ): boolean {
   const prefix = `${namespace}.`;
   const suffix = value.startsWith(prefix) ? value.slice(prefix.length) : "";
@@ -621,6 +797,9 @@ function validateNamespacedReference(
     errors.push({
       code: "id.invalidNamespace",
       message: `${path} must reference a ${namespace}.* id: ${value}`,
+      schemaPath: context?.schemaPath ?? path,
+      ...(context?.referrerId === undefined ? {} : { referrerId: context.referrerId }),
+      targetId: context?.targetId ?? value,
     });
     return false;
   }
