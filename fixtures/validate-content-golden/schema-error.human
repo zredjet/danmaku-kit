@@ -1,0 +1,2 @@
+<content-root>/players/default.yaml:5:10-5:14 [ERROR] definition.invalidShape: player.movement.speed must be a positive number (schema=content.players[0].movement.speed, source=player.default)
+Summary: 1 error(s), 0 warning(s), 0 info(s)

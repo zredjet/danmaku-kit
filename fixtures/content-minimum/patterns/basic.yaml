@@ -1,0 +1,7 @@
+id: pattern.basic
+version: 1
+fireOnSpawn:
+  bullet: bullet.red_small
+  offset:
+    x: 0
+    y: 8

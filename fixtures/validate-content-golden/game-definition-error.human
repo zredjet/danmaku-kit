@@ -1,0 +1,2 @@
+<game-definition>:1:16-1:19 [ERROR] schema.unsupportedVersion: Unsupported schema version: 2 (schema=schemaVersion, source=gameDefinition)
+Summary: 1 error(s), 0 warning(s), 0 info(s)

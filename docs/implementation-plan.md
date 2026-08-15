@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract と Phase 1C-2 の parser / CLI boundary も完了し、次の実装スライスは Phase 1C-3 の fixture / CLI integration とする。
+Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration も完了し、次の実装スライスは Phase 1C-4 の headless debug state dump とする。
 
 Done:
 
@@ -81,12 +81,14 @@ Done:
 - state hash 6B 後半で score、shot cooldown、player hit、lives、invincibility decrement を含む gameplay tick digest golden と、restore 後の複数 tick digest 一致を固定する
 - replay metadata 1B-7 で `ReplayMetadata` の readonly DTO と root type export を追加し、未検証 `enabledFeatures` を含む replay 互換性 metadata と、snapshot 専用 `stateHashVersion` / playback API を公開しない境界を exact type contract で固定する。canonical order / 重複禁止は playback validator の責務とする
 - validate-content 1C-1 で tooling package、immutable diagnostic / JSON output、human formatter、validation / tool error の exit code contract を追加する
+- validate-content 1C-2 で strict YAML parser、source span、CLI / filesystem boundary、Core validation adapter を追加する
+- validate-content 1C-3 で静的な最小 content fixture と、valid / content parse / content・game-definition schema / reference / budget / CLI argument の実プロセス CLI golden test を追加する
 
 Next:
 
-- YAML parser、source span、CLI argument / filesystem boundary、Core validation adapter を追加する
+- headless debug state dump の schema、artifact naming、state hash divergence の最小調査 field を追加する
 
-Phase 1C-1 は外部依存、filesystem、YAML parser、source span、Core validation 接続を扱わず、診断と出力の安定した契約だけを固定した。Phase 1C-2 は実績ある YAML parser を導入し、外部ファイルを source span 付き診断へ変換して既存 formatter と exit code 判定へ接続する。
+Phase 1C-1 は診断と出力の安定した契約、Phase 1C-2 は実績ある YAML parser と source span 付き診断の CLI 接続、Phase 1C-3 は静的 fixture と実プロセスの JSON / human golden contract を固定した。Phase 1C-4 では renderer / browser field を含まない headless debug state dump を追加する。
 
 ## 設計から実装への対応表
 
@@ -121,6 +123,9 @@ Status legend:
 | `docs/design.md` Replay determinism | state hash minimum: `HashableGameState` projection | Done | `packages/shooting-core/src/basic/core.ts` | committed state から hash DTO を生成し、public serialize DTO と型結合しない direct projection を固定 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | state hash minimum: canonical encoding / digest | Done | `packages/shooting-core/src/basic/hash/canonical-encoder.ts`, `hashable-game-state-adapter.ts`, `xxhash64.ts`, `state-hash.ts`, `testing/state-hash-comparison.ts` | canonical encoder、adapter、xxHash64、PRNG / game-state digest golden、first divergent tick、gameplay smoke、restore 後の hash 一致を固定 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | replay metadata minimum | Done | `packages/shooting-core/src/basic/replay/metadata.ts`, `packages/shooting-core/src/basic/index.ts` | replay file metadata と playback session は作らず、互換性 metadata 型だけ追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Content validation CLI | output contract | Done | `tools/validate-content/src/types.ts`, `tools/validate-content/src/output.ts` | immutable diagnostic、JSON / human formatter、exit code correlation を固定 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Content validation CLI | parser / filesystem boundary | Done | `tools/validate-content/src/yaml-source.ts`, `tools/validate-content/src/content-loader.ts`, `tools/validate-content/src/core-diagnostic-adapter.ts`, `tools/validate-content/src/cli.ts`, `tools/validate-content/src/cli-entry.ts` | strict YAML、source span、Core diagnostic mapping、実 filesystem を検証 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Content validation CLI | minimum fixture / process golden | Done | `fixtures/game-definition.minimum.yaml`, `fixtures/content-minimum/`, `fixtures/validate-content-golden/`, `tools/validate-content/src/cli-golden.test.ts` | valid / content parse / content・game-definition schema / reference / budget / CLI argument を JSON / human の両形式で固定 | `npm test`, `npm run typecheck` |
 
 ## 次の作業順
 
@@ -312,10 +317,10 @@ Done:
    - Done: Core validation error に index 付き `schemaPath` / `referrerId` / `targetId` contextを追加し、schema / reference / feature diagnostic と分割 YAML の正確な source span へ mappingする。contextのないerror / warningはschema pathとroot fallbackで必須fieldを満たす
    - Done: Core の Node 非依存 tsconfig と tool の Node 用 tsconfig を分け、package dependency / source import boundary test を維持する
 3. Phase 1C-3: fixture / CLI integration
-   - Queued: `fixtures/game-definition.minimum.yaml` と `fixtures/content-minimum/` を追加し、valid、parse error、schema error、reference error、budget error の CLI integration test を追加する
-   - Queued: JSON output を CI / editor contract、human output を content authoring contract として golden test で固定する
+   - Done: `fixtures/game-definition.minimum.yaml` と `fixtures/content-minimum/` を参照完全な最小 content authoring 契約として追加し、valid、content parse error、content / game-definition schema error、reference error、budget error、CLI argument error の実プロセス CLI integration test を追加する
+   - Done: JSON output を CI / editor contract、human output を content authoring contract として `fixtures/validate-content-golden/` に固定する。通常実行は golden を読み取り専用とし、`npm run update-validate-content-goldens` の明示時だけ全 case 検証後に一括再生成する
 4. Phase 1C-4: headless debug state dump
-   - Queued: test helper から取得する `DebugStateDump` schema、artifact naming、state hash divergence の最小調査 field を実装する
+   - Next: test helper から取得する `DebugStateDump` schema、artifact naming、state hash divergence の最小調査 field を実装する
    - Queued: debug dump は renderer / browser field を含めず、browser runtime extension は Phase 2A へ分離する
 
 ## Phase 2A へ進む条件

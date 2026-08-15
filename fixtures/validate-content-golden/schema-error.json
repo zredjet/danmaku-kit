@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1",
+  "contentRoot": "<content-root>",
+  "ok": false,
+  "diagnostics": [
+    {
+      "kind": "schema",
+      "code": "definition.invalidShape",
+      "severity": "error",
+      "message": "player.movement.speed must be a positive number",
+      "path": "<content-root>/players/default.yaml",
+      "line": 5,
+      "column": 10,
+      "endLine": 5,
+      "endColumn": 14,
+      "schemaPath": "content.players[0].movement.speed",
+      "sourceId": "player.default"
+    }
+  ],
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "infos": 0
+  }
+}

@@ -65,20 +65,32 @@ test("runs the declared validate-content bin as a real process", async (context)
   ].join("\n"), "utf8");
   await writeFile(path.join(contentRoot, "assets", "manifest.yaml"), "version: 1\nassets: {}\n", "utf8");
 
-  const help = spawnSync(cliPath, ["--help"], { encoding: "utf8" });
-  const invalid = spawnSync(cliPath, [
+  const help = runTypeScriptCli(cliPath, ["--help"]);
+  const invalid = runTypeScriptCli(cliPath, [
     "--game-definition", gameDefinitionPath,
     "--content-root", contentRoot,
     "--format", "json",
-  ], { encoding: "utf8" });
+  ]);
 
+  assert.equal(help.error, undefined, help.error?.message);
   assert.equal(help.status, 0, help.stderr);
   assert.match(help.stdout, /^Usage: validate-content/);
   assert.equal(help.stderr, "");
+  assert.equal(invalid.error, undefined, invalid.error?.message);
   assert.equal(invalid.status, 1, invalid.stderr);
   assert.equal(JSON.parse(invalid.stdout).diagnostics[0].code, "player.defaultNotFound");
   assert.equal(invalid.stderr, "");
 });
+
+/** TypeScript CLIをtest runnerと同じNodeで起動し、OSのshebang対応へ依存させない。 */
+function runTypeScriptCli(cliPath, args) {
+  return spawnSync(process.execPath, ["--experimental-strip-types", cliPath, ...args], {
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024,
+    timeout: 10_000,
+    windowsHide: true,
+  });
+}
 
 test("rejects validate-content deep imports outside the public export map", async () => {
   const sourceFiles = await collectTypeScriptFiles(path.join(packageRoot, "src"));

@@ -1,0 +1,14 @@
+id: stage.stage_01
+version: 1
+difficulties:
+  - normal
+timeline:
+  - tick: 60
+    action:
+      type: spawnEnemy
+      enemy: enemy.scout
+      path: path.none
+      pattern: pattern.basic
+      position:
+        x: 192
+        y: -16

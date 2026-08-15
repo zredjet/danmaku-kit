@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1",
+  "contentRoot": "<content-root>",
+  "ok": true,
+  "diagnostics": [],
+  "summary": {
+    "errors": 0,
+    "warnings": 0,
+    "infos": 0
+  }
+}

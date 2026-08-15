@@ -1,0 +1,2 @@
+<content-root>/stages/stage_01.yaml:15:1-15:2 [ERROR] yaml.parse.duplicate_key: Map keys must be unique (schema=$)
+Summary: 1 error(s), 0 warning(s), 0 info(s)

@@ -1,0 +1,22 @@
+version: 1
+assets:
+  player.default:
+    type: sprite
+    path: player.png
+    required: true
+    usage: gameplay
+  enemy.scout:
+    type: sprite
+    path: enemy.png
+    required: true
+    usage: gameplay
+  bullet.red_small:
+    type: sprite
+    path: bullet.png
+    required: true
+    usage: gameplay
+  shot.player_basic:
+    type: sprite
+    path: shot.png
+    required: true
+    usage: gameplay

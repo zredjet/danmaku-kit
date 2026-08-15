@@ -1,0 +1,2 @@
+<content-root>/stages/stage_01.yaml:9:14-9:27 [ERROR] enemy.notFound: Enemy not found: enemy.missing (schema=content.stages[0].timeline[0].action.enemy, referrer=stage.stage_01, target=enemy.missing)
+Summary: 1 error(s), 0 warning(s), 0 info(s)

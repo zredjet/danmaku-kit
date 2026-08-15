@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1",
+  "contentRoot": "<content-root>",
+  "ok": false,
+  "diagnostics": [
+    {
+      "kind": "reference",
+      "code": "enemy.notFound",
+      "severity": "error",
+      "message": "Enemy not found: enemy.missing",
+      "path": "<content-root>/stages/stage_01.yaml",
+      "line": 9,
+      "column": 14,
+      "endLine": 9,
+      "endColumn": 27,
+      "referrerId": "stage.stage_01",
+      "targetId": "enemy.missing",
+      "schemaPath": "content.stages[0].timeline[0].action.enemy"
+    }
+  ],
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "infos": 0
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1",
+  "contentRoot": "<content-root>",
+  "ok": false,
+  "diagnostics": [
+    {
+      "kind": "schema",
+      "code": "schema.unsupportedVersion",
+      "severity": "error",
+      "message": "Unsupported schema version: 2",
+      "path": "<game-definition>",
+      "line": 1,
+      "column": 16,
+      "endLine": 1,
+      "endColumn": 19,
+      "schemaPath": "schemaVersion",
+      "sourceId": "gameDefinition"
+    }
+  ],
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "infos": 0
+  }
+}
