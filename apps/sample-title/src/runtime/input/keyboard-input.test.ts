@@ -7,11 +7,11 @@ import { startSampleTitleStage } from "../../test-support/sample-title-game.ts";
 import { KeyboardInputAdapter } from "./keyboard-input.ts";
 
 function press(adapter: KeyboardInputAdapter, code: string, repeat = false): void {
-  adapter.handleKeyEvent({ type: "keydown", code, repeat });
+  adapter.handleKeyEvent({ type: "keydown", code, repeat, metaKey: false });
 }
 
 function release(adapter: KeyboardInputAdapter, code: string): void {
-  adapter.handleKeyEvent({ type: "keyup", code, repeat: false });
+  adapter.handleKeyEvent({ type: "keyup", code, repeat: false, metaKey: false });
 }
 
 /** 1 tick 分の frame を取り出し、tick と axes を除いた action の組を比べやすい形にする。 */
@@ -100,7 +100,7 @@ test("drops the release edge when an action is pressed again before the next tic
   assert.deepEqual(sampleActions(adapter), { held: ["shot"], pressed: ["shot"], released: [] });
 });
 
-test("discards latches and key state on reset and waits for keyup before relatching a held key", () => {
+test("discards latches and key state on reset and ignores the auto-repeat of keys held across it", () => {
   const adapter = new KeyboardInputAdapter();
 
   press(adapter, "KeyZ");
@@ -117,13 +117,45 @@ test("discards latches and key state on reset and waits for keyup before relatch
   assert.deepEqual(adapter.takeUiInput(), { pressed: [] });
 
   press(adapter, "KeyZ", true);
-  press(adapter, "KeyZ");
   press(adapter, "ArrowRight", true);
   assert.deepEqual(adapter.sampleTicks(1, 1)[0]?.axes, { moveX: 0, moveY: 0 });
   assert.deepEqual(sampleActions(adapter, 1), { held: [], pressed: [], released: [] });
   release(adapter, "KeyZ");
   release(adapter, "ArrowRight");
   assert.deepEqual(sampleActions(adapter, 2), { held: [], pressed: [], released: [] });
+  press(adapter, "KeyZ");
+  assert.deepEqual(sampleActions(adapter, 3), { held: ["shot"], pressed: ["shot"], released: [] });
+});
+
+test("accepts a new press after reset even when the key's release happened out of focus", () => {
+  const adapter = new KeyboardInputAdapter();
+
+  press(adapter, "KeyZ");
+  adapter.reset();
+  // KeyZ の keyup は focus 外で起き、page には届かない。
+  press(adapter, "KeyZ");
+  assert.deepEqual(sampleActions(adapter, 0), { held: ["shot"], pressed: ["shot"], released: [] });
+  release(adapter, "KeyZ");
+  assert.deepEqual(sampleActions(adapter, 1), { held: [], pressed: [], released: ["shot"] });
+});
+
+test("ignores keys pressed with Meta because macOS never sends their keyup", () => {
+  const adapter = new KeyboardInputAdapter();
+  const withMeta = (type: "keydown" | "keyup", code: string): boolean =>
+    adapter.handleKeyEvent({ type, code, repeat: false, metaKey: true });
+
+  press(adapter, "ArrowLeft");
+  assert.deepEqual(adapter.sampleTicks(0, 1)[0]?.axes, { moveX: -1, moveY: 0 });
+  assert.equal(withMeta("keydown", "MetaLeft"), false);
+  assert.equal(withMeta("keydown", "KeyZ"), true);
+  assert.deepEqual(adapter.sampleTicks(1, 1)[0]?.axes, { moveX: 0, moveY: 0 });
+  assert.deepEqual(sampleActions(adapter, 1), { held: [], pressed: [], released: [] });
+
+  // Meta を離した後も押され続けている ArrowLeft の auto-repeat は keyup まで無視し、keyup が来ない KeyZ は次の押下で戻る。
+  release(adapter, "MetaLeft");
+  press(adapter, "ArrowLeft", true);
+  assert.deepEqual(adapter.sampleTicks(2, 1)[0]?.axes, { moveX: 0, moveY: 0 });
+  release(adapter, "ArrowLeft");
   press(adapter, "KeyZ");
   assert.deepEqual(sampleActions(adapter, 3), { held: ["shot"], pressed: ["shot"], released: [] });
 });
@@ -146,7 +178,7 @@ test("ignores unbound keys and event types other than keydown and keyup", () => 
   const adapter = new KeyboardInputAdapter();
 
   press(adapter, "KeyQ");
-  adapter.handleKeyEvent({ type: "keypress", code: "KeyZ", repeat: false });
+  adapter.handleKeyEvent({ type: "keypress", code: "KeyZ", repeat: false, metaKey: false });
 
   assert.deepEqual(sampleActions(adapter), { held: [], pressed: [], released: [] });
 });

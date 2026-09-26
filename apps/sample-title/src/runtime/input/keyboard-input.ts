@@ -18,6 +18,8 @@ export type KeyboardInputEvent = Readonly<{
   /** physical key を表す `KeyboardEvent.code`。 */
   code: string;
   repeat: boolean;
+  /** Meta（macOS の Cmd）が押されているか。macOS は Meta を押している間、他の key の keyup を送らない。 */
+  metaKey: boolean;
 }>;
 
 /** 1 render frame で Runtime / UI が消費する UI action の押下。`InputFrame` と replay には入れない。 */
@@ -32,7 +34,8 @@ const NO_GAMEPLAY_ACTIONS: readonly GameplayActionId[] = Object.freeze([]);
  *
  * keydown / keyup は届いた順に処理し、gameplay action の押下・解放 edge を次に実行する tick までラッチする。render frame 間で
  * 押して離した tap は同じ tick の `pressed` と `released` に入り、`held` には入らない。`reset()` 後は全 key を up として扱い、
- * reset 前から押されている key は keyup を観測するまで再ラッチしない。
+ * reset 前から押されている key の auto-repeat は keyup を観測するまで再ラッチしない。repeat でない keydown は新しい押下なので、
+ * 離した keyup が focus 外で失われていても受け付ける。
  */
 export class KeyboardInputAdapter {
   readonly #actionsByKey: ReadonlyMap<string, KeyBindingAction>;
@@ -50,10 +53,15 @@ export class KeyboardInputAdapter {
    * keydown / keyup を届いた順に反映し、割り当てのある key なら true を返す。
    *
    * 割り当てのない key と、keydown / keyup 以外の event type は無視する。呼び出し側は true のとき browser の既定動作
-   * （矢印 key の scroll など）を止める。
+   * （矢印 key の scroll や Cmd+← の履歴移動など）を止める。Meta を押している event は、macOS で keyup が届かず key が
+   * 押されたままになるため入力に使わず、押下中の key も `reset()` と同じく keyup まで無視する。
    */
   handleKeyEvent(event: KeyboardInputEvent): boolean {
     const action = this.#actionsByKey.get(event.code);
+    if (event.metaKey) {
+      this.#ignoreDownKeysUntilKeyUp();
+      return action !== undefined;
+    }
     if (action === undefined) {
       return false;
     }
@@ -117,13 +125,18 @@ export class KeyboardInputAdapter {
    * 押されたままの key は keyup を観測するまで無視し、復帰直後に押しっぱなしの key が新しい押下として扱われないようにする。
    */
   reset(): void {
+    this.#ignoreDownKeysUntilKeyUp();
+    this.#pressedActions.clear();
+    this.#releasedActions.clear();
+    this.#pressedUiActions.clear();
+  }
+
+  /** 押下中の key を up として扱い、その key の auto-repeat を keyup まで無視する。ラッチ済みの edge は残す。 */
+  #ignoreDownKeysUntilKeyUp(): void {
     for (const code of this.#downKeys) {
       this.#staleKeys.add(code);
     }
     this.#downKeys.clear();
-    this.#pressedActions.clear();
-    this.#releasedActions.clear();
-    this.#pressedUiActions.clear();
   }
 
   #handleKeyDown(code: string, repeat: boolean, action: KeyBindingAction): void {
@@ -131,10 +144,12 @@ export class KeyboardInputAdapter {
       return;
     }
     // reset 前から押されていた key と、adapter が押下を観測していない key の auto-repeat は keyup まで無視する。
-    if (this.#staleKeys.has(code) || repeat) {
+    if (repeat) {
       this.#staleKeys.add(code);
       return;
     }
+    // repeat でない keydown は新しい押下なので、focus 外で keyup が失われた stale key でも押下として受け付ける。
+    this.#staleKeys.delete(code);
     const wasDown = this.#isActionDown(action);
     this.#downKeys.add(code);
     if (wasDown) {

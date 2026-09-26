@@ -51,7 +51,7 @@ test("gives latched key edges to the first tick of a catch-up frame", async () =
   const input = new KeyboardInputAdapter();
   const loop = new StageLoop(await startSampleTitleStage("stage-loop"), input);
 
-  input.handleKeyEvent({ type: "keydown", code: "KeyZ", repeat: false });
+  input.handleKeyEvent({ type: "keydown", code: "KeyZ", repeat: false, metaKey: false });
   const step = loop.advance(TICK_MS * 2);
 
   assert.equal(step.ok, true);
@@ -71,7 +71,7 @@ test("discards paused time and input latches on reset", async () => {
   const loop = new StageLoop(await startSampleTitleStage("stage-loop"), input);
 
   assert.equal(loop.advance(TICK_MS * 0.9).ok, true);
-  input.handleKeyEvent({ type: "keydown", code: "KeyZ", repeat: false });
+  input.handleKeyEvent({ type: "keydown", code: "KeyZ", repeat: false, metaKey: false });
   loop.reset();
   const afterReset = loop.advance(TICK_MS * 0.2);
   const nextTick = loop.advance(TICK_MS);
