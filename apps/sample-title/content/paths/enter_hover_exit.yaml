@@ -7,6 +7,7 @@ segments:
   - type: velocity
     duration: 120
     velocity: { x: 0, y: 0 }
+    offset: { type: sine, axis: x, amplitude: 48, periodTicks: 60 }
   - type: velocity
     duration: 150
     velocity: { x: 2, y: -1 }
