@@ -25,6 +25,7 @@ const SHOOTING_CORE_LAYER_RULES = Object.freeze([
   { target: "serialization/restore/", allowedImporters: ["session/"] },
   { target: "state/", allowedImporters: ["session/", "serialization/restore/", "instrumentation/"] },
   { target: "instrumentation/", allowedImporters: ["core.ts", "session/", "testing/"] },
+  { target: "hash/", allowedImporters: ["state/hashable-projection.ts", "instrumentation/", "testing/"] },
 ]);
 
 /**

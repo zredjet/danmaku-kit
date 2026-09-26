@@ -1,6 +1,5 @@
 import type { StageId } from "../content/types.ts";
 import { EventLog } from "../events/game-event.ts";
-import type { HashablePendingEvent } from "../hash/hashable-state.ts";
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
 import { deepFreezeClone } from "../shared/immutable.ts";
@@ -11,7 +10,11 @@ import type { RuntimeEntityState } from "../simulation/runtime-entity.ts";
 import { freezeEntitiesInIdOrder } from "../simulation/system-order.ts";
 
 /** Committed state が次 tick へ持ち越してよい deterministic event。 */
-export type CommittedPendingEvent = HashablePendingEvent;
+export type CommittedPendingEvent = Readonly<{
+  type: "stageStarted";
+  tick: 0;
+  stageId: StageId;
+}>;
 
 export type CommittedStageState = Readonly<{
   expectedTick: number;
