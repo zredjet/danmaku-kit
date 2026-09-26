@@ -3,6 +3,7 @@ import { parseInputFrame } from "../input/parse-input-frame.ts";
 import { createHeadlessDebugCheckpoint, createHeadlessDebugTickMetrics } from "../instrumentation/debug-state.ts";
 import type { HeadlessDebugTickMetrics } from "../instrumentation/debug-state.ts";
 import { applyCommittedStateFaultsBeforeTick, createSerializeSourceState } from "../instrumentation/stage-session-testing-hooks.ts";
+import type { ActiveStageSessionTestingHooks } from "../instrumentation/stage-session-testing-hooks.ts";
 import { coreError, errorResult, okResult } from "../result.ts";
 import type { CoreError, CoreResult } from "../result.ts";
 import type { StageSessionSerializationMetadata } from "../serialization/metadata.ts";
@@ -12,13 +13,15 @@ import type { CommittedStageState } from "../state/committed-state.ts";
 import { createHashableGameState } from "../state/hashable-projection.ts";
 import { serializeCommittedStageState } from "../state/serialize-projection.ts";
 import { runStageTick } from "./tick-pipeline.ts";
-import type { StageTickContext } from "./tick-pipeline.ts";
+import type { StageTickContent, StageTickInstrumentation } from "./tick-pipeline.ts";
 
-export type StageSessionContext = StageTickContext & {
+export type StageSessionContext = Readonly<{
+  content: StageTickContent;
   debugSeed: string | null;
   initialState: CommittedStageState;
   serializationMetadata: StageSessionSerializationMetadata;
-};
+  testingHooks: ActiveStageSessionTestingHooks;
+}>;
 
 /**
  * 1 stage の simulation session を作る。
@@ -28,7 +31,10 @@ export type StageSessionContext = StageTickContext & {
  */
 export function createStageSession(options: StageSessionContext): StageSession {
   let committedState = options.initialState;
-  const debugMetricsEnabled = options.testingHooks.registerHeadlessDebugStateSerializer !== undefined;
+  const instrumentation: StageTickInstrumentation = Object.freeze({
+    collectDebugMetrics: options.testingHooks.registerHeadlessDebugStateSerializer !== undefined,
+    testingHooks: options.testingHooks,
+  });
   let debugTickMetrics: HeadlessDebugTickMetrics | null = null;
   let fatalErrors: readonly CoreError[] | null = null;
   const latchFatalErrors = <T>(errors: readonly CoreError[]): CoreResult<T> => {
@@ -75,11 +81,11 @@ export function createStageSession(options: StageSessionContext): StageSession {
 
       const faults = applyCommittedStateFaultsBeforeTick(committedState, options.testingHooks);
       committedState = faults.committedState;
-      const working = createWorkingStageState(faults.workingStateSource, options.stage.id);
+      const working = createWorkingStageState(faults.workingStateSource, options.content.stage.id);
       if (!working.ok) {
         return latchFatalErrors(working.errors);
       }
-      const outcome = runStageTick(working.value, input.value, options, debugMetricsEnabled);
+      const outcome = runStageTick(working.value, input.value, options.content, instrumentation);
       if (outcome.kind === "fatal") {
         return latchFatalErrors(outcome.errors);
       }
@@ -87,7 +93,7 @@ export function createStageSession(options: StageSessionContext): StageSession {
         return outcome.result;
       }
       committedState = outcome.committedState;
-      if (debugMetricsEnabled && outcome.collisionCandidates !== null) {
+      if (instrumentation.collectDebugMetrics && outcome.collisionCandidates !== null) {
         debugTickMetrics = createHeadlessDebugTickMetrics(outcome.collisionCandidates, outcome.frame.events);
       }
       return okResult(outcome.frame);

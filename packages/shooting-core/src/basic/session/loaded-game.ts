@@ -122,15 +122,17 @@ function createStageSessionFromContent(
   initial: Pick<StageSessionContext, "debugSeed" | "initialState" | "serializationMetadata">,
 ): StageSession {
   return createStageSession({
-    bulletsById: content.bulletsById,
+    content: {
+      bulletsById: content.bulletsById,
+      enemiesById: content.enemiesById,
+      patternsById: content.patternsById,
+      playerShotsById: content.playerShotsById,
+      stage,
+      player,
+    },
     debugSeed: initial.debugSeed,
-    enemiesById: content.enemiesById,
     initialState: initial.initialState,
     serializationMetadata: initial.serializationMetadata,
-    patternsById: content.patternsById,
-    playerShotsById: content.playerShotsById,
-    stage,
-    player,
     testingHooks: createActiveStageSessionTestingHooks(testingHooks),
   });
 }

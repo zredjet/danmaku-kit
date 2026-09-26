@@ -23,14 +23,24 @@ import { freezeEntitiesInIdOrder } from "../simulation/system-order.ts";
 import { createCommittedStageState } from "../state/committed-state.ts";
 import type { CommittedStageState, WorkingStageState } from "../state/committed-state.ts";
 
-/** tick pipeline が参照する load 済み content と、session ごとに消費する test hook。 */
-export type StageTickContext = Readonly<{
+/** tick pipeline が参照する load 済み content と、session の stage / player。 */
+export type StageTickContent = Readonly<{
   bulletsById: ReadonlyMap<string, BulletDefinition>;
   enemiesById: ReadonlyMap<string, EnemyDefinition>;
   patternsById: ReadonlyMap<string, PatternDefinition>;
   playerShotsById: ReadonlyMap<string, PlayerShotDefinition>;
   stage: StageDefinition;
   player: PlayerDefinition;
+}>;
+
+/**
+ * tick pipeline に差し込む test / debug 用の計測と fault injection。
+ *
+ * `collectDebugMetrics` は headless debug serializer を登録した session だけ true にし、通常 runtime の hot path では
+ * collision metrics を集計しない。`testingHooks` は session ごとに消費する。
+ */
+export type StageTickInstrumentation = Readonly<{
+  collectDebugMetrics: boolean;
   testingHooks: ActiveStageSessionTestingHooks;
 }>;
 
@@ -59,19 +69,19 @@ export type StageTickOutcome =
 export function runStageTick(
   working: WorkingStageState,
   input: InputFrame,
-  options: StageTickContext,
-  debugMetricsEnabled: boolean,
+  content: StageTickContent,
+  instrumentation: StageTickInstrumentation,
 ): StageTickOutcome {
   const spawnedEnemyEntities: EnemyRuntimeEntity[] = [];
 
   // system order の updateStageTimeline。timeline 順に spawn event を生成する。
   while (
-    working.timelineCursor < options.stage.timeline.length
-    && options.stage.timeline[working.timelineCursor]!.tick === working.expectedTick
+    working.timelineCursor < content.stage.timeline.length
+    && content.stage.timeline[working.timelineCursor]!.tick === working.expectedTick
   ) {
-    const step = options.stage.timeline[working.timelineCursor]!;
+    const step = content.stage.timeline[working.timelineCursor]!;
     if (step.action.type === "spawnEnemy") {
-      const enemyDefinition = options.enemiesById.get(step.action.enemy);
+      const enemyDefinition = content.enemiesById.get(step.action.enemy);
       if (!enemyDefinition) {
         return fatalTickOutcome([{ code: "enemy.notFound", message: `Enemy not found: ${step.action.enemy}` }]);
       }
@@ -100,8 +110,8 @@ export function runStageTick(
     working.entityAllocator,
     working.expectedTick,
     spawnedEnemyEntities,
-    options.patternsById,
-    options.bulletsById,
+    content.patternsById,
+    content.bulletsById,
   );
   if (!enemyBulletSpawn.ok) {
     return fatalTickOutcome(enemyBulletSpawn.errors);
@@ -113,11 +123,11 @@ export function runStageTick(
 
   // system order の spawnBulletsPlayerShots。pressed / held の shot intent を fire interval で間引く。
   const spawnedPlayerShotEntityIds = new Set<number>();
-  const playerEntity = findPlayerEntity(working.activeEntities, options.player.id);
+  const playerEntity = findPlayerEntity(working.activeEntities, content.player.id);
   if (!playerEntity) {
-    return fatalTickOutcome([{ code: "player.notFound", message: `Player entity not found: ${options.player.id}` }]);
+    return fatalTickOutcome([{ code: "player.notFound", message: `Player entity not found: ${content.player.id}` }]);
   }
-  const playerShotDefinition = options.playerShotsById.get(playerEntity.shotDefinitionId);
+  const playerShotDefinition = content.playerShotsById.get(playerEntity.shotDefinitionId);
   if (!playerShotDefinition) {
     return fatalTickOutcome([
       { code: "playerShot.notFound", message: `Player shot not found: ${playerEntity.shotDefinitionId}` },
@@ -145,7 +155,7 @@ export function runStageTick(
     working.eventLog.push(playerShotSpawn.value.event);
   }
 
-  if (options.testingHooks.failAfterWorkingMutationTicks.delete(working.expectedTick)) {
+  if (instrumentation.testingHooks.failAfterWorkingMutationTicks.delete(working.expectedTick)) {
     return Object.freeze({ kind: "rejected", result: failAfterWorkingMutationForTesting(working) });
   }
 
@@ -155,8 +165,8 @@ export function runStageTick(
     spawnedThisTickEntityIds: spawnedPlayerShotEntityIds,
   });
   const collision = resolveCollisionAndScoring(advancedEntities, {
-    collectMetrics: debugMetricsEnabled,
-    playerInvincibleTicksAfterHit: options.player.life.invincibleTicksAfterHit,
+    collectMetrics: instrumentation.collectDebugMetrics,
+    playerInvincibleTicksAfterHit: content.player.life.invincibleTicksAfterHit,
     score: working.score,
     tick: working.expectedTick,
   });
@@ -172,14 +182,14 @@ export function runStageTick(
 
   // frame に載せる state は renderer が保持しても安全な immutable snapshot にする。
   const orderedEntities = freezeEntitiesInIdOrder(resolvedEntities);
-  const resolvedPlayer = findPlayerEntity(orderedEntities, options.player.id);
+  const resolvedPlayer = findPlayerEntity(orderedEntities, content.player.id);
   if (!resolvedPlayer) {
-    return fatalTickOutcome([{ code: "player.notFound", message: `Player entity not found: ${options.player.id}` }]);
+    return fatalTickOutcome([{ code: "player.notFound", message: `Player entity not found: ${content.player.id}` }]);
   }
   const state: ReadonlyGameState = Object.freeze({
     tick: working.expectedTick,
-    stageId: options.stage.id,
-    playerId: options.player.id,
+    stageId: content.stage.id,
+    playerId: content.player.id,
     player: toReadonlyPlayerState(resolvedPlayer),
     score: resolvedScore,
     entities: Object.freeze(orderedEntities.map((entity) => toReadonlyEntityState(entity))),

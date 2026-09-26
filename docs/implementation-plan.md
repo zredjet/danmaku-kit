@@ -441,7 +441,7 @@ Phase 1C-R で巨大ファイルは責務単位に分割したが、ディレク
    - Done: Phase 1C-S2: fault injection の移動前に、pending event 上書きが working state だけに効くこと、input 拒否 tick で committed state hook を消費しないこと、同一 tick の PRNG 破壊と `nextEntityId` 上書きがともに committed state へ入ってから working state を作ること、rollback された tick でも消費済み `nextEntityId` 上書きが committed state に残り再適用されないことを test で固定する
    - Done: Phase 1C-S2: `StageSession.tick()` の committed state fault injection（PRNG 破壊、`nextEntityId` 上書き、working state 向け pending event 上書き）を、`options.testingHooks` を引数名へ置き換える以外は本文そのままで `instrumentation/stage-session-testing-hooks.ts` の `applyCommittedStateFaultsBeforeTick()` へ移す。`tick()` は入力照合 → fault 適用 → working state 生成 → pipeline → commit の順に読める
    - Done: Phase 1C-S2: `loaded-game.ts` の restore / startStage で重複していた `createStageSession()` の context 構築を private helper `createStageSessionFromContent()` へ寄せる。testing hook の消費状態は従来どおり session ごとに、検証と restore snapshot 記録の後で作る
-   - Next: `StageTickContext` を content lookup と instrumentation（debug metrics 収集と testing hook）に分ける
+   - Done: Phase 1C-S2: `StageTickContext` を、load 済み content lookup と stage / player の `StageTickContent` と、debug metrics 収集 flag と testing hook の `StageTickInstrumentation` に分け、`runStageTick(working, input, content, instrumentation)` とする。instrumentation は session ごとに1回だけ作り、system 本文は参照元の置き換え以外を変えない
    - Next: timeline spawn を純粋関数の `simulation/stage-timeline-system.ts` へ抽出する。`STAGE_TICK_SYSTEM_ORDER` は design 7.1 の記録として現状のまま残す
 3. Phase 1C-S3: entity kind の縦割り
    - Next: `matchesModulePath` を1 segment の `*` に対応させ、stale rule、basic 内の型 cycle、kind 間 import を検査する guardrail を先に追加する
