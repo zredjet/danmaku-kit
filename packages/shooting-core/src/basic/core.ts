@@ -1,4 +1,6 @@
 import type { LoadedGame, ReadonlyGameState, ReadonlyPlayerState, ShootingCore, StageSession } from "./api-types.ts";
+import { createLoadedContentIndex } from "./content/content-index.ts";
+import type { LoadedContentIndex } from "./content/content-index.ts";
 import { isNamespacedId } from "./content/identifier.ts";
 import {
   MAX_PLAYER_MOVEMENT_SPEED,
@@ -15,7 +17,6 @@ import type {
   Difficulty,
   EnemyDefinition,
   GameDefinition,
-  PathDefinition,
   PatternDefinition,
   PlayerDefinition,
   PlayerId,
@@ -24,18 +25,9 @@ import type {
   StageId,
 } from "./content/types.ts";
 import { validateGameDefinition } from "./content/validation.ts";
-import { EventLog } from "./events/game-event.ts";
-import type { GameEvent } from "./events/game-event.ts";
-import type { HashableGameState, HashablePendingEvent, HashableRuntimeEntityState } from "./hash/hashable-state.ts";
-import { hashHashableGameState, hashHashablePrngState } from "./hash/state-hash.ts";
 import { parseInputFrame } from "./input/parse-input-frame.ts";
-import type {
-  HeadlessDebugEntityCounts,
-  HeadlessDebugEventCounts,
-  HeadlessDebugStateResult,
-  HeadlessDebugTickMetrics,
-  RegisterHeadlessDebugStateSerializer,
-} from "./internal/debug-state.ts";
+import type { HeadlessDebugTickMetrics } from "./internal/debug-state.ts";
+import { createHeadlessDebugTickMetrics, serializeHeadlessDebugState } from "./internal/debug-state.ts";
 import {
   asRecord,
   assertNever,
@@ -46,6 +38,15 @@ import {
   isPositiveSafeInteger,
 } from "./internal/guards.ts";
 import { deepFreezeClone, deepFreezePlainData } from "./internal/immutable.ts";
+import {
+  createActiveStageSessionTestingHooks,
+  createSerializeSourceState,
+  failAfterWorkingMutationForTesting,
+} from "./internal/stage-session-testing-hooks.ts";
+import type {
+  ActiveStageSessionTestingHooks,
+  StageSessionTestingHookOptions,
+} from "./internal/stage-session-testing-hooks.ts";
 import { assertInternalTestHooksEnabled } from "./internal/test-hooks-guard.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
 import type { CoreError, CoreResult } from "./result.ts";
@@ -56,10 +57,8 @@ import {
 } from "./serialization/metadata.ts";
 import type { StageSessionSerializationMetadata } from "./serialization/metadata.ts";
 import type {
-  SerializedDeterministicState,
   SerializedEnabledFeatureState,
   SerializedGameState,
-  SerializedPendingEvent,
   SerializedPatternRunnerState,
   SerializedRuntimeEntityState,
 } from "./serialization/types.ts";
@@ -98,9 +97,10 @@ import { freezeEntitiesInIdOrder } from "./simulation/system-order.ts";
 import { XorShift32 } from "./simulation/prng.ts";
 import type { SerializedPrngState } from "./simulation/prng.ts";
 import { MAX_RESTORABLE_NEXT_ENTITY_ID } from "./simulation/entity-id-budget.ts";
-
-/** Committed state が次 tick へ持ち越してよい deterministic event。 */
-type CommittedPendingEvent = HashablePendingEvent;
+import { createCommittedStageState, createWorkingStageState } from "./state/committed-state.ts";
+import type { CommittedPendingEvent, CommittedStageState, UntrustedCommittedStageState } from "./state/committed-state.ts";
+import { createHashableGameState } from "./state/hashable-projection.ts";
+import { serializeCommittedStageState } from "./state/serialize-projection.ts";
 
 /**
  * Core minimum 実装を生成する。
@@ -145,17 +145,6 @@ function createShootingCoreInternal(
   });
 }
 
-type LoadedContentIndex = Readonly<{
-  definition: GameDefinition;
-  bulletsById: ReadonlyMap<string, BulletDefinition>;
-  enemiesById: ReadonlyMap<string, EnemyDefinition>;
-  pathsById: ReadonlyMap<string, PathDefinition>;
-  patternsById: ReadonlyMap<string, PatternDefinition>;
-  playerShotsById: ReadonlyMap<string, PlayerShotDefinition>;
-  playersById: ReadonlyMap<string, PlayerDefinition>;
-  stagesById: ReadonlyMap<string, StageDefinition>;
-}>;
-
 type StageSessionContext = {
   debugSeed: string | null;
   initialState: CommittedStageState;
@@ -168,22 +157,6 @@ type StageSessionContext = {
   player: PlayerDefinition;
   testingHooks: ActiveStageSessionTestingHooks;
 };
-
-type CommittedStageState = Readonly<{
-  expectedTick: number;
-  activeEntities: readonly RuntimeEntityState[];
-  nextEntityId: number;
-  pendingEvents: readonly CommittedPendingEvent[];
-  prngState: SerializedPrngState;
-  score: number;
-  timelineCursor: number;
-}>;
-
-/** restore や fault injection 直後の、PRNG / pending event 検証前 committed snapshot。 */
-type UntrustedCommittedStageState = Omit<CommittedStageState, "pendingEvents" | "prngState"> & Readonly<{
-  pendingEvents: readonly unknown[];
-  prngState: unknown;
-}>;
 
 const MAX_RESTORE_TOP_LEVEL_STRING_LENGTH = 8_192;
 const MAX_RESTORE_ENABLED_FEATURES_LENGTH = 64;
@@ -299,16 +272,6 @@ type RestoreTopLevelState = Readonly<
   }
 >;
 
-type WorkingStageState = {
-  expectedTick: number;
-  activeEntities: RuntimeEntityState[];
-  entityAllocator: EntityAllocator;
-  eventLog: EventLog;
-  prng: XorShift32;
-  score: number;
-  timelineCursor: number;
-};
-
 type ValidatedRestoreDeterministicPayload = Readonly<{
   activeEntities: readonly RuntimeEntityState[];
   enabledFeatureStates: readonly ValidatedRestoreEnabledFeatureState[];
@@ -317,57 +280,6 @@ type ValidatedRestoreDeterministicPayload = Readonly<{
   score: number;
   timelineCursor: number;
 }>;
-
-type StageSessionTestingHookOptions = Readonly<{
-  corruptCommittedPrngStateTicks?: readonly number[];
-  failAfterWorkingMutationTicks?: readonly number[];
-  overrideCommittedNextEntityIdTicks?: ReadonlyArray<Readonly<{
-    tick: number;
-    nextEntityId: number;
-  }>>;
-  overrideCommittedPendingEventsTicks?: ReadonlyArray<Readonly<{
-    tick: number;
-    pendingEvents: readonly unknown[];
-  }>>;
-  reverseCommittedEntitiesOnSerialize?: boolean;
-  overrideCommittedNextEntityIdOnSerialize?: number;
-  overrideCommittedPendingEventsOnSerialize?: readonly unknown[];
-  overrideCommittedPrngStateOnSerialize?: unknown;
-  failHeadlessDebugStateSerialization?: boolean;
-  recordCommittedStateOnFatal?: (state: CommittedStageState) => void;
-  recordHashableStateOnSerialize?: (state: HashableGameState) => void;
-  recordRestoreSerializedSnapshot?: (state: SerializedGameState) => void;
-  registerHeadlessDebugStateSerializer?: RegisterHeadlessDebugStateSerializer;
-}>;
-
-type ActiveStageSessionTestingHooks = Readonly<{
-  corruptCommittedPrngStateTicks: Set<number>;
-  failAfterWorkingMutationTicks: Set<number>;
-  overrideCommittedNextEntityIdByTick: Map<number, number>;
-  overrideCommittedPendingEventsByTick: Map<number, readonly unknown[]>;
-  reverseCommittedEntitiesOnSerialize: boolean;
-  overrideCommittedNextEntityIdOnSerialize?: number;
-  overrideCommittedPendingEventsOnSerialize?: readonly unknown[];
-  overrideCommittedPrngStateOnSerialize?: unknown;
-  failHeadlessDebugStateSerialization: boolean;
-  recordCommittedStateOnFatal?: (state: CommittedStageState) => void;
-  recordHashableStateOnSerialize?: (state: HashableGameState) => void;
-  registerHeadlessDebugStateSerializer?: RegisterHeadlessDebugStateSerializer;
-}>;
-
-/** validated content を runtime lookup しやすい形へまとめる。 */
-function createLoadedContentIndex(definition: GameDefinition): LoadedContentIndex {
-  return {
-    definition,
-    bulletsById: new Map(definition.content.bullets.map((bullet) => [bullet.id, bullet])),
-    enemiesById: new Map(definition.content.enemies.map((enemy) => [enemy.id, enemy])),
-    pathsById: new Map(definition.content.paths.map((path) => [path.id, path])),
-    patternsById: new Map(definition.content.patterns.map((pattern) => [pattern.id, pattern])),
-    playerShotsById: new Map(definition.content.playerShots.map((playerShot) => [playerShot.id, playerShot])),
-    playersById: new Map(definition.content.players.map((player) => [player.id, player])),
-    stagesById: new Map(definition.content.stages.map((stage) => [stage.id, stage])),
-  };
-}
 
 /**
  * 検証済み snapshot から `LoadedGame` を作る。
@@ -801,385 +713,6 @@ function createStageSession(options: StageSessionContext): StageSession {
   return Object.freeze(session);
 }
 
-/** committed state と process-local metrics から test-only headless dump を作る。 */
-function serializeHeadlessDebugState(
-  metadata: StageSessionSerializationMetadata,
-  committedState: CommittedStageState,
-  seed: string | null,
-  metrics: HeadlessDebugTickMetrics | null,
-  forceHashFailure: boolean,
-): HeadlessDebugStateResult {
-  const hashableState = createHashableGameState(metadata, committedState);
-  if (!hashableState.ok) {
-    return errorResult(hashableState.errors);
-  }
-  let stateHash: string;
-  let prngHash: string;
-  try {
-    if (forceHashFailure) {
-      throw new Error("injected headless debug state hash failure");
-    }
-    stateHash = hashHashableGameState(hashableState.value);
-    prngHash = hashHashablePrngState(hashableState.value.prngState);
-  } catch {
-    return createHeadlessDebugStateHashError();
-  }
-  return okResult(Object.freeze({
-    schemaVersion: "1",
-    kind: "headless",
-    tick: committedState.expectedTick,
-    seed,
-    stateHash,
-    prngHash,
-    entityCounts: countHeadlessDebugEntities(committedState.activeEntities),
-    collisionCandidates: metrics?.collisionCandidates ?? null,
-    eventCounts: metrics?.eventCounts ?? null,
-  }));
-}
-
-/** test-only hash failure を public CoreErrorCode へ漏らさず immutable result にする。 */
-function createHeadlessDebugStateHashError(): HeadlessDebugStateResult {
-  return Object.freeze({
-    ok: false,
-    errors: Object.freeze([
-      Object.freeze({
-        code: "debugState.hashFailed" as const,
-        message: "headless debug state hash could not be encoded",
-      }),
-    ]),
-  });
-}
-
-/** committed entity を固定 kind ごとの件数へ集計する。 */
-function countHeadlessDebugEntities(entities: readonly RuntimeEntityState[]): HeadlessDebugEntityCounts {
-  const counts: Record<RuntimeEntityState["kind"], number> = {
-    player: 0,
-    enemy: 0,
-    enemyBullet: 0,
-    playerShot: 0,
-  };
-  for (const entity of entities) {
-    counts[entity.kind] += 1;
-  }
-  return Object.freeze(counts);
-}
-
-/** frame event を固定 type ごとの件数へ集計し、次の成功 commit まで保持する。 */
-function countHeadlessDebugEvents(
-  events: readonly Readonly<{ type: GameEvent["type"] }>[],
-): HeadlessDebugEventCounts {
-  const counts: Record<GameEvent["type"], number> = {
-    stageStarted: 0,
-    tickAdvanced: 0,
-    entitySpawned: 0,
-    entityDestroyed: 0,
-    playerHit: 0,
-    playerShotsSpawnedBatch: 0,
-    enemyBulletsSpawnedBatch: 0,
-    scoreChanged: 0,
-  };
-  for (const event of events) {
-    counts[event.type] += 1;
-  }
-  return Object.freeze(counts);
-}
-
-/** 成功 tick に付随する非deterministic debug metrics を immutable snapshot にする。 */
-function createHeadlessDebugTickMetrics(
-  collisionCandidates: number,
-  events: readonly Readonly<{ type: GameEvent["type"] }>[],
-): HeadlessDebugTickMetrics {
-  return Object.freeze({
-    collisionCandidates,
-    eventCounts: countHeadlessDebugEvents(events),
-  });
-}
-
-/** committed snapshot と session metadata から public serialize DTO を生成する。 */
-function serializeCommittedStageState(
-  metadata: StageSessionSerializationMetadata,
-  committedState: UntrustedCommittedStageState,
-): CoreResult<SerializedGameState> {
-  const prng = XorShift32.restore(committedState.prngState);
-  if (!prng.ok) {
-    return prng;
-  }
-  const entityInvariant = validateCommittedEntityInvariants(committedState);
-  if (!entityInvariant.ok) {
-    return entityInvariant;
-  }
-  const pendingEvents = validateCommittedPendingEventInvariants(committedState, metadata.stageId);
-  if (!pendingEvents.ok) {
-    return pendingEvents;
-  }
-
-  const deterministicRuntimeEntities = committedState.activeEntities.map((entity) => projectRuntimeEntityForSerializedState(entity));
-  const deterministicPendingEvents = pendingEvents.value.map((event) => projectPendingEventForSerializedState(event));
-  const state: SerializedDeterministicState = {
-    runtimeEntities: deterministicRuntimeEntities,
-    pendingEvents: deterministicPendingEvents,
-    score: committedState.score,
-    timelineCursor: committedState.timelineCursor,
-    patternRunnerStates: [],
-    enabledFeatureStates: [],
-  };
-
-  return okResult(deepFreezeClone({
-    coreVersion: metadata.coreVersion,
-    schemaVersion: metadata.schemaVersion,
-    contentVersion: metadata.contentVersion,
-    inputFormatVersion: metadata.inputFormatVersion,
-    stateHashVersion: metadata.stateHashVersion,
-    enabledFeatures: metadata.enabledFeatures,
-    stageId: metadata.stageId,
-    difficulty: metadata.difficulty,
-    playerId: metadata.playerId,
-    expectedTick: committedState.expectedTick,
-    nextEntityId: committedState.nextEntityId,
-    prngState: prng.value.snapshot(),
-    state,
-  }));
-}
-
-/** committed snapshot から state hash 用の正規化済み内部 DTO を生成する。 */
-function createHashableGameState(
-  metadata: StageSessionSerializationMetadata,
-  committedState: CommittedStageState,
-): CoreResult<HashableGameState> {
-  const prng = XorShift32.restore(committedState.prngState);
-  if (!prng.ok) {
-    return prng;
-  }
-  const entityInvariant = validateCommittedEntityInvariants(committedState);
-  if (!entityInvariant.ok) {
-    return entityInvariant;
-  }
-  const pendingEvents = validateCommittedPendingEventInvariants(committedState, metadata.stageId);
-  if (!pendingEvents.ok) {
-    return pendingEvents;
-  }
-
-  return okResult(deepFreezeClone({
-    stateHashVersion: metadata.stateHashVersion,
-    coreVersion: metadata.coreVersion,
-    schemaVersion: metadata.schemaVersion,
-    expectedTick: committedState.expectedTick,
-    nextEntityId: committedState.nextEntityId,
-    timelineCursor: committedState.timelineCursor,
-    prngState: prng.value.snapshot(),
-    score: committedState.score,
-    runtimeEntities: committedState.activeEntities.map((entity) => projectRuntimeEntityForHashableState(entity)),
-    pendingEvents: pendingEvents.value.map((event) => projectPendingEventForHashableState(event)),
-    patternRunnerStates: [],
-    enabledFeatureStates: [],
-  }));
-}
-
-/** serialize 専用 fault injection を committed snapshot の clone へだけ反映する。 */
-function createSerializeSourceState(
-  committedState: CommittedStageState,
-  testingHooks: ActiveStageSessionTestingHooks,
-): UntrustedCommittedStageState {
-  return {
-    ...committedState,
-    activeEntities: testingHooks.reverseCommittedEntitiesOnSerialize
-      ? [...committedState.activeEntities].reverse()
-      : committedState.activeEntities,
-    nextEntityId: testingHooks.overrideCommittedNextEntityIdOnSerialize ?? committedState.nextEntityId,
-    pendingEvents: testingHooks.overrideCommittedPendingEventsOnSerialize === undefined
-      ? committedState.pendingEvents
-      : deepFreezeClone(testingHooks.overrideCommittedPendingEventsOnSerialize),
-    prngState: testingHooks.overrideCommittedPrngStateOnSerialize === undefined
-      ? committedState.prngState
-      : testingHooks.overrideCommittedPrngStateOnSerialize,
-  };
-}
-
-/** runtime entity を public serialize 用 DTO に写す。 */
-function projectRuntimeEntityForSerializedState(entity: RuntimeEntityState): SerializedRuntimeEntityState {
-  switch (entity.kind) {
-    case "player":
-      return {
-        id: entity.id,
-        kind: "player",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-        lives: entity.lives,
-        invincibleTicksRemaining: entity.invincibleTicksRemaining,
-        nextShotAllowedTick: entity.nextShotAllowedTick,
-        movement: { speed: entity.movement.speed, focusSpeed: entity.movement.focusSpeed },
-        shotDefinitionId: entity.shotDefinitionId,
-      };
-    case "enemy":
-      return {
-        id: entity.id,
-        kind: "enemy",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-        hp: entity.hp,
-        scoreOnKill: entity.scoreOnKill,
-        pathId: entity.pathId,
-        patternId: entity.patternId,
-      };
-    case "enemyBullet":
-      return {
-        id: entity.id,
-        kind: "enemyBullet",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-      };
-    case "playerShot":
-      return {
-        id: entity.id,
-        kind: "playerShot",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-        velocity: { x: entity.velocity.x, y: entity.velocity.y },
-        remainingLifetimeTicks: entity.remainingLifetimeTicks,
-        damage: entity.damage,
-      };
-  }
-}
-
-/** runtime entity から hash 専用 DTO へ明示的に写す。 */
-function projectRuntimeEntityForHashableState(entity: RuntimeEntityState): HashableRuntimeEntityState {
-  switch (entity.kind) {
-    case "player":
-      return {
-        id: entity.id,
-        kind: "player",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-        lives: entity.lives,
-        invincibleTicksRemaining: entity.invincibleTicksRemaining,
-        nextShotAllowedTick: entity.nextShotAllowedTick,
-        movement: { speed: entity.movement.speed, focusSpeed: entity.movement.focusSpeed },
-        shotDefinitionId: entity.shotDefinitionId,
-      };
-    case "enemy":
-      return {
-        id: entity.id,
-        kind: "enemy",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-        hp: entity.hp,
-        scoreOnKill: entity.scoreOnKill,
-        pathId: entity.pathId,
-        patternId: entity.patternId,
-      };
-    case "enemyBullet":
-      return {
-        id: entity.id,
-        kind: "enemyBullet",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-      };
-    case "playerShot":
-      return {
-        id: entity.id,
-        kind: "playerShot",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-        velocity: { x: entity.velocity.x, y: entity.velocity.y },
-        remainingLifetimeTicks: entity.remainingLifetimeTicks,
-        damage: entity.damage,
-      };
-  }
-}
-
-/** pending queue に残せる event を public serialize 用 DTO に写す。 */
-function projectPendingEventForSerializedState(event: CommittedPendingEvent): SerializedPendingEvent {
-  switch (event.type) {
-    case "stageStarted":
-      return {
-        type: "stageStarted",
-        tick: event.tick,
-        stageId: event.stageId,
-      };
-    default:
-      return assertNever(event.type);
-  }
-}
-
-/** committed pending event から hash 専用 DTO へ明示的に写す。 */
-function projectPendingEventForHashableState(event: CommittedPendingEvent): HashablePendingEvent {
-  switch (event.type) {
-    case "stageStarted":
-      return {
-        type: "stageStarted",
-        tick: event.tick,
-        stageId: event.stageId,
-      };
-    default:
-      return assertNever(event.type);
-  }
-}
-
-/** committed 側で保持する値を mutable handle なしの immutable snapshot に正規化する。 */
-function createCommittedStageState(state: {
-  expectedTick: number;
-  activeEntities: readonly RuntimeEntityState[];
-  nextEntityId: number;
-  pendingEvents: readonly CommittedPendingEvent[];
-  prngState: SerializedPrngState;
-  score: number;
-  timelineCursor: number;
-}): CommittedStageState {
-  const orderedEntities = freezeEntitiesInIdOrder(state.activeEntities);
-  return Object.freeze({
-    expectedTick: state.expectedTick,
-    activeEntities: deepFreezeClone(orderedEntities),
-    nextEntityId: state.nextEntityId,
-    pendingEvents: deepFreezeClone(state.pendingEvents),
-    prngState: deepFreezeClone(state.prngState),
-    score: state.score,
-    timelineCursor: state.timelineCursor,
-  });
-}
-
-/** 1 tick 分の作業領域を committed snapshot から復元する。 */
-function createWorkingStageState(committedState: UntrustedCommittedStageState, stageId: StageId): CoreResult<WorkingStageState> {
-  const restoredPrng = XorShift32.restore(committedState.prngState);
-  if (!restoredPrng.ok) {
-    return restoredPrng;
-  }
-  const restoredAllocator = EntityAllocator.restore(committedState.nextEntityId);
-  if (!restoredAllocator.ok) {
-    return restoredAllocator;
-  }
-  const entityInvariant = validateCommittedEntityInvariants(committedState);
-  if (!entityInvariant.ok) {
-    return entityInvariant;
-  }
-  const pendingEvents = validateCommittedPendingEventInvariants(committedState, stageId);
-  if (!pendingEvents.ok) {
-    return pendingEvents;
-  }
-
-  const eventLog = new EventLog();
-  for (const event of pendingEvents.value) {
-    eventLog.push(event);
-  }
-
-  return okResult({
-    activeEntities: [...deepFreezeClone(committedState.activeEntities)],
-    entityAllocator: restoredAllocator.value,
-    eventLog,
-    expectedTick: committedState.expectedTick,
-    prng: restoredPrng.value,
-    score: committedState.score,
-    timelineCursor: committedState.timelineCursor,
-  });
-}
-
 /** 内部 invariant 破壊を fatal reason として latch できる public error に畳む。 */
 function freezeFatalErrors(errors: readonly CoreError[]): readonly CoreError[] {
   const detail = errors.map((error) => `${error.code}: ${error.message}`).join("; ");
@@ -1189,153 +722,6 @@ function freezeFatalErrors(errors: readonly CoreError[]): readonly CoreError[] {
       message: `Stage session entered a fatal state: ${detail}`,
     }),
   ]);
-}
-
-/** 内部テスト用 hook を stage session ごとの消費状態へ変換する。 */
-function createActiveStageSessionTestingHooks(
-  testingHooks: StageSessionTestingHookOptions,
-): ActiveStageSessionTestingHooks {
-  return Object.freeze({
-    corruptCommittedPrngStateTicks: new Set(testingHooks.corruptCommittedPrngStateTicks ?? []),
-    failAfterWorkingMutationTicks: new Set(testingHooks.failAfterWorkingMutationTicks ?? []),
-    overrideCommittedNextEntityIdByTick: createUniqueTickOverrideMap(
-      testingHooks.overrideCommittedNextEntityIdTicks ?? [],
-      (override) => override.nextEntityId,
-    ),
-    overrideCommittedPendingEventsByTick: createUniqueTickOverrideMap(
-      testingHooks.overrideCommittedPendingEventsTicks ?? [],
-      (override) => override.pendingEvents,
-    ),
-    reverseCommittedEntitiesOnSerialize: testingHooks.reverseCommittedEntitiesOnSerialize ?? false,
-    overrideCommittedNextEntityIdOnSerialize: testingHooks.overrideCommittedNextEntityIdOnSerialize,
-    overrideCommittedPendingEventsOnSerialize: testingHooks.overrideCommittedPendingEventsOnSerialize,
-    overrideCommittedPrngStateOnSerialize: testingHooks.overrideCommittedPrngStateOnSerialize,
-    failHeadlessDebugStateSerialization: testingHooks.failHeadlessDebugStateSerialization ?? false,
-    recordCommittedStateOnFatal: testingHooks.recordCommittedStateOnFatal,
-    recordHashableStateOnSerialize: testingHooks.recordHashableStateOnSerialize,
-    registerHeadlessDebugStateSerializer: testingHooks.registerHeadlessDebugStateSerializer,
-  });
-}
-
-/** hook fixture の重複 tick を setup 時に検出し、silent overwrite を防ぐ。 */
-function createUniqueTickOverrideMap<TOverride extends Readonly<{ tick: number }>, TValue>(
-  overrides: readonly TOverride[],
-  selectValue: (override: TOverride) => TValue,
-): Map<number, TValue> {
-  const map = new Map<number, TValue>();
-  for (const override of overrides) {
-    if (map.has(override.tick)) {
-      throw new Error(`Duplicate testing hook override tick: ${override.tick}`);
-    }
-    map.set(override.tick, selectValue(override));
-  }
-  return map;
-}
-
-/** rollback regression 用に、working state を実際に汚してから失敗させる。 */
-function failAfterWorkingMutationForTesting(working: WorkingStageState): CoreResult<never> {
-  const beforeEntityCount = working.activeEntities.length;
-  const beforeExpectedTick = working.expectedTick;
-  const beforeNextEntityId = working.entityAllocator.snapshot();
-  const beforeScore = working.score;
-  const beforeTimelineCursor = working.timelineCursor;
-  const allocatedEntity = working.entityAllocator.create();
-  if (allocatedEntity.ok && working.activeEntities[0]) {
-    working.activeEntities.push({ ...working.activeEntities[0], id: allocatedEntity.value.id });
-  }
-  working.expectedTick += 1;
-  working.eventLog.push({ type: "tickAdvanced", tick: working.expectedTick });
-  working.prng.nextUint32();
-  working.score += 1;
-  working.timelineCursor += 1;
-  return coreError(
-    "testHook.failure",
-    [
-      "test hook failed after mutating working stage state",
-      `entities=${beforeEntityCount}->${working.activeEntities.length}`,
-      `expectedTick=${beforeExpectedTick}->${working.expectedTick}`,
-      `nextEntityId=${beforeNextEntityId}->${working.entityAllocator.snapshot()}`,
-      `score=${beforeScore}->${working.score}`,
-      `timelineCursor=${beforeTimelineCursor}->${working.timelineCursor}`,
-    ].join("; "),
-  );
-}
-
-/** committed snapshot の entity id と allocator snapshot の整合性を検証する。 */
-function validateCommittedEntityInvariants(committedState: UntrustedCommittedStageState): CoreResult<null> {
-  const restoredAllocator = EntityAllocator.restore(committedState.nextEntityId);
-  if (!restoredAllocator.ok) {
-    return restoredAllocator;
-  }
-
-  const ids = new Set<number>();
-  let maxEntityId = 0;
-  let previousEntityId = 0;
-
-  for (const entity of committedState.activeEntities) {
-    if (!Number.isSafeInteger(entity.id) || entity.id < 1) {
-      return coreError("entityAllocator.invalidState", "active entity id must be a positive safe integer");
-    }
-    if (entity.id <= previousEntityId) {
-      return coreError("entityAllocator.invalidState", "active entity ids must be sorted in strict ascending order");
-    }
-    if (ids.has(entity.id)) {
-      return coreError("entityAllocator.invalidState", `active entity id must be unique: ${entity.id}`);
-    }
-    ids.add(entity.id);
-    maxEntityId = Math.max(maxEntityId, entity.id);
-    previousEntityId = entity.id;
-  }
-
-  if (committedState.nextEntityId <= maxEntityId) {
-    return coreError(
-      "entityAllocator.invalidState",
-      `nextEntityId must be greater than active entity ids: nextEntityId=${committedState.nextEntityId}, maxEntityId=${maxEntityId}`,
-    );
-  }
-
-  return okResult(null);
-}
-
-/** committed snapshot に持ち越された pending event が tick と stage に整合することを検証する。 */
-function validateCommittedPendingEventInvariants(
-  committedState: UntrustedCommittedStageState,
-  stageId: StageId,
-): CoreResult<readonly CommittedPendingEvent[]> {
-  const pendingEvents = committedState.pendingEvents;
-  if (committedState.expectedTick === 0) {
-    if (
-      pendingEvents.length !== 1
-      || !isCommittedStageStartedEvent(pendingEvents[0], stageId)
-    ) {
-      return coreError("stageSession.fatal", "unsupported pending event in committed state");
-    }
-    return okResult(Object.freeze([{ type: "stageStarted", tick: 0, stageId }]));
-  }
-
-  if (pendingEvents.length > 0) {
-    return coreError("stageSession.fatal", "unsupported pending event in committed state");
-  }
-  return okResult(Object.freeze([]));
-}
-
-/** 未検証の pending event が、同 stage の stageStarted event かどうかを判定する。 */
-function isCommittedStageStartedEvent(value: unknown, stageId: StageId): value is CommittedPendingEvent {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const keys = Object.keys(value);
-  if (
-    keys.length !== 3
-    || Object.getOwnPropertySymbols(value).length > 0
-    || !keys.includes("type")
-    || !keys.includes("tick")
-    || !keys.includes("stageId")
-  ) {
-    return false;
-  }
-  const event = value as Partial<CommittedPendingEvent>;
-  return event.type === "stageStarted" && event.tick === 0 && event.stageId === stageId;
 }
 
 /** active entity list から現在の自機 runtime component を探す。 */

@@ -116,16 +116,16 @@ Status legend:
 | `docs/design.md` Player movement | player input axes / focus movement / playfield clamp | Done | `packages/shooting-core/src/basic/simulation/player-movement-system.ts`, `packages/shooting-core/src/basic/core.ts` | `packages/shooting-core/src/basic/simulation/player-movement-system.test.ts`, `packages/shooting-core/src/basic/core.test.ts` | `npm test` |
 | `docs/design.md` Enemy bullet fireOnSpawn | PatternDefinition の最小敵弾生成経路、複数 enemy と player shot の同 tick order 固定 | Done | `packages/shooting-core/src/basic/content/types.ts`, `packages/shooting-core/src/basic/content/validation.ts`, `packages/shooting-core/src/basic/events/game-event.ts`, `packages/shooting-core/src/basic/result.ts`, `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/simulation/entity.ts`, `packages/shooting-core/src/basic/simulation/runtime-entity.ts`, `packages/shooting-core/src/basic/simulation/enemy-bullet-system.ts` | `packages/shooting-core/src/basic/core.test.ts`, `packages/shooting-core/src/basic/simulation/entity.test.ts`, `packages/shooting-core/src/basic/simulation/runtime-entity.test.ts`, `packages/shooting-core/src/basic/simulation/enemy-bullet-system.test.ts`, `tests/public-type-contract.ts` | `npm test`, `npm run typecheck` |
 | `docs/design.md` Collision / score minimum | MVP collision pair と fixed `scoreOnKill` | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/events/game-event.ts`, `packages/shooting-core/src/basic/simulation/collision-system.ts` | `packages/shooting-core/src/basic/core.test.ts`, `packages/shooting-core/src/basic/simulation/collision-system.test.ts`, `tests/public-type-contract.ts` | `npm test`, `npm run typecheck` |
-| `docs/design.md` Transactional tick contract | 汎用 working / committed state 境界 | Done | `packages/shooting-core/src/basic/core.ts` | `packages/shooting-core/src/basic/core.test.ts` | `npm test`, `npm run typecheck` |
+| `docs/design.md` Transactional tick contract | 汎用 working / committed state 境界 | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/state/committed-state.ts` | `packages/shooting-core/src/basic/core.test.ts` | `npm test`, `npm run typecheck` |
 | `docs/design.md` Transactional tick contract | fatal state と fatal 後 `tick()` の error latch | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/result.ts`, `packages/shooting-core/src/basic/internal/testing-hooks.ts` | `packages/shooting-core/src/basic/core.test.ts`, `tests/public-type-contract.ts` | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | serialized DTO contract | Done | `packages/shooting-core/src/basic/serialization/types.ts`, `packages/shooting-core/src/basic/index.ts` | `tests/public-type-contract.ts` | `npm test`, `npm run typecheck` |
-| `docs/design.md` Replay determinism | serialize minimum | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/serialization/types.ts` | metadata / field mapping / pendingEvents / empty feature state / deep immutable / fatal 後 error を追加 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Replay determinism | serialize minimum | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/state/serialize-projection.ts`, `packages/shooting-core/src/basic/serialization/types.ts` | metadata / field mapping / pendingEvents / empty feature state / deep immutable / fatal 後 error を追加 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | restore API / error boundary | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/result.ts` | restore method contract、restore error code、version / content / top-level feature mismatch を追加 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | deterministic payload restore shape / registry / runtime budget validation | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/content/runtime-budgets.ts`, `packages/shooting-core/src/basic/result.ts` | PRNG snapshot、pending event、runtime entity、registry reference、runtime budget validation を追加 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | accepted committed state 変換準備 | Done | `packages/shooting-core/src/basic/core.ts` | validated restore DTO を `CommittedStageState` へ変換し、既存 serialize 経路へ通す | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | extension state / JSON guard / feature mismatch | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/serialization/restore-json.ts` | extension payload guard と feature mismatch 分類を追加 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | transactional restore / roundtrip determinism | Done | `packages/shooting-core/src/basic/core.ts` | restore 後 serialize / 後続 tick 一致、失敗 restore の transactionality を追加 | `npm test`, `npm run typecheck` |
-| `docs/design.md` Replay determinism | state hash minimum: `HashableGameState` projection | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/hash/hashable-state.ts` | committed state から hash DTO を生成し、public serialize DTO と型結合しない direct projection を固定 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Replay determinism | state hash minimum: `HashableGameState` projection | Done | `packages/shooting-core/src/basic/state/hashable-projection.ts`, `packages/shooting-core/src/basic/hash/hashable-state.ts` | committed state から hash DTO を生成し、public serialize DTO と型結合しない direct projection を固定 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | state hash minimum: canonical encoding / digest | Done | `packages/shooting-core/src/basic/hash/canonical-encoder.ts`, `hashable-game-state-adapter.ts`, `xxhash64.ts`, `state-hash.ts`, `testing/state-hash-comparison.ts` | canonical encoder、adapter、xxHash64、PRNG / game-state digest golden、first divergent tick、gameplay smoke、restore 後の hash 一致を固定 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Replay determinism | replay metadata minimum | Done | `packages/shooting-core/src/basic/replay/metadata.ts`, `packages/shooting-core/src/basic/index.ts` | replay file metadata と playback session は作らず、互換性 metadata 型だけ追加 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Content validation CLI | output contract | Done | `tools/validate-content/src/types.ts`, `tools/validate-content/src/output.ts` | immutable diagnostic、JSON / human formatter、exit code correlation を固定 | `npm test`, `npm run typecheck` |
@@ -344,7 +344,7 @@ Done:
 - 移動した内部 API を `core.ts` から re-export せず、import 元を新 path へ更新する
 - 完全に同一の helper だけを統合する。`hasOnlyKeys` と `validateAllowedKeys`、shallow / dense array clone 群、lone surrogate の扱いが異なる UTF-8 encoder、entity id 以外でも絞り込む `findPlayerEntity` と collision の `findPlayer`、package をまたぐ重複は統合しない
 - 目安は非 test source 約400行、test 約600行とする。超える場合は責務の混在を確認して分割を検討する
-- 依存方向: `core.ts` を import してよいのは `index.ts` と `internal/testing-hooks.ts` だけとし、`hash/` は `session/` / `serialization/restore/` を import しない。runtime import cycle を作らない
+- 依存方向: `core.ts` を import してよいのは `index.ts` と `internal/testing-hooks.ts` だけとし、`hash/` は `state/` / `session/` / `serialization/restore/` を、`state/` は `session/` / `serialization/restore/` を import しない。runtime import cycle を作らない
 
 分割後の shooting-core `src/basic/` 構成:
 
@@ -354,12 +354,13 @@ Done:
 | `api-types.ts` | `StartStageOptions`、`ReadonlyGameState`、`ReadonlyPlayerState`、`GameFrame`、`ShootingCore`、`LoadedGame`、`StageSession` |
 | `session/loaded-game.ts`, `session/start-stage-options.ts` | `startStage()` と `restore()` の委譲、start option parse |
 | `session/stage-session.ts`, `session/tick-pipeline.ts` | fatal latch / commit / serialize / debug 登録と、system order に沿った 1 tick pipeline |
-| `session/committed-state.ts` | committed / working state、entity / pending event invariant |
+| `state/committed-state.ts` | committed / working state、entity / pending event invariant |
+| `state/serialize-projection.ts`, `state/hashable-projection.ts` | committed state から public serialize DTO / 内部 hash DTO への projection |
 | `content/content-index.ts` | `LoadedContentIndex` |
 | `input/parse-input-frame.ts` | `InputFrame` の runtime parse |
-| `serialization/metadata.ts`, `serialization/serialize-state.ts` | version 定数、serialization metadata、feature canonical order、serialize projection |
+| `serialization/metadata.ts` | version 定数、serialization metadata、feature canonical order |
 | `serialization/restore/*.ts` | restore orchestration、top-level metadata / compatibility、deterministic payload、runtime entity、kind 別 validator、allocation order、plain data clone guard |
-| `hash/hashable-state.ts`, `hash/hashable-projection.ts` | `Hashable*` DTO / field order と committed state からの projection |
+| `hash/hashable-state.ts` | `Hashable*` DTO / field order |
 | `internal/guards.ts`, `internal/test-hooks-guard.ts`, `internal/stage-session-testing-hooks.ts`, `internal/debug-state.ts` | 共通 guard、test hook 有効化 guard、session testing hook、headless debug serializer |
 
 1. Phase 1C-R1: hashable state 分離と cycle 解消
@@ -370,9 +371,10 @@ Done:
    - Done: `internal/guards.ts`、3箇所の test hook 有効化 guard を `purpose` 引数で message を保ったまま統合する `internal/test-hooks-guard.ts`、`input/parse-input-frame.ts`、`session/start-stage-options.ts` を抽出し、`serialization/metadata.ts` へ serialization metadata 型と feature canonical order を寄せる。同一実装の `asRecord`（`content/validation.ts`）と `isPlainObjectContainer`（`serialization/restore-json.ts`）は `internal/guards.ts` の1実装にする
    - Done: `StartStageOptions` の parser が `core.ts` へ型 import を戻さないよう、R3 予定だった型だけの `api-types.ts` を先行して抽出し、`index.ts` と内部 module の型 import 元を切り替える。非 test source で `core.ts` を import するのは `index.ts` と `internal/testing-hooks.ts` だけになった
 3. Phase 1C-R3: state model 層
-   - Next: `session/committed-state.ts`、`content/content-index.ts`、`serialization/serialize-state.ts`、`hash/hashable-projection.ts`、`internal/stage-session-testing-hooks.ts`、headless debug serializer を抽出する
+   - Done: committed / working state と invariant を `state/committed-state.ts`、serialize / hash projection を `state/serialize-projection.ts` / `state/hashable-projection.ts`、`LoadedContentIndex` を `content/content-index.ts`、testing hook option / 消費状態 / serialize 時 fault injection / working mutation failure を `internal/stage-session-testing-hooks.ts`、headless debug serializer と metrics 集計を既存の `internal/debug-state.ts` へ移す
+   - Done: hash projection は committed state model に依存するため、当初予定の `hash/hashable-projection.ts` / `session/committed-state.ts` / `serialization/serialize-state.ts` ではなく、session より下の model 層 `state/` へ置く。`hash/` は DTO / encoder / digest だけを持ち、`state/` / `session/` を import しない
 4. Phase 1C-R4: restore validation 分割
-   - Queued: Phase 1C-R4: restore validation を `serialization/restore/` へ移し、`LoadedGame.restore()` 内の検証手順を orchestration 関数として抽出する
+   - Next: restore validation を `serialization/restore/` へ移し、`LoadedGame.restore()` 内の検証手順を orchestration 関数として抽出する
 5. Phase 1C-R5: session 分割
    - Queued: Phase 1C-R5a: `createStageSession` と `createLoadedGame` を `session/` へ移し、`core.ts` を facade にする
    - Queued: Phase 1C-R5b: tick 内 system step を `session/tick-pipeline.ts` の関数へ抽出する。移動ではなく構造変更なので別 commit とし、system order と golden の不変を確認する
