@@ -4,12 +4,8 @@ import {
   formatValidateContentHuman,
   formatValidateContentJson,
 } from "./output.ts";
-import {
-  createNodeContentFileSystem,
-  loadContentSource,
-  type ContentFileSystem,
-  type LoadContentSourceResult,
-} from "./content-loader.ts";
+import { createNodeContentFileSystem, type ContentFileSystem } from "./content-file-system.ts";
+import { loadContentSource, type LoadContentSourceResult } from "./content-loader.ts";
 import { validateContentDefinition } from "./core-diagnostic-adapter.ts";
 import type { ValidateContentRunResult } from "./types.ts";
 

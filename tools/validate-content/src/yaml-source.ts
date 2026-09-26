@@ -10,6 +10,7 @@ import {
   type YAMLError,
 } from "yaml";
 
+import { createRootParseDiagnostic, defaultSpan } from "./diagnostic-factory.ts";
 import type { ParseOrSchemaContentDiagnostic } from "./types.ts";
 
 export const MAX_YAML_SOURCE_BYTES = 1_048_576;
@@ -254,11 +255,6 @@ function spanFromNode(path: string, value: unknown, lineCounter: LineCounter): Y
   });
 }
 
-/** 空documentなどAST rangeがない場合に使う安定したfallback位置。 */
-function defaultSpan(path: string): YamlSourceSpan {
-  return Object.freeze({ path, line: 1, column: 1 });
-}
-
 /** toJS後の再帰走査をplain objectだけへ限定する。 */
 function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   if (value === null || typeof value !== "object") {
@@ -266,20 +262,6 @@ function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown
   }
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
-}
-
-/** YAML value変換中の失敗をdocument rootのparse診断へ正規化する。 */
-function createRootParseDiagnostic(path: string, code: string, message: string): ParseOrSchemaContentDiagnostic {
-  return Object.freeze({
-    kind: "parse",
-    code,
-    severity: "error",
-    message,
-    path,
-    line: 1,
-    column: 1,
-    schemaPath: "$",
-  });
 }
 
 /** resource/version制約違反を通常のparse失敗resultへ揃える。 */

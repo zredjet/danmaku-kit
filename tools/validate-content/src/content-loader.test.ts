@@ -5,11 +5,11 @@ import path from "node:path";
 import test from "node:test";
 
 import {
-  loadContentSource,
   createNodeContentFileSystem,
   type ContentFileEntry,
   type ContentFileSystem,
-} from "./content-loader.ts";
+} from "./content-file-system.ts";
+import { loadContentSource } from "./content-loader.ts";
 
 test("assembles split YAML definitions in deterministic UTF-8 file order", async () => {
   const root = path.join("/project", "content");

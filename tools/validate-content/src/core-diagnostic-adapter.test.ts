@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createMinimumDefinition } from "../../../tests/fixtures/minimum-game-definition.ts";
-import type { ContentSourceIndex } from "./content-loader.ts";
+import type { ContentSourceIndex } from "./content-source-index.ts";
 import { validateContentDefinition } from "./core-diagnostic-adapter.ts";
 
 test("maps Core reference errors to the structured source and referrer id", () => {

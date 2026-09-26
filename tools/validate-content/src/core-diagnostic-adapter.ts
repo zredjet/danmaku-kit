@@ -5,7 +5,8 @@ import {
   type GameDefinition,
 } from "@shooting-sample/shooting-core";
 
-import type { ContentSourceContext, ContentSourceIndex } from "./content-loader.ts";
+import type { ContentSourceIndex } from "./content-source-index.ts";
+import { freezeSchemaDiagnostic } from "./diagnostic-factory.ts";
 import type {
   FeatureGateContentDiagnostic,
   ParseOrSchemaContentDiagnostic,
@@ -166,29 +167,4 @@ function freezeReferenceDiagnostic(
     return Object.freeze({ ...base, endLine, endColumn });
   }
   return Object.freeze(base) as ReferenceContentDiagnostic;
-}
-
-/** source contextをschema diagnosticのpaired end spanへ投影する。 */
-function freezeSchemaDiagnostic(
-  code: string,
-  severity: "error" | "warning",
-  message: string,
-  schemaPath: string,
-  context: ContentSourceContext,
-): ParseOrSchemaContentDiagnostic {
-  const base = {
-    kind: "schema",
-    code,
-    severity,
-    message,
-    path: context.span.path,
-    line: context.span.line,
-    column: context.span.column,
-    schemaPath,
-    sourceId: context.sourceId,
-  } as const;
-  if (context.span.endLine !== undefined && context.span.endColumn !== undefined) {
-    return Object.freeze({ ...base, endLine: context.span.endLine, endColumn: context.span.endColumn });
-  }
-  return Object.freeze(base);
 }

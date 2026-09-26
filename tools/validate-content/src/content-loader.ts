@@ -1,6 +1,20 @@
-import { open, readdir } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  COLLECTION_DIRECTORIES,
+  type CollectionSource,
+  type ContentCollectionName,
+  type ContentDirectoryName,
+} from "./content-collections.ts";
+import {
+  ContentFileInvalidUtf8Error,
+  ContentFileTooLargeError,
+  createNodeContentFileSystem,
+  type ContentFileEntry,
+  type ContentFileSystem,
+} from "./content-file-system.ts";
+import { createContentSourceIndex, type ContentSourceIndex } from "./content-source-index.ts";
+import { createRootParseDiagnostic, defaultSpan, freezeSchemaDiagnostic } from "./diagnostic-factory.ts";
 import type { ParseOrSchemaContentDiagnostic } from "./types.ts";
 import {
   parseYamlSource,
@@ -8,41 +22,6 @@ import {
   type ParsedYamlSource,
   type YamlSourceSpan,
 } from "./yaml-source.ts";
-
-const COLLECTION_DIRECTORIES = Object.freeze({
-  players: "players",
-  stages: "stages",
-  enemies: "enemies",
-  bullets: "bullets",
-  "player-shots": "playerShots",
-  patterns: "patterns",
-  paths: "paths",
-} as const);
-
-type ContentDirectoryName = keyof typeof COLLECTION_DIRECTORIES;
-export type ContentCollectionName = (typeof COLLECTION_DIRECTORIES)[ContentDirectoryName];
-
-export type ContentFileEntry = Readonly<{
-  name: string;
-  kind: "file" | "directory" | "other";
-}>;
-
-/** loaderが利用する最小filesystem port。単体testではin-memory実装へ差し替えられる。 */
-export type ContentFileSystem = Readonly<{
-  readTextFile: (filePath: string, maxBytes: number) => Promise<string>;
-  readDirectory: (directoryPath: string) => Promise<readonly ContentFileEntry[]>;
-}>;
-
-export type ContentSourceContext = Readonly<{
-  span: YamlSourceSpan;
-  sourceId: string;
-  schemaPath: string;
-}>;
-
-/** Core error adapterがschema pathや参照値から元YAMLを特定するためのindex。 */
-export type ContentSourceIndex = Readonly<{
-  locateSchemaPath: (schemaPath: string, referrerId?: string) => ContentSourceContext;
-}>;
 
 export type LoadContentSourceResult =
   | Readonly<{
@@ -55,49 +34,6 @@ export type LoadContentSourceResult =
       ok: false;
       diagnostics: readonly ParseOrSchemaContentDiagnostic[];
     }>;
-
-type CollectionSource = Readonly<{
-  collection: ContentCollectionName;
-  source: ParsedYamlSource;
-  sourceId: string;
-}>;
-
-/** Node.jsのfs/promisesをloader portへ接続するproduction filesystem adapter。 */
-export function createNodeContentFileSystem(): ContentFileSystem {
-  return Object.freeze({
-    async readTextFile(filePath, maxBytes) {
-      const handle = await open(filePath, "r");
-      try {
-        const buffer = Buffer.allocUnsafe(maxBytes + 1);
-        let total = 0;
-        while (total < buffer.length) {
-          const { bytesRead } = await handle.read(buffer, total, buffer.length - total, total);
-          if (bytesRead === 0) {
-            break;
-          }
-          total += bytesRead;
-        }
-        if (total > maxBytes) {
-          throw new ContentFileTooLargeError(filePath, maxBytes);
-        }
-        try {
-          return new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, total));
-        } catch {
-          throw new ContentFileInvalidUtf8Error(filePath);
-        }
-      } finally {
-        await handle.close();
-      }
-    },
-    async readDirectory(directoryPath) {
-      const entries = await readdir(directoryPath, { withFileTypes: true });
-      return Object.freeze(entries.map((entry) => Object.freeze({
-        name: entry.name,
-        kind: entry.isFile() ? "file" : entry.isDirectory() ? "directory" : "other",
-      })));
-    },
-  });
-}
 
 /**
  * game-definition YAMLとcontent-root以下の種類別YAMLを1つのGameDefinitionへ組み立てる。
@@ -300,67 +236,6 @@ function collectDefinitions(
   return sources.filter((source) => source.collection === collection).map((source) => source.source.value);
 }
 
-/** Coreのschema path規則と分割YAMLのlocal pathを対応付けるsource indexを作る。 */
-function createContentSourceIndex(
-  gameDefinition: ParsedYamlSource,
-  assetManifest: ParsedYamlSource,
-  collectionSources: readonly CollectionSource[],
-): ContentSourceIndex {
-  return Object.freeze({
-    locateSchemaPath(schemaPath, referrerId) {
-      if (schemaPath === "content.version") {
-        return context(gameDefinition, ["contentVersion"], "gameDefinition", schemaPath);
-      }
-      if (schemaPath === "schemaVersion" || schemaPath === "enabledFeatures" || schemaPath === "defaultPlayerId") {
-        return context(gameDefinition, parseSourcePath(schemaPath), "gameDefinition", schemaPath);
-      }
-      if (schemaPath.startsWith("content.assetKeys")) {
-        return context(assetManifest, ["assets"], "assetManifest", schemaPath);
-      }
-
-      const contentMatch = /^content\.(players|stages|enemies|bullets|playerShots|patterns|paths)(?:\[(\d+)\])?(?:\.(.*))?$/.exec(schemaPath);
-      if (contentMatch?.[2] !== undefined) {
-        const collection = contentMatch[1] as ContentCollectionName;
-        const index = Number(contentMatch[2]);
-        const source = collectionSources.filter((item) => item.collection === collection)[index];
-        if (source) {
-          return context(source.source, parseSourcePath(contentMatch[3] ?? ""), source.sourceId, schemaPath);
-        }
-      }
-
-      if (referrerId) {
-        const identified = collectionSources.find((item) => item.sourceId === referrerId);
-        if (identified) {
-          return context(
-            identified.source,
-            localSourcePath(schemaPath, identified.collection),
-            identified.sourceId,
-            schemaPath,
-          );
-        }
-      }
-
-      if (contentMatch) {
-        const collection = contentMatch[1] as ContentCollectionName;
-        const source = collectionSources.find((item) => item.collection === collection);
-        if (source) {
-          return context(source.source, parseSourcePath(contentMatch[3] ?? ""), source.sourceId, schemaPath);
-        }
-      }
-
-      const genericMatch = /^(playerShot|player|stage|enemy|bullet|pattern|path)(?:\.(.*))?$/.exec(schemaPath);
-      if (genericMatch) {
-        const collection = singularToCollection(genericMatch[1]!);
-        const source = collectionSources.find((item) => item.collection === collection);
-        if (source) {
-          return context(source.source, parseSourcePath(genericMatch[2] ?? ""), source.sourceId, schemaPath);
-        }
-      }
-      return context(gameDefinition, [], "gameDefinition", schemaPath);
-    },
-  });
-}
-
 /** root entryをallowlist検証し、typoしたdirectoryを黙って無視しない。 */
 function validateContentRootEntries(
   contentRoot: string,
@@ -427,21 +302,12 @@ async function readYamlSource(
       : "yaml.resource";
     return Object.freeze({
       ok: false,
-      diagnostics: Object.freeze([Object.freeze({
-        kind: "parse",
-        code,
-        severity: "error",
-        message: cause.message,
-        path: sourcePath,
-        line: 1,
-        column: 1,
-        schemaPath: "$",
-      })]),
+      diagnostics: Object.freeze([createRootParseDiagnostic(sourcePath, code, cause.message)]),
     });
   }
 }
 
-/** schema diagnosticをsource span付きimmutable DTOとして作る。 */
+/** loader 固有の source file / manifest 構造エラーを error severity の schema diagnostic にする。 */
 function createSchemaDiagnostic(
   span: YamlSourceSpan,
   code: string,
@@ -449,99 +315,7 @@ function createSchemaDiagnostic(
   schemaPath: string,
   sourceId: string,
 ): ParseOrSchemaContentDiagnostic {
-  const base = {
-    kind: "schema",
-    code,
-    severity: "error",
-    message,
-    path: span.path,
-    line: span.line,
-    column: span.column,
-    schemaPath,
-    sourceId,
-  } as const;
-  if (span.endLine !== undefined && span.endColumn !== undefined) {
-    return Object.freeze({ ...base, endLine: span.endLine, endColumn: span.endColumn });
-  }
-  return Object.freeze(base);
-}
-
-/** source documentとlocal pathからadapter共通contextを作る。 */
-function context(
-  source: ParsedYamlSource,
-  sourcePath: readonly (string | number)[],
-  sourceId: string,
-  schemaPath: string,
-): ContentSourceContext {
-  return Object.freeze({ span: source.locate(sourcePath), sourceId, schemaPath });
-}
-
-/** `foo[0].bar`と`timeline[]`をYAML AST lookup用segmentへ変換する。 */
-function parseSourcePath(schemaPath: string): readonly (string | number)[] {
-  if (schemaPath.length === 0 || schemaPath === "$") {
-    return Object.freeze([]);
-  }
-  const segments: Array<string | number> = [];
-  for (const part of schemaPath.split(".")) {
-    const match = /^([^[]+)(?:\[(\d*)\])?$/.exec(part);
-    if (!match) {
-      continue;
-    }
-    segments.push(match[1]!);
-    if (match[2] !== undefined) {
-      segments.push(match[2].length === 0 ? 0 : Number(match[2]));
-    }
-  }
-  return Object.freeze(segments);
-}
-
-/** Core validatorの単数形path prefixをregistry collection名へ揃える。 */
-function singularToCollection(value: string): ContentCollectionName {
-  switch (value) {
-    case "player": return "players";
-    case "stage": return "stages";
-    case "enemy": return "enemies";
-    case "bullet": return "bullets";
-    case "playerShot": return "playerShots";
-    case "pattern": return "patterns";
-    case "path": return "paths";
-    default: return "players";
-  }
-}
-
-/** Coreのindex付きschema pathから、1 definition file内のlocal pathだけを取り出す。 */
-function localSourcePath(
-  schemaPath: string,
-  collection: ContentCollectionName,
-): readonly (string | number)[] {
-  const contentPrefix = `content.${collection}`;
-  if (schemaPath === contentPrefix || new RegExp(`^${contentPrefix}\\[\\d+\\]$`).test(schemaPath)) {
-    return Object.freeze([]);
-  }
-  const contentMatch = new RegExp(`^${contentPrefix}(?:\\[\\d+\\])?\\.(.*)$`).exec(schemaPath);
-  if (contentMatch) {
-    return parseSourcePath(contentMatch[1]!);
-  }
-  const singular = collectionToSingular(collection);
-  if (schemaPath === singular) {
-    return Object.freeze([]);
-  }
-  return parseSourcePath(schemaPath.startsWith(`${singular}.`)
-    ? schemaPath.slice(singular.length + 1)
-    : schemaPath);
-}
-
-/** registry collection名をCore validatorが使う単数形prefixへ戻す。 */
-function collectionToSingular(collection: ContentCollectionName): string {
-  switch (collection) {
-    case "players": return "player";
-    case "stages": return "stage";
-    case "enemies": return "enemy";
-    case "bullets": return "bullet";
-    case "playerShots": return "playerShot";
-    case "patterns": return "pattern";
-    case "paths": return "path";
-  }
+  return freezeSchemaDiagnostic(code, "error", message, schemaPath, { span, sourceId, schemaPath });
 }
 
 /** collection sourceのsourceIdをdefinition id、fallbackは相対file pathとして固定する。 */
@@ -567,25 +341,4 @@ function asPlainRecord(value: unknown): Readonly<Record<string, unknown>> | null
 /** filesystem adapterのENOENTだけをoptional入力として分類する。 */
 function isNodeErrorCode(value: unknown, code: string): boolean {
   return value !== null && typeof value === "object" && "code" in value && value.code === code;
-}
-
-/** Node adapterがYAMLを全量確保する前に通知する内部resource error。 */
-class ContentFileTooLargeError extends Error {
-  constructor(filePath: string, maxBytes: number) {
-    super(`${filePath} exceeds the YAML source budget of ${maxBytes} bytes`);
-    this.name = "ContentFileTooLargeError";
-  }
-}
-
-/** Node adapterのfatal UTF-8 decode failureをloaderまで型付きで運ぶ内部error。 */
-class ContentFileInvalidUtf8Error extends Error {
-  constructor(filePath: string) {
-    super(`${filePath} is not valid UTF-8`);
-    this.name = "ContentFileInvalidUtf8Error";
-  }
-}
-
-/** source fileが存在しないschema error用の1-based fallback位置。 */
-function defaultSpan(sourcePath: string): YamlSourceSpan {
-  return Object.freeze({ path: sourcePath, line: 1, column: 1 });
 }

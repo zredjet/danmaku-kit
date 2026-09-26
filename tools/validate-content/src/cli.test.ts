@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createMinimumDefinition } from "../../../tests/fixtures/minimum-game-definition.ts";
-import type { ContentSourceIndex, LoadContentSourceResult } from "./content-loader.ts";
+import type { LoadContentSourceResult } from "./content-loader.ts";
+import type { ContentSourceIndex } from "./content-source-index.ts";
 import {
   parseValidateContentArguments,
   runValidateContentCli,
