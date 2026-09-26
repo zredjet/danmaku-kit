@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump と first divergent checkpoint の field-level replay divergence artifact、Phase 1C-R の振る舞いを変えない module 分割リファクタリングも完了し、Phase 1C の tooling minimum を完了した。次は Phase 2A 着手前に、ディレクトリと依存 layer の対応、および entity kind の変更波及を整理する Phase 1C-S（振る舞いを変えない構造整理）を行い、その後「Phase 2A へ進む条件」を確認して Vite sample app と Phaser adapter の最初の slice を計画する。
+Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump と first divergent checkpoint の field-level replay divergence artifact、Phase 1C-R の振る舞いを変えない module 分割リファクタリングも完了し、Phase 1C の tooling minimum を完了した。Phase 2A 着手前の Phase 1C-S（振る舞いを変えない構造整理）で、ディレクトリと依存 layer の対応を整え、entity kind の知識を `entities/<kind>/` へ縦に集めた。次は「Phase 2A へ進む条件」を確認し、Vite sample app と Phaser adapter の最初の slice を計画する。
 
 Done:
 
@@ -86,10 +86,10 @@ Done:
 - debug state 1C-4 foundation で test-only headless schema、state / PRNG hash、entity count、test sessionだけで収集するnullable event / collision metrics、portable artifact path / schema-order JSON formatter、public `CoreErrorCode` を拡張しない内部 hash failure result 境界を追加する
 - module 分割 1C-R で `core.ts`（3327行）、`core.test.ts`（5350行）、`tests/public-type-contract.ts`（1449行）、`content/validation.ts`、validate-content loader を責務単位の module へ振る舞いを変えずに分割し、runtime import cycle を解消して、依存方向と cycle を `tests/module-graph.test.mjs` で固定する
 - replay divergence 1C-4 で test-only の replay trace recorder / comparator、raw `ReplayMetadata` の検証と互換性分類、first divergent checkpoint の input / entity / component / event / PRNG diff、schema 順 JSON artifact と artifact path を追加する
+- 構造整理 1C-S で `internal/` を `shared/` / `instrumentation/` / `testing/` へ layer 別に分け、restore / hash / committed state の配置と依存の向きを直し、session の fault injection と timeline system を整理し、entity kind の runtime / serialize / hash / restore を `entities/<kind>/` へ縦に集めて field 集合の一致と kind の登録漏れを型と test で固定する
 
 Next:
 
-- Phase 1C-S の構造整理（`internal/` の layer 分解、restore / hash の配置修正、session と test hook の境界、entity kind の縦割り）を振る舞いを変えずに行う
 - 「Phase 2A へ進む条件」を確認し、Vite sample app、Phaser adapter、keyboard input adapter の最初の slice を計画する
 
 Phase 1C-1 は診断と出力の安定した契約、Phase 1C-2 は実績ある YAML parser と source span 付き診断の CLI 接続、Phase 1C-3 は静的 fixture と実プロセスの JSON / human golden contract を固定した。Phase 1C-4 は renderer / browser field を含まない headless debug state summary と、summary から値を復元せず deterministic snapshot、順序付き frame event、side 別 input、side status を比較する field-level replay divergence artifact を固定した。
@@ -132,7 +132,7 @@ Status legend:
 | `docs/design.md` Content validation CLI | minimum fixture / process golden | Done | `fixtures/game-definition.minimum.yaml`, `fixtures/content-minimum/`, `fixtures/validate-content-golden/`, `tools/validate-content/src/cli-golden.test.ts` | valid / content parse / content・game-definition schema / reference / budget / CLI argument を JSON / human の両形式で固定 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Debug state dump | headless dump foundation | Done | `packages/shooting-core/src/basic/instrumentation/debug-state.ts`, `packages/shooting-core/src/basic/testing/debug-state.ts`, `packages/shooting-core/src/basic/session/stage-session.ts`, `packages/shooting-core/src/basic/simulation/collision-system.ts` | immutable checkpoint、失敗 tick 不変、restore seed / nullable metrics、collision count、schema-order JSON、hash error、root export 非公開を固定 | `packages/shooting-core/src/basic/testing/debug-state.test.ts`, `packages/shooting-core/src/basic/simulation/collision-system.test.ts`, `tests/public-type-contract/root-export-exclusions.ts`, `tests/public-type-contract/core-api.ts`; `npm test`, `npm run typecheck` |
 | `docs/design.md` 21.4 Golden Test | first divergent checkpoint の replay divergence artifact | Done | `packages/shooting-core/src/basic/testing/replay-trace.ts`, `packages/shooting-core/src/basic/testing/replay-metadata.ts`, `packages/shooting-core/src/basic/testing/replay-diff.ts`, `packages/shooting-core/src/basic/testing/replay-divergence.ts` | `packages/shooting-core/src/basic/testing/replay-divergence.test.ts`, `packages/shooting-core/src/basic/testing/replay-metadata.test.ts`, `tests/public-type-contract/root-export-exclusions.ts` | `npm test`, `npm run typecheck` |
-| `docs/design.md` 4 ディレクトリ構成 | module 分割と依存方向 | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/session/`, `packages/shooting-core/src/basic/state/`, `packages/shooting-core/src/basic/serialization/restore/`, `packages/shooting-core/src/basic/instrumentation/`, `packages/shooting-core/src/basic/shared/`, `AGENTS.md` | `tests/module-graph.test.mjs` | `npm test` |
+| `docs/design.md` 4 ディレクトリ構成 | module 分割と依存方向 | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/session/`, `packages/shooting-core/src/basic/state/`, `packages/shooting-core/src/basic/serialization/restore/`, `packages/shooting-core/src/basic/instrumentation/`, `packages/shooting-core/src/basic/shared/`, `packages/shooting-core/src/basic/entities/`, `AGENTS.md` | `tests/module-graph.test.mjs` | `npm test` |
 
 ## 次の作業順
 
@@ -456,7 +456,7 @@ Phase 1C-R で巨大ファイルは責務単位に分割したが、ディレク
    - Done: Phase 1C-S3: hash DTO の kind 別型、kind 別 field order（`HASHABLE_<KIND>_RUNTIME_ENTITY_FIELD_ORDER`）、player movement の DTO と field order、hash projection の case 本文を本文そのままで `entities/<kind>/snapshot.ts` へ移し、`HashableVector2` を `entities/snapshot-common.ts` に置く。union、by-kind 表、fixedStruct 名の表、canonical adapter は `hash/` に残し、by-kind 表は kind 別 field order を参照して同じ frozen 配列を組み立てる。`snapshot.ts` は runtime から到達するため `hash/` を import せず、field order helper は `shared/field-order.ts` から使う。state hash golden と全 trace は不変
    - Done: Phase 1C-S3: `Restored*RuntimeEntityInput` を runtime 型の `Omit<…, "kind">` から導出して非公開にし、restore の `Extract<SerializedRuntimeEntityState, …>` 別名を kind 別 DTO の直接参照へ置き換える。restore key 一覧を `defineFieldOrder<公開 DTO, runtime 型>()` で作り、restore key・public DTO・runtime component の3つの field 集合が一致しなければ型エラーにする（値と順序は不変）。全 kind の key 和集合は `Record<RuntimeEntityKind, …>` の表から組み立て、kind 追加時の登録漏れを型エラーにする。debug dump の kind 別件数は `Record<kind, number>` の literal が既に登録漏れを型エラーにするため現状のまま残す。serialize / hash projection は契約が異なるため統合しない
    - Done: Phase 1C-S3: canonical adapter の runtime entity field 値型を `null | boolean | number | string | CanonicalFixedStruct` に絞り、position / velocity / movement のような nested struct を fixedStruct 化し忘れると canonical object として別の byte 列になる誤りを型エラーにする。`RUNTIME_ENTITY_KINDS` の kind ごとに `entities/<kebab-case>/` directory と `model.ts` / `snapshot.ts` / `restore.ts` がそろうことを test で検査し、新しく export した kind 一覧、kind 別 serialized DTO、kind 別 hash field order が root export に含まれないことを型契約へ追加する
-   - Next: `AGENTS.md` に entity kind の配置と field 追加 / kind 追加の checklist を置き、`docs/design.md` の module 構成を更新する
+   - Done: Phase 1C-S3: `AGENTS.md` に entity kind の配置、union / dispatch の置き場、field 追加 / kind 追加の checklist と entities の layer rule を置き、`docs/design.md` の directory 構成、Core module 構成、依存方向を更新する。player の1 field（`nextShotAllowedTick`）の出現 file は非 test source 8 file（6 directory）から `entities/player/` の3 file と挙動を持つ system の4 file になった。kind 名は dispatch の登録箇所として `"playerShot"` が17 file に現れるが、登録漏れは型検査と test が検出する
 
 ## Phase 2A へ進む条件
 

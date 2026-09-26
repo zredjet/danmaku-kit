@@ -59,9 +59,33 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 - `state/`（committed state と serialize / hash projection）を import してよいのは `session/`、`serialization/restore/`、`instrumentation/` だけ。
 - `instrumentation/`（test hook 有効化 guard、stage session testing hook、headless debug checkpoint）は通常 runtime から到達してよい session の差し込み口で、import してよいのは `core.ts`、`session/`、`testing/` だけ。
 - `hash/` は DTO、encoder、digest だけを持ち、上位 layer を import しない。`hash/` を import してよいのは `state/hashable-projection.ts`、`instrumentation/`、`testing/` だけ。
-- `shared/`（guard、immutable、UTF-8 順序比較）は最下層とし、`src/basic/` 内の他 module を import しない。
+- `shared/`（guard、immutable、UTF-8 順序比較、field order helper）は最下層とし、`src/basic/` 内の他 module を import しない。
+- `entities/*/snapshot.ts` を import してよいのは `serialization/types.ts`、`state/`、`hash/`、`entities/*/restore.ts` だけ。`entities/*/restore.ts` は `serialization/restore/` からだけ、`entities/restore-common.ts` はそれと `entities/*/restore.ts` からだけ、`serialization/restore-plain-data.ts` は restore 層と entities の restore module からだけ import する。layer rule の `*` は `/` を含まない1 segment に一致する。
+- `entities/<kind>/` の module は別 kind の directory を型 import も含めて import しない。
 - `index.ts` から実行時 import で到達する範囲に test / tooling 専用の `hash/` と `testing/` を含めない。`testing/` は非 test source から型 import も含めて import しない。state hash と headless debug dump の digest は test helper 側で計算する。
 - runtime import cycle を作らない。`tests/module-graph.test.mjs` が layer rule は型 import も含めて、cycle と到達範囲は実行時 import（`import type` を除く）で検査する。rule に書いた path が実在する module を指すことも同じ test が検査するため、module を移動・改名したら rule も更新する。
+
+### runtime entity kind（`packages/shooting-core/src/basic/entities/`）
+
+- `entities/` 直下は kind 横断の module（`entity-kinds.ts`、`model-common.ts`、`snapshot-common.ts`、`restore-common.ts`、`runtime-entity.ts`）だけにし、サブディレクトリは `RUNTIME_ENTITY_KINDS` の1 kind（kebab-case）に1つ対応させる。
+- kind directory は `model.ts`（runtime 型、content からの生成、restore 済み値からの再構築）、`snapshot.ts`（public serialize DTO、hash DTO と canonical field order、serialize / hash projection）、`restore.ts`（受け付ける key 一覧と検証）の3 file を持つ。serialize / hash projection は契約が異なるため本文が同じでも統合しない。
+- union と dispatch は関心ごとに1箇所に置く: runtime union と公開 `ReadonlyEntityState` は `entities/runtime-entity.ts`、public serialize union は `serialization/types.ts`、hash union・by-kind field order 表・fixedStruct 名の表は `hash/hashable-state.ts`、canonical encode は `hash/hashable-game-state-adapter.ts`、projection の dispatch は `state/*-projection.ts`、restore の dispatch と全 kind の key 和集合は `serialization/restore/runtime-entities.ts`。同 tick の採番順は kind ではなく tick 順の知識なので `serialization/restore/allocation-order.ts` に置く。
+- `snapshot.ts` は通常 runtime から到達するため `hash/` を import しない。field order は `shared/field-order.ts` の `defineFieldOrder` で作る。
+
+field を追加するとき:
+
+1. `<kind>/model.ts` の runtime 型、生成時の初期値、restore 済み値からの再構築に足す。
+2. `<kind>/snapshot.ts` の public DTO、hash DTO、hash field order（state hash の byte 契約）、serialize / hash projection に足す。restore key 一覧・public DTO・runtime 型、hash DTO・runtime 型の field 集合がずれると型エラーになる。
+3. `<kind>/restore.ts` の key 一覧と検証に足し、startStage の初期値なら初期 snapshot の検証も更新する。
+4. position / velocity のような nested struct は `hash/hashable-game-state-adapter.ts` で fixedStruct へ変換する。新しい struct 種別なら `HASHABLE_FIXED_STRUCT_NAME_BY_DTO` と nested field order も足す。変換し忘れは adapter の型検査が検出する。
+5. byte 列が変わるので `SERIALIZED_STATE_HASH_VERSION`、hash golden、public 型契約、`docs/design.md` の field order を更新する。
+
+kind を追加するとき:
+
+1. `entities/entity-kinds.ts` の `RUNTIME_ENTITY_KINDS` に足し、`entities/<kind>/{model,snapshot,restore}.ts` を作る（directory と file の過不足は test が検出する）。
+2. 型検査が示す union / dispatch へ1件ずつ登録する: `entities/runtime-entity.ts`、`serialization/types.ts`、`hash/hashable-state.ts`（union、by-kind 表、fixedStruct 名）、`hash/hashable-game-state-adapter.ts`、`state/*-projection.ts`、`serialization/restore/runtime-entities.ts`。
+3. 生成元と採番順を `serialization/restore/allocation-order.ts` に、挙動を simulation system に足し、event、debug dump schema、型契約、state hash version を更新する。
+4. optional feature 由来の entity は basic の union に足さず、`features/<feature>/` で同じ3 file の分担に従う。
 
 ### 分割時の注意
 

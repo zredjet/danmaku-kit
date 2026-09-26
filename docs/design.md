@@ -75,6 +75,7 @@ packages/
     src/
       basic/
         content/
+        entities/
         events/
         hash/
         input/
@@ -149,7 +150,15 @@ packages/shooting-core/src/
       parse-input-frame.ts     public API 境界の InputFrame parse
     events/
       game-event.ts            GameEvent と EventLog
-    simulation/                runtime entity、entity id、PRNG、stage timeline / player / shot / enemy bullet / collision system、system order
+    entities/
+      entity-kinds.ts          canonical な runtime entity kind 一覧
+      runtime-entity.ts        runtime entity union、公開 ReadonlyEntityState と投影
+      model-common.ts, snapshot-common.ts, restore-common.ts  kind 横断の座標型、DTO 共通部分、restore 共通検証
+      <kind>/                  player / enemy / enemy-bullet / player-shot
+        model.ts               runtime 型、content からの生成、restore 済み値からの再構築
+        snapshot.ts            public serialize DTO、hash DTO と canonical field order、serialize / hash projection
+        restore.ts             restore で受け付ける key 一覧と検証
+    simulation/                entity id、PRNG、stage timeline / player / shot / enemy bullet / collision system、system order
     session/
       loaded-game.ts           startStage() / restore()
       start-stage-options.ts   StartStageOptions parse
@@ -160,14 +169,14 @@ packages/shooting-core/src/
       serialize-projection.ts  committed state から SerializedGameState
       hashable-projection.ts   committed state から HashableGameState
     serialization/
-      types.ts                 SerializedGameState DTO
+      types.ts                 SerializedGameState DTO と runtime entity の public union
       metadata.ts              version 定数と serialization metadata
       restore-plain-data.ts    restore 入力の plain data clone guard（restore 層の下に置く）
       restore/                 top-level metadata、deterministic payload、JSON payload guard、runtime entity、allocation order の restore validation
-    hash/                      HashableGameState DTO / field order、canonical encoder、xxHash64、state hash
+    hash/                      HashableGameState DTO と runtime entity の hash union / by-kind field order / fixedStruct 名、canonical encoder、xxHash64、state hash
     replay/
       metadata.ts              ReplayMetadata
-    shared/                    共通 guard、immutable、UTF-8 byte order 比較（basic 内の他 module を import しない最下層）
+    shared/                    共通 guard、immutable、UTF-8 byte order 比較、field order helper（basic 内の他 module を import しない最下層）
     instrumentation/           test hook 有効化 guard、stage session testing hook、headless debug checkpoint
     testing/                   test-only helper（hook 付き Core factory、headless debug dump、replay trace / divergence artifact、state hash comparison）
     test-support/              test file 共通 helper（package runtime source から除外）
@@ -180,7 +189,7 @@ packages/shooting-core/src/
       register.ts
 ```
 
-依存方向は `core.ts` → `session/` → `serialization/restore/` / `state/` → 下位 module（`content/`、`simulation/`、`hash/` など）→ `shared/` とし、下位 module から上位 layer を import しない。`instrumentation/` は `core.ts`、`session/`、`testing/` だけが使う session の差し込み口で、通常 runtime から到達してよい。非 test source について、`core.ts`、`session/`、`serialization/restore/`、`state/`、`instrumentation/`、`hash/`、`testing/` を import してよい module と、`shared/` が他 module を import しないことは型 import も含めて、runtime import cycle と `index.ts` から `hash/` / `testing/` へ実行時に到達しないことは実行時 import で、`tests/module-graph.test.mjs` が検査する。同じ test は rule の path が実在する module を指すことと、shooting-core / validate-content の非 test source が `*.test.ts` / `test-support/` を import しないことも検査する。state hash と headless debug dump の digest は test helper 側で計算する。
+依存方向は `core.ts` → `session/` → `serialization/restore/` / `state/` → 下位 module（`content/`、`simulation/`、`hash/` など）→ `shared/` とし、下位 module から上位 layer を import しない。`instrumentation/` は `core.ts`、`session/`、`testing/` だけが使う session の差し込み口で、通常 runtime から到達してよい。runtime entity は kind ごとに `entities/<kind>/` の model / snapshot / restore へ縦に分け、各 file はそれぞれの layer に属する。`entities/*/snapshot.ts` は `serialization/types.ts`、`state/`、`hash/`、kind 別 restore から、`entities/*/restore.ts` は `serialization/restore/` からだけ使い、kind directory 同士は import しない。非 test source について、`core.ts`、`session/`、`serialization/restore/`、`state/`、`instrumentation/`、`hash/`、`testing/`、`entities/*/snapshot.ts`、`entities/*/restore.ts` を import してよい module と、kind directory 同士が import しないこと、`shared/` が他 module を import しないことは型 import も含めて、runtime import cycle と `index.ts` から `hash/` / `testing/` へ実行時に到達しないことは実行時 import で、`tests/module-graph.test.mjs` が検査する。同じ test は rule の path が実在する module を指すことと、shooting-core / validate-content の非 test source が `*.test.ts` / `test-support/` を import しないことも検査する。state hash と headless debug dump の digest は test helper 側で計算する。
 
 ## 5. レイヤー責務
 
