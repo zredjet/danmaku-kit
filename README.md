@@ -28,3 +28,9 @@
 npm install
 npm run check
 ```
+
+`npm run check` は型検査、test、sample app の production build を順に実行する。sample app（`apps/sample-title`、Vite + Phaser）は次で起動する。
+
+```sh
+npm run dev
+```
