@@ -1,21 +1,24 @@
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
 import { cloneRestorePlainRecord, isRestoreTopLevelString } from "../serialization/restore-plain-data.ts";
-import type { SerializedRuntimeEntityState } from "../serialization/types.ts";
+import { defineFieldOrder } from "../shared/field-order.ts";
 import { isPositiveFiniteNumber } from "../shared/guards.ts";
 import { RUNTIME_ENTITY_KINDS } from "./entity-kinds.ts";
+import type { RuntimeEntityKind } from "./entity-kinds.ts";
+import type { SerializedRuntimeEntityBase } from "./snapshot-common.ts";
 
-export const RESTORE_RUNTIME_ENTITY_COMMON_KEYS = Object.freeze([
+/** 全 kind の restore で受け付ける共通 key。public DTO の共通部分の field 集合と一致させる。 */
+export const RESTORE_RUNTIME_ENTITY_COMMON_KEYS = defineFieldOrder<SerializedRuntimeEntityBase>()([
   "id",
   "kind",
   "definitionId",
   "position",
   "collisionRadius",
-] as const satisfies ReadonlyArray<keyof SerializedRuntimeEntityState>);
+]);
 
 export type RestoreRuntimeEntityCommon = Readonly<{
   id: number;
-  kind: SerializedRuntimeEntityState["kind"];
+  kind: RuntimeEntityKind;
   position: Readonly<{ x: number; y: number }>;
 }>;
 
@@ -56,7 +59,7 @@ export function validateRestoreRuntimeEntityCommon(
   }));
 }
 
-function isRestoreRuntimeEntityKind(value: unknown): value is SerializedRuntimeEntityState["kind"] {
+function isRestoreRuntimeEntityKind(value: unknown): value is RuntimeEntityKind {
   return typeof value === "string" && (RUNTIME_ENTITY_KINDS as readonly string[]).includes(value);
 }
 

@@ -21,16 +21,7 @@ export type EnemyRuntimeEntity = Readonly<{
 }>;
 
 /** 検証済み snapshot から enemy runtime entity を復元するための入力。 */
-export type RestoredEnemyRuntimeEntityInput = Readonly<{
-  id: EntityId;
-  definitionId: EnemyId;
-  position: Vector2;
-  pathId: PathId;
-  patternId: PatternId;
-  collisionRadius: number;
-  hp: number;
-  scoreOnKill: number;
-}>;
+type RestoredEnemyRuntimeEntityInput = Omit<EnemyRuntimeEntity, "kind">;
 
 /** Stage timeline の spawnEnemy action から enemy runtime entity を作る。 */
 export function createEnemyRuntimeEntity(

@@ -18,15 +18,7 @@ export type PlayerShotRuntimeEntity = Readonly<{
 }>;
 
 /** 検証済み snapshot から player shot runtime entity を復元するための入力。 */
-export type RestoredPlayerShotRuntimeEntityInput = Readonly<{
-  id: EntityId;
-  definitionId: PlayerShotId;
-  position: Vector2;
-  velocity: Vector2;
-  collisionRadius: number;
-  damage: number;
-  remainingLifetimeTicks: number;
-}>;
+type RestoredPlayerShotRuntimeEntityInput = Omit<PlayerShotRuntimeEntity, "kind">;
 
 /** PlayerShotDefinition から player shot runtime entity を作る。 */
 export function createPlayerShotRuntimeEntity(

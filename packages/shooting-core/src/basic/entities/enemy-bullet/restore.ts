@@ -2,17 +2,21 @@ import type { LoadedContentIndex } from "../../content/content-index.ts";
 import { isNamespacedId } from "../../content/identifier.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
-import type { SerializedRuntimeEntityState } from "../../serialization/types.ts";
+import { defineFieldOrder } from "../../shared/field-order.ts";
 import { hasOnlyKeys } from "../../shared/guards.ts";
 import { RESTORE_RUNTIME_ENTITY_COMMON_KEYS } from "../restore-common.ts";
 import type { RestoreRuntimeEntityCommon } from "../restore-common.ts";
 import { createRestoredEnemyBulletRuntimeEntity } from "./model.ts";
 import type { EnemyBulletRuntimeEntity } from "./model.ts";
+import type { SerializedEnemyBulletRuntimeEntityState } from "./snapshot.ts";
 
-type SerializedRestoreEnemyBulletEntity = Extract<SerializedRuntimeEntityState, { kind: "enemyBullet" }>;
-
-const RESTORE_RUNTIME_ENEMY_BULLET_KEYS: ReadonlyArray<keyof SerializedRestoreEnemyBulletEntity> =
-  RESTORE_RUNTIME_ENTITY_COMMON_KEYS;
+/** enemy bullet runtime entity の restore で受け付ける key。public DTO と runtime component の field 集合に一致させる。 */
+export const RESTORE_RUNTIME_ENEMY_BULLET_KEYS = defineFieldOrder<
+  SerializedEnemyBulletRuntimeEntityState,
+  EnemyBulletRuntimeEntity
+>()([
+  ...RESTORE_RUNTIME_ENTITY_COMMON_KEYS,
+]);
 
 /** enemy bullet entity 固有 field と registry reference を検証する。 */
 export function validateRestoreEnemyBulletRuntimeEntity(

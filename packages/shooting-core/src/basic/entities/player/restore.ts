@@ -9,23 +9,26 @@ import {
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
 import { cloneRestorePlainRecord } from "../../serialization/restore-plain-data.ts";
-import type { SerializedRuntimeEntityState } from "../../serialization/types.ts";
+import { defineFieldOrder } from "../../shared/field-order.ts";
 import { hasOnlyKeys, isNonNegativeSafeInteger, isPositiveFiniteNumber } from "../../shared/guards.ts";
 import { RESTORE_RUNTIME_ENTITY_COMMON_KEYS, isSameRestorePosition } from "../restore-common.ts";
 import type { RestoreRuntimeEntityCommon } from "../restore-common.ts";
 import { DEFAULT_PLAYER_START_POSITION, createRestoredPlayerRuntimeEntity } from "./model.ts";
 import type { PlayerRuntimeEntity } from "./model.ts";
+import type { SerializedPlayerRuntimeEntityState } from "./snapshot.ts";
 
-type SerializedRestorePlayerEntity = Extract<SerializedRuntimeEntityState, { kind: "player" }>;
-
-export const RESTORE_RUNTIME_PLAYER_KEYS = Object.freeze([
+/** player runtime entity の restore で受け付ける key。public DTO と runtime component の field 集合に一致させる。 */
+export const RESTORE_RUNTIME_PLAYER_KEYS = defineFieldOrder<
+  SerializedPlayerRuntimeEntityState,
+  PlayerRuntimeEntity
+>()([
   ...RESTORE_RUNTIME_ENTITY_COMMON_KEYS,
   "lives",
   "invincibleTicksRemaining",
   "nextShotAllowedTick",
   "movement",
   "shotDefinitionId",
-] as const satisfies ReadonlyArray<keyof SerializedRestorePlayerEntity>);
+]);
 
 /** player entity 固有 field と registry reference を検証する。 */
 export function validateRestorePlayerRuntimeEntity(

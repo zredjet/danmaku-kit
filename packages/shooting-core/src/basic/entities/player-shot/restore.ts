@@ -3,21 +3,24 @@ import { isNamespacedId } from "../../content/identifier.ts";
 import { MAX_PLAYER_SHOT_LIFETIME_TICKS, MAX_PLAYER_SHOT_SPEED_PER_AXIS } from "../../content/runtime-budgets.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
-import type { SerializedRuntimeEntityState } from "../../serialization/types.ts";
+import { defineFieldOrder } from "../../shared/field-order.ts";
 import { hasOnlyKeys, isPositiveFiniteNumber } from "../../shared/guards.ts";
 import { RESTORE_RUNTIME_ENTITY_COMMON_KEYS, validateRestoreVector2 } from "../restore-common.ts";
 import type { RestoreRuntimeEntityCommon } from "../restore-common.ts";
 import { createRestoredPlayerShotRuntimeEntity } from "./model.ts";
 import type { PlayerShotRuntimeEntity } from "./model.ts";
+import type { SerializedPlayerShotRuntimeEntityState } from "./snapshot.ts";
 
-type SerializedRestorePlayerShotEntity = Extract<SerializedRuntimeEntityState, { kind: "playerShot" }>;
-
-export const RESTORE_RUNTIME_PLAYER_SHOT_KEYS = Object.freeze([
+/** player shot runtime entity の restore で受け付ける key。public DTO と runtime component の field 集合に一致させる。 */
+export const RESTORE_RUNTIME_PLAYER_SHOT_KEYS = defineFieldOrder<
+  SerializedPlayerShotRuntimeEntityState,
+  PlayerShotRuntimeEntity
+>()([
   ...RESTORE_RUNTIME_ENTITY_COMMON_KEYS,
   "velocity",
   "remainingLifetimeTicks",
   "damage",
-] as const satisfies ReadonlyArray<keyof SerializedRestorePlayerShotEntity>);
+]);
 
 export type RestorePlayerShotValidation = Readonly<{
   entity: PlayerShotRuntimeEntity;

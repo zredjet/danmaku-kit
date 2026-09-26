@@ -1,7 +1,9 @@
 import type { LoadedContentIndex } from "../../content/content-index.ts";
 import type { StageDefinition } from "../../content/types.ts";
-import { validateRestoreEnemyBulletRuntimeEntity } from "../../entities/enemy-bullet/restore.ts";
+import { RESTORE_RUNTIME_ENEMY_BULLET_KEYS, validateRestoreEnemyBulletRuntimeEntity } from "../../entities/enemy-bullet/restore.ts";
 import { RESTORE_RUNTIME_ENEMY_KEYS, validateRestoreEnemyRuntimeEntity } from "../../entities/enemy/restore.ts";
+import { RUNTIME_ENTITY_KINDS } from "../../entities/entity-kinds.ts";
+import type { RuntimeEntityKind } from "../../entities/entity-kinds.ts";
 import { RESTORE_RUNTIME_PLAYER_SHOT_KEYS, validateRestorePlayerShotRuntimeEntity } from "../../entities/player-shot/restore.ts";
 import {
   RESTORE_RUNTIME_PLAYER_KEYS,
@@ -24,12 +26,17 @@ import {
 import type { RestoreMatchedPlayerShot, RestoreMatchedSpawn } from "./allocation-order.ts";
 import type { RestoreTopLevelState } from "./top-level-state.ts";
 
+/** kind 別の restore key 一覧。kind を追加したら型検査がここへの登録を要求する。 */
+const RESTORE_RUNTIME_ENTITY_KEYS_BY_KIND = Object.freeze({
+  player: RESTORE_RUNTIME_PLAYER_KEYS,
+  enemy: RESTORE_RUNTIME_ENEMY_KEYS,
+  enemyBullet: RESTORE_RUNTIME_ENEMY_BULLET_KEYS,
+  playerShot: RESTORE_RUNTIME_PLAYER_SHOT_KEYS,
+} satisfies Readonly<Record<RuntimeEntityKind, readonly string[]>>);
+
+/** kind を判定する前の entity shell で受け付ける全 kind の key。 */
 const RESTORE_RUNTIME_ENTITY_ALL_KEYS = Object.freeze([
-  ...new Set([
-    ...RESTORE_RUNTIME_PLAYER_KEYS,
-    ...RESTORE_RUNTIME_ENEMY_KEYS,
-    ...RESTORE_RUNTIME_PLAYER_SHOT_KEYS,
-  ]),
+  ...new Set(RUNTIME_ENTITY_KINDS.flatMap((kind) => RESTORE_RUNTIME_ENTITY_KEYS_BY_KIND[kind])),
 ]);
 
 /** runtimeEntities の ID order、kind 別 shape、registry reference を検証する。 */

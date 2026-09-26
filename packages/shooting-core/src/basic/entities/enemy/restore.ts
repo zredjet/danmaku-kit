@@ -2,22 +2,25 @@ import type { LoadedContentIndex } from "../../content/content-index.ts";
 import { isNamespacedId } from "../../content/identifier.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
-import type { SerializedRuntimeEntityState } from "../../serialization/types.ts";
+import { defineFieldOrder } from "../../shared/field-order.ts";
 import { hasOnlyKeys, isNonNegativeSafeInteger, isPositiveFiniteNumber } from "../../shared/guards.ts";
 import { RESTORE_RUNTIME_ENTITY_COMMON_KEYS } from "../restore-common.ts";
 import type { RestoreRuntimeEntityCommon } from "../restore-common.ts";
 import { createRestoredEnemyRuntimeEntity } from "./model.ts";
 import type { EnemyRuntimeEntity } from "./model.ts";
+import type { SerializedEnemyRuntimeEntityState } from "./snapshot.ts";
 
-type SerializedRestoreEnemyEntity = Extract<SerializedRuntimeEntityState, { kind: "enemy" }>;
-
-export const RESTORE_RUNTIME_ENEMY_KEYS = Object.freeze([
+/** enemy runtime entity の restore で受け付ける key。public DTO と runtime component の field 集合に一致させる。 */
+export const RESTORE_RUNTIME_ENEMY_KEYS = defineFieldOrder<
+  SerializedEnemyRuntimeEntityState,
+  EnemyRuntimeEntity
+>()([
   ...RESTORE_RUNTIME_ENTITY_COMMON_KEYS,
   "hp",
   "scoreOnKill",
   "pathId",
   "patternId",
-] as const satisfies ReadonlyArray<keyof SerializedRestoreEnemyEntity>);
+]);
 
 /** enemy entity 固有 field と registry reference を検証する。 */
 export function validateRestoreEnemyRuntimeEntity(

@@ -15,12 +15,7 @@ export type EnemyBulletRuntimeEntity = Readonly<{
 }>;
 
 /** 検証済み snapshot から enemy bullet runtime entity を復元するための入力。 */
-export type RestoredEnemyBulletRuntimeEntityInput = Readonly<{
-  id: EntityId;
-  definitionId: BulletId;
-  position: Vector2;
-  collisionRadius: number;
-}>;
+type RestoredEnemyBulletRuntimeEntityInput = Omit<EnemyBulletRuntimeEntity, "kind">;
 
 /** BulletDefinition から enemy bullet runtime entity を作る。 */
 export function createEnemyBulletRuntimeEntity(
