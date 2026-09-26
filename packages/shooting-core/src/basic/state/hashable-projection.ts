@@ -93,7 +93,12 @@ function projectRuntimeEntityForHashableState(entity: RuntimeEntityState): Hasha
   }
 }
 
-/** committed pending event から hash 専用 DTO へ明示的に写す。 */
+/**
+ * committed pending event から hash 専用 DTO へ明示的に写す。
+ *
+ * committed 側の全 field を写すことを `satisfies` で、DTO にない field を写さないことを戻り値型で検査し、
+ * committed pending event と DTO の field 集合のずれを型エラーにする。
+ */
 function projectPendingEventForHashableState(event: CommittedPendingEvent): HashablePendingEvent {
   switch (event.type) {
     case "stageStarted":
@@ -101,7 +106,7 @@ function projectPendingEventForHashableState(event: CommittedPendingEvent): Hash
         type: "stageStarted",
         tick: event.tick,
         stageId: event.stageId,
-      };
+      } satisfies Required<CommittedPendingEvent>;
     default:
       return assertNever(event.type);
   }

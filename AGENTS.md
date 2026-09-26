@@ -60,8 +60,8 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 - `instrumentation/`（test hook 有効化 guard、stage session testing hook、headless debug checkpoint）は通常 runtime から到達してよい session の差し込み口で、import してよいのは `core.ts`、`session/`、`testing/` だけ。
 - `hash/` は DTO、encoder、digest だけを持ち、上位 layer を import しない。`hash/` を import してよいのは `state/hashable-projection.ts`、`instrumentation/`、`testing/` だけ。
 - `shared/`（guard、immutable、UTF-8 順序比較）は最下層とし、`src/basic/` 内の他 module を import しない。
-- `index.ts` から実行時 import で到達する範囲に test / tooling 専用の `hash/` と `testing/` を含めない。state hash と headless debug dump の digest は test helper 側で計算する。
-- runtime import cycle を作らない。`tests/module-graph.test.mjs` が layer rule は型 import も含めて、cycle と到達範囲は実行時 import（`import type` を除く）で検査する。
+- `index.ts` から実行時 import で到達する範囲に test / tooling 専用の `hash/` と `testing/` を含めない。`testing/` は非 test source から型 import も含めて import しない。state hash と headless debug dump の digest は test helper 側で計算する。
+- runtime import cycle を作らない。`tests/module-graph.test.mjs` が layer rule は型 import も含めて、cycle と到達範囲は実行時 import（`import type` を除く）で検査する。rule に書いた path が実在する module を指すことも同じ test が検査するため、module を移動・改名したら rule も更新する。
 
 ### 分割時の注意
 

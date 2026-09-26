@@ -4,7 +4,7 @@ import test from "node:test";
 import { createMinimumDefinition } from "../../../../../tests/fixtures/minimum-game-definition.ts";
 import type { LoadedGame, StartStageOptions } from "../api-types.ts";
 import { createEmptyInputFrame } from "../input/input-frame.ts";
-import { loadUnknown, startMinimumStage, tickUnknown } from "../test-support/stage-harness.ts";
+import { loadMinimumGame, loadUnknown, startMinimumStage, tickUnknown } from "../test-support/stage-harness.ts";
 
 test("rejects out-of-order input ticks without advancing the session", () => {
   const started = startMinimumStage();
@@ -108,17 +108,13 @@ test("rejects malformed startStage ids before content lookup", () => {
 });
 
 test("rejects unknown startStage difficulties before content lookup", () => {
-  const loaded = loadUnknown(createMinimumDefinition());
-  assert.equal(loaded.ok, true);
-  if (!loaded.ok) {
-    assert.fail("expected loaded game");
-  }
+  const loaded = loadMinimumGame();
 
   for (const options of [
     ...["lunatic", "Normal", "", 1, null].map((difficulty) => ({ stageId: "stage.stage_01", difficulty, seed: "seed-1" })),
     { stageId: "stage.stage_01", seed: "seed-1" },
   ]) {
-    const started = loaded.value.startStage(options as never);
+    const started = loaded.startStage(options as never);
     assert.equal(started.ok, false);
     assert.deepEqual(
       !started.ok && started.errors.map((error) => [error.code, error.message]),

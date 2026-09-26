@@ -110,7 +110,12 @@ function projectRuntimeEntityForSerializedState(entity: RuntimeEntityState): Ser
   }
 }
 
-/** pending queue に残せる event を public serialize 用 DTO に写す。 */
+/**
+ * pending queue に残せる event を public serialize 用 DTO に写す。
+ *
+ * committed 側の全 field を写すことを `satisfies` で、DTO にない field を写さないことを戻り値型で検査し、
+ * committed pending event と DTO の field 集合のずれを型エラーにする。
+ */
 function projectPendingEventForSerializedState(event: CommittedPendingEvent): SerializedPendingEvent {
   switch (event.type) {
     case "stageStarted":
@@ -118,7 +123,7 @@ function projectPendingEventForSerializedState(event: CommittedPendingEvent): Se
         type: "stageStarted",
         tick: event.tick,
         stageId: event.stageId,
-      };
+      } satisfies Required<CommittedPendingEvent>;
     default:
       return assertNever(event.type);
   }

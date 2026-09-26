@@ -26,6 +26,7 @@ const SHOOTING_CORE_LAYER_RULES = Object.freeze([
   { target: "state/", allowedImporters: ["session/", "serialization/restore/", "instrumentation/"] },
   { target: "instrumentation/", allowedImporters: ["core.ts", "session/", "testing/"] },
   { target: "hash/", allowedImporters: ["state/hashable-projection.ts", "instrumentation/", "testing/"] },
+  { target: "testing/", allowedImporters: [] },
 ]);
 
 /**
@@ -76,6 +77,21 @@ test("keeps shooting-core modules inside their dependency layers", async () => {
   }
 
   assert.deepEqual(violations, [], "shooting-core imports cross a dependency layer rule");
+});
+
+test("points shooting-core dependency rules at existing modules", async () => {
+  const modulePaths = (await collectTypeScriptFiles(shootingCoreBasicRoot))
+    .filter((file) => !isTestCodeFile(shootingCoreBasicRoot, file))
+    .map(toBasicPath);
+  const rulePaths = [
+    ...SHOOTING_CORE_LAYER_RULES.flatMap((rule) => [rule.target, ...rule.allowedImporters]),
+    ...SHOOTING_CORE_LEAF_LAYER_RULES.flatMap((rule) => [rule.importer, ...rule.allowedTargets]),
+    ...SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES,
+  ];
+  const stale = [...new Set(rulePaths)]
+    .filter((rulePath) => !modulePaths.some((modulePath) => matchesModulePath(modulePath, rulePath)));
+
+  assert.deepEqual(stale, [], "dependency rules must name existing shooting-core modules");
 });
 
 test("keeps test-only diagnostics out of the shooting-core runtime import graph", async () => {
