@@ -39,7 +39,7 @@ import type {
 } from "./internal/debug-state.ts";
 import { deepFreezeClone, deepFreezePlainData } from "./internal/immutable.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
-import type { CoreError, CoreErrorCode, CoreResult } from "./result.ts";
+import type { CoreError, CoreResult } from "./result.ts";
 import { SERIALIZED_INPUT_FORMAT_VERSION, SERIALIZED_STATE_HASH_VERSION } from "./serialization/metadata.ts";
 import type {
   SerializedDeterministicState,
@@ -226,7 +226,7 @@ function createShootingCoreInternal(
     load(definition) {
       const plainDefinition = deepFreezePlainData(definition);
       if (!plainDefinition) {
-        return error("definition.invalidShape", "GameDefinition must be JSON-compatible plain data");
+        return coreError("definition.invalidShape", "GameDefinition must be JSON-compatible plain data");
       }
       const errors = validateGameDefinition(plainDefinition);
       if (errors.length > 0) {
@@ -552,7 +552,7 @@ function createLoadedGame(
       const stage = content.stagesById.get(compatibilityMetadata.value.stageId);
       const player = content.playersById.get(compatibilityMetadata.value.playerId);
       if (!stage || !player) {
-        return error("state.contentMismatch", "serialized content metadata does not match the loaded content");
+        return coreError("state.contentMismatch", "serialized content metadata does not match the loaded content");
       }
 
       return okResult(createStageSession({
@@ -571,7 +571,7 @@ function createLoadedGame(
     startStage(rawOptions) {
       const plainOptions = deepFreezePlainData(rawOptions);
       if (!plainOptions) {
-        return error("startStage.invalidShape", "StartStageOptions must be JSON-compatible plain data");
+        return coreError("startStage.invalidShape", "StartStageOptions must be JSON-compatible plain data");
       }
       const options = parseStartStageOptions(plainOptions);
       if (!options.ok) {
@@ -583,13 +583,13 @@ function createLoadedGame(
       const player = content.playersById.get(playerId);
 
       if (!stage) {
-        return error("stage.notFound", `Stage not found: ${options.value.stageId}`);
+        return coreError("stage.notFound", `Stage not found: ${options.value.stageId}`);
       }
       if (!player) {
-        return error("player.notFound", `Player not found: ${playerId}`);
+        return coreError("player.notFound", `Player not found: ${playerId}`);
       }
       if (!stage.difficulties.includes(options.value.difficulty)) {
-        return error("difficulty.notSupported", `Difficulty not supported: ${options.value.difficulty}`);
+        return coreError("difficulty.notSupported", `Difficulty not supported: ${options.value.difficulty}`);
       }
 
       const entityAllocator = new EntityAllocator();
@@ -700,7 +700,7 @@ function createStageSession(options: StageSessionContext): StageSession {
       }
       const plainInput = deepFreezePlainData(rawInput);
       if (!plainInput) {
-        return error("input.invalidShape", "InputFrame must be JSON-compatible plain data");
+        return coreError("input.invalidShape", "InputFrame must be JSON-compatible plain data");
       }
       const input = parseInputFrame(plainInput);
       if (!input.ok) {
@@ -708,7 +708,7 @@ function createStageSession(options: StageSessionContext): StageSession {
       }
       // system order の applyInput。入力 tick のズレは状態を進める前に拒否する。
       if (input.value.tick !== committedState.expectedTick) {
-        return error("input.tickMismatch", `Expected tick ${committedState.expectedTick}, got ${input.value.tick}`);
+        return coreError("input.tickMismatch", `Expected tick ${committedState.expectedTick}, got ${input.value.tick}`);
       }
 
       if (options.testingHooks.corruptCommittedPrngStateTicks.delete(committedState.expectedTick)) {
@@ -1345,7 +1345,7 @@ function failAfterWorkingMutationForTesting(working: WorkingStageState): CoreRes
   working.prng.nextUint32();
   working.score += 1;
   working.timelineCursor += 1;
-  return error(
+  return coreError(
     "testHook.failure",
     [
       "test hook failed after mutating working stage state",
@@ -1371,13 +1371,13 @@ function validateCommittedEntityInvariants(committedState: UntrustedCommittedSta
 
   for (const entity of committedState.activeEntities) {
     if (!Number.isSafeInteger(entity.id) || entity.id < 1) {
-      return error("entityAllocator.invalidState", "active entity id must be a positive safe integer");
+      return coreError("entityAllocator.invalidState", "active entity id must be a positive safe integer");
     }
     if (entity.id <= previousEntityId) {
-      return error("entityAllocator.invalidState", "active entity ids must be sorted in strict ascending order");
+      return coreError("entityAllocator.invalidState", "active entity ids must be sorted in strict ascending order");
     }
     if (ids.has(entity.id)) {
-      return error("entityAllocator.invalidState", `active entity id must be unique: ${entity.id}`);
+      return coreError("entityAllocator.invalidState", `active entity id must be unique: ${entity.id}`);
     }
     ids.add(entity.id);
     maxEntityId = Math.max(maxEntityId, entity.id);
@@ -1385,7 +1385,7 @@ function validateCommittedEntityInvariants(committedState: UntrustedCommittedSta
   }
 
   if (committedState.nextEntityId <= maxEntityId) {
-    return error(
+    return coreError(
       "entityAllocator.invalidState",
       `nextEntityId must be greater than active entity ids: nextEntityId=${committedState.nextEntityId}, maxEntityId=${maxEntityId}`,
     );
@@ -1405,13 +1405,13 @@ function validateCommittedPendingEventInvariants(
       pendingEvents.length !== 1
       || !isCommittedStageStartedEvent(pendingEvents[0], stageId)
     ) {
-      return error("stageSession.fatal", "unsupported pending event in committed state");
+      return coreError("stageSession.fatal", "unsupported pending event in committed state");
     }
     return okResult(Object.freeze([{ type: "stageStarted", tick: 0, stageId }]));
   }
 
   if (pendingEvents.length > 0) {
-    return error("stageSession.fatal", "unsupported pending event in committed state");
+    return coreError("stageSession.fatal", "unsupported pending event in committed state");
   }
   return okResult(Object.freeze([]));
 }
@@ -1479,31 +1479,31 @@ function replaceRuntimeEntity(entities: RuntimeEntityState[], replacement: Runti
 function parseStartStageOptions(value: unknown): CoreResult<StartStageOptions> {
   const record = asRecord(value);
   if (!record) {
-    return error("startStage.invalidShape", "StartStageOptions must be an object");
+    return coreError("startStage.invalidShape", "StartStageOptions must be an object");
   }
   if (!hasOnlyKeys(record, ["stageId", "difficulty", "playerId", "seed"])) {
-    return error("startStage.invalidShape", "StartStageOptions contains unknown fields");
+    return coreError("startStage.invalidShape", "StartStageOptions contains unknown fields");
   }
   if (typeof record.stageId !== "string") {
-    return error("startStage.invalidShape", "stageId must be a string");
+    return coreError("startStage.invalidShape", "stageId must be a string");
   }
   if (!isNamespacedId(record.stageId, "stage")) {
-    return error("startStage.invalidShape", "stageId must use the stage.* namespace");
+    return coreError("startStage.invalidShape", "stageId must use the stage.* namespace");
   }
   if (record.difficulty !== "normal" && record.difficulty !== "hard") {
-    return error("startStage.invalidShape", "difficulty must be normal or hard");
+    return coreError("startStage.invalidShape", "difficulty must be normal or hard");
   }
   if (typeof record.seed !== "string") {
-    return error("startStage.invalidShape", "seed must be a string");
+    return coreError("startStage.invalidShape", "seed must be a string");
   }
   if (record.seed.trim().length === 0 || record.seed.length > MAX_SEED_LENGTH) {
-    return error("startStage.invalidShape", `seed must be a non-empty string up to ${MAX_SEED_LENGTH} characters`);
+    return coreError("startStage.invalidShape", `seed must be a non-empty string up to ${MAX_SEED_LENGTH} characters`);
   }
   if (record.playerId !== undefined && typeof record.playerId !== "string") {
-    return error("startStage.invalidShape", "playerId must be a string when provided");
+    return coreError("startStage.invalidShape", "playerId must be a string when provided");
   }
   if (typeof record.playerId === "string" && !isNamespacedId(record.playerId, "player")) {
-    return error("startStage.invalidShape", "playerId must use the player.* namespace");
+    return coreError("startStage.invalidShape", "playerId must use the player.* namespace");
   }
   return okResult(deepFreezeClone({
     stageId: record.stageId as StageId,
@@ -1520,7 +1520,7 @@ function parseRestoreSchemaMetadata(value: unknown): CoreResult<RestoreSchemaMet
     return coreVersion;
   }
   if (!isRestoreTopLevelString(coreVersion.value)) {
-    return error("state.invalidShape", "coreVersion must be a string");
+    return coreError("state.invalidShape", "coreVersion must be a string");
   }
 
   const schemaVersion = readRestoreTopLevelDataProperty(value, "schemaVersion");
@@ -1528,7 +1528,7 @@ function parseRestoreSchemaMetadata(value: unknown): CoreResult<RestoreSchemaMet
     return schemaVersion;
   }
   if (!isRestoreTopLevelString(schemaVersion.value)) {
-    return error("state.invalidShape", "schemaVersion must be a string");
+    return coreError("state.invalidShape", "schemaVersion must be a string");
   }
 
   return okResult(Object.freeze({
@@ -1546,19 +1546,19 @@ function parseRestoreSchemaMetadata(value: unknown): CoreResult<RestoreSchemaMet
 function readRestoreTopLevelDataProperty(value: unknown, key: RestoreTopLevelField): CoreResult<unknown> {
   try {
     if (!isPlainObjectContainer(value)) {
-      return error("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
+      return coreError("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
     }
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (!descriptor) {
-      return error("state.invalidShape", `${key} must be provided`);
+      return coreError("state.invalidShape", `${key} must be provided`);
     }
     if (!("value" in descriptor) || !descriptor.enumerable) {
-      return error("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
+      return coreError("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
     }
 
     return okResult(descriptor.value);
   } catch {
-    return error("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
+    return coreError("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
   }
 }
 
@@ -1568,7 +1568,7 @@ function parseRestoreTopLevelStringField(
   key: keyof Pick<SerializedGameState, "contentVersion" | "inputFormatVersion" | "stageId" | "playerId">,
 ): CoreResult<string> {
   if (!isRestoreTopLevelString(record[key])) {
-    return error("state.invalidShape", `${key} must be a string`);
+    return coreError("state.invalidShape", `${key} must be a string`);
   }
 
   return okResult(record[key]);
@@ -1577,7 +1577,7 @@ function parseRestoreTopLevelStringField(
 /** state hash version を field 単位で読む。 */
 function parseRestoreStateHashVersion(record: Record<string, unknown>): CoreResult<number> {
   if (typeof record.stateHashVersion !== "number" || !Number.isSafeInteger(record.stateHashVersion)) {
-    return error("state.invalidShape", "stateHashVersion must be a safe integer");
+    return coreError("state.invalidShape", "stateHashVersion must be a safe integer");
   }
 
   return okResult(record.stateHashVersion);
@@ -1605,17 +1605,17 @@ function parseRestoreCompatibilityMetadata(
     return stageId;
   }
   if (!isNamespacedId(stageId.value, "stage")) {
-    return error("state.invalidShape", "stageId must use the stage.* namespace");
+    return coreError("state.invalidShape", "stageId must use the stage.* namespace");
   }
   if (record.difficulty !== "normal" && record.difficulty !== "hard") {
-    return error("state.invalidShape", "difficulty must be normal or hard");
+    return coreError("state.invalidShape", "difficulty must be normal or hard");
   }
   const playerId = parseRestoreTopLevelStringField(record, "playerId");
   if (!playerId.ok) {
     return playerId;
   }
   if (!isNamespacedId(playerId.value, "player")) {
-    return error("state.invalidShape", "playerId must use the player.* namespace");
+    return coreError("state.invalidShape", "playerId must use the player.* namespace");
   }
 
   return okResult(Object.freeze({
@@ -1636,13 +1636,13 @@ function parseRestoreTopLevelState(
 ): CoreResult<RestoreTopLevelState> {
   const record = asRecord(value);
   if (!record) {
-    return error("state.invalidShape", "SerializedGameState must be an object");
+    return coreError("state.invalidShape", "SerializedGameState must be an object");
   }
   if (!hasOnlyKeys(record, RESTORE_TOP_LEVEL_KEYS)) {
-    return error("state.invalidShape", "SerializedGameState contains unknown top-level fields");
+    return coreError("state.invalidShape", "SerializedGameState contains unknown top-level fields");
   }
   if (typeof record.expectedTick !== "number" || !Number.isSafeInteger(record.expectedTick) || record.expectedTick < 0) {
-    return error("state.invalidShape", "expectedTick must be a non-negative safe integer");
+    return coreError("state.invalidShape", "expectedTick must be a non-negative safe integer");
   }
   if (
     typeof record.nextEntityId !== "number"
@@ -1650,13 +1650,13 @@ function parseRestoreTopLevelState(
     || record.nextEntityId < 1
     || record.nextEntityId > MAX_RESTORABLE_NEXT_ENTITY_ID
   ) {
-    return error("state.invalidShape", "nextEntityId must be a positive safe integer");
+    return coreError("state.invalidShape", "nextEntityId must be a positive safe integer");
   }
   if (!isPlainObjectContainer(record.prngState)) {
-    return error("state.invalidShape", "prngState must be an object");
+    return coreError("state.invalidShape", "prngState must be an object");
   }
   if (!isPlainObjectContainer(record.state)) {
-    return error("state.invalidShape", "state must be an object");
+    return coreError("state.invalidShape", "state must be an object");
   }
 
   return okResult(Object.freeze({
@@ -1679,10 +1679,10 @@ function validateRestoreSchemaCompatibility(
   coreVersion: string,
 ): CoreResult<null> {
   if (state.coreVersion !== coreVersion) {
-    return error("state.coreVersionMismatch", `coreVersion mismatch: expected ${coreVersion}, got ${state.coreVersion}`);
+    return coreError("state.coreVersionMismatch", `coreVersion mismatch: expected ${coreVersion}, got ${state.coreVersion}`);
   }
   if (state.schemaVersion !== content.definition.schemaVersion) {
-    return error("state.schemaVersionMismatch", `schemaVersion mismatch: expected ${content.definition.schemaVersion}, got ${state.schemaVersion}`);
+    return coreError("state.schemaVersionMismatch", `schemaVersion mismatch: expected ${content.definition.schemaVersion}, got ${state.schemaVersion}`);
   }
 
   return okResult(null);
@@ -1691,7 +1691,7 @@ function validateRestoreSchemaCompatibility(
 /** input format mismatch は現行 schema の key set や後続 metadata より先に分類する。 */
 function validateRestoreInputFormatCompatibility(inputFormatVersion: string): CoreResult<null> {
   if (inputFormatVersion !== SERIALIZED_INPUT_FORMAT_VERSION) {
-    return error("state.inputFormatVersionMismatch", `inputFormatVersion mismatch: expected ${SERIALIZED_INPUT_FORMAT_VERSION}, got ${inputFormatVersion}`);
+    return coreError("state.inputFormatVersionMismatch", `inputFormatVersion mismatch: expected ${SERIALIZED_INPUT_FORMAT_VERSION}, got ${inputFormatVersion}`);
   }
 
   return okResult(null);
@@ -1700,7 +1700,7 @@ function validateRestoreInputFormatCompatibility(inputFormatVersion: string): Co
 /** state hash version mismatch は現行 schema の key set や後続 metadata より先に分類する。 */
 function validateRestoreStateHashVersionCompatibility(stateHashVersion: number): CoreResult<null> {
   if (stateHashVersion !== SERIALIZED_STATE_HASH_VERSION) {
-    return error("state.stateHashVersionMismatch", `stateHashVersion mismatch: expected ${SERIALIZED_STATE_HASH_VERSION}, got ${stateHashVersion}`);
+    return coreError("state.stateHashVersionMismatch", `stateHashVersion mismatch: expected ${SERIALIZED_STATE_HASH_VERSION}, got ${stateHashVersion}`);
   }
 
   return okResult(null);
@@ -1712,7 +1712,7 @@ function validateRestoreContentVersionCompatibility(
   content: LoadedContentIndex,
 ): CoreResult<null> {
   if (contentVersion !== content.definition.content.version) {
-    return error("state.contentMismatch", "serialized content metadata does not match the loaded content");
+    return coreError("state.contentMismatch", "serialized content metadata does not match the loaded content");
   }
 
   return okResult(null);
@@ -1727,11 +1727,11 @@ function validateRestoreContentCompatibility(
     || !content.playersById.has(state.playerId)
     || !content.stagesById.get(state.stageId)!.difficulties.includes(state.difficulty)
   ) {
-    return error("state.contentMismatch", "serialized content metadata does not match the loaded content");
+    return coreError("state.contentMismatch", "serialized content metadata does not match the loaded content");
   }
   const enabledFeatures = canonicalizeEnabledFeatures(content.definition.enabledFeatures);
   if (!sameOrderedValues(state.enabledFeatures, enabledFeatures)) {
-    return error("state.featureMismatch", "enabledFeatures do not match the loaded content");
+    return coreError("state.featureMismatch", "enabledFeatures do not match the loaded content");
   }
 
   return okResult(null);
@@ -1745,7 +1745,7 @@ function validateRestorePrngSnapshot(prngState: unknown): CoreResult<SerializedP
   }
   const prng = XorShift32.restore(state.value);
   if (!prng.ok) {
-    return error("state.prngInvalid", "prngState cannot be restored by the PRNG");
+    return coreError("state.prngInvalid", "prngState cannot be restored by the PRNG");
   }
 
   return okResult(prng.value.snapshot());
@@ -1806,14 +1806,14 @@ function parseRestoreDeterministicPayload(
     || !Number.isSafeInteger(record.value.score)
     || record.value.score < 0
   ) {
-    return error("state.invalidShape", "state.score must be a non-negative safe integer");
+    return coreError("state.invalidShape", "state.score must be a non-negative safe integer");
   }
   if (state.expectedTick === 0 && record.value.score !== 0) {
-    return error("state.invalidShape", "initial restore state score must be zero");
+    return coreError("state.invalidShape", "initial restore state score must be zero");
   }
   const stage = content.stagesById.get(state.stageId);
   if (!stage) {
-    return error("state.contentMismatch", "serialized content metadata does not match the loaded content");
+    return coreError("state.contentMismatch", "serialized content metadata does not match the loaded content");
   }
   if (
     typeof record.value.timelineCursor !== "number"
@@ -1821,11 +1821,11 @@ function parseRestoreDeterministicPayload(
     || record.value.timelineCursor < 0
     || record.value.timelineCursor > stage.timeline.length
   ) {
-    return error("state.invalidShape", "state.timelineCursor must be within the stage timeline range");
+    return coreError("state.invalidShape", "state.timelineCursor must be within the stage timeline range");
   }
   const expectedTimelineCursor = findExpectedTimelineCursor(stage, state.expectedTick);
   if (record.value.timelineCursor !== expectedTimelineCursor) {
-    return error("state.invalidShape", "state.timelineCursor must match expectedTick");
+    return coreError("state.invalidShape", "state.timelineCursor must match expectedTick");
   }
   const pendingEventsContract = validateRestorePendingEvents(state, pendingEvents.value);
   if (!pendingEventsContract.ok) {
@@ -1857,10 +1857,10 @@ function parseRestoreDeterministicPayload(
     return enabledFeatureStateContract;
   }
   if (patternRunnerStates.value.length > 0) {
-    return error("state.featureMismatch", "state.patternRunnerStates require a compatible pattern runner module");
+    return coreError("state.featureMismatch", "state.patternRunnerStates require a compatible pattern runner module");
   }
   if (enabledFeatureStates.value.length > 0) {
-    return error("state.featureMismatch", "state.enabledFeatureStates require enabled feature modules");
+    return coreError("state.featureMismatch", "state.enabledFeatureStates require enabled feature modules");
   }
 
   return okResult(Object.freeze({
@@ -1886,7 +1886,7 @@ function createRestoreCommittedState(
   const committedState = toRestoreCommittedStageState(state, payload, prngState);
   const committedSnapshot = serializeCommittedStageState(metadata, committedState);
   if (!committedSnapshot.ok) {
-    return error("state.invalidShape", "SerializedGameState deterministic payload cannot be committed");
+    return coreError("state.invalidShape", "SerializedGameState deterministic payload cannot be committed");
   }
 
   return okResult(Object.freeze({
@@ -1918,7 +1918,7 @@ function validateRestoreInitialRuntimeEntityEnvelope(
   runtimeEntityCount: number,
 ): CoreResult<null> {
   if (state.expectedTick === 0 && (runtimeEntityCount !== 1 || state.nextEntityId !== 2)) {
-    return error("state.invalidShape", "initial restore state must contain only the initial player entity");
+    return coreError("state.invalidShape", "initial restore state must contain only the initial player entity");
   }
 
   return okResult(null);
@@ -1937,19 +1937,19 @@ function validateRestorePendingEvents(
 ): CoreResult<readonly CommittedPendingEvent[]> {
   if (state.expectedTick > 0) {
     if (pendingEvents.length !== 0) {
-      return error("state.invalidShape", "state.pendingEvents must be empty after tick 0");
+      return coreError("state.invalidShape", "state.pendingEvents must be empty after tick 0");
     }
     return okResult(Object.freeze([]));
   }
   if (pendingEvents.length !== 1) {
-    return error("state.invalidShape", "state.pendingEvents must contain stageStarted at tick 0");
+    return coreError("state.invalidShape", "state.pendingEvents must contain stageStarted at tick 0");
   }
   const event = cloneRestorePlainRecord(pendingEvents[0], "state.pendingEvents[0]", ["type", "tick", "stageId"]);
   if (!event.ok) {
     return event;
   }
   if (event.value.type !== "stageStarted" || event.value.tick !== 0 || event.value.stageId !== state.stageId) {
-    return error("state.invalidShape", "state.pendingEvents[0] must be stageStarted for the restored stage");
+    return coreError("state.invalidShape", "state.pendingEvents[0] must be stageStarted for the restored stage");
   }
 
   return okResult(Object.freeze([{ type: "stageStarted", tick: 0, stageId: state.stageId }]));
@@ -1997,7 +1997,7 @@ function validateRestoreRuntimeEntities(
           matchingPlayerEntityCount += 1;
         }
         if (common.value.id !== 1) {
-          return error("state.invalidShape", "player runtime entity id must be the initial entity id");
+          return coreError("state.invalidShape", "player runtime entity id must be the initial entity id");
         }
         const player = validateRestorePlayerRuntimeEntity(entity.value, common.value, content, state.expectedTick);
         if (!player.ok) {
@@ -2052,7 +2052,7 @@ function validateRestoreRuntimeEntities(
     }
   }
   if (playerEntityCount !== 1 || matchingPlayerEntityCount !== 1) {
-    return error("state.invalidShape", "state.runtimeEntities must contain exactly one player matching playerId");
+    return coreError("state.invalidShape", "state.runtimeEntities must contain exactly one player matching playerId");
   }
   const sameTickOrder = validateRestoreSameTickAllocationOrder(
     activeEnemyMatches,
@@ -2083,17 +2083,17 @@ function validateRestorePatternRunnerStates(
       return state;
     }
     if (typeof state.value.runnerId !== "string" || !isValidPatternRunnerId(state.value.runnerId)) {
-      return error("state.invalidShape", "pattern runner state runnerId must be patternRunner.* with a non-empty suffix");
+      return coreError("state.invalidShape", "pattern runner state runnerId must be patternRunner.* with a non-empty suffix");
     }
     if (previousRunnerId !== null && compareUtf8Lexicographic(previousRunnerId, state.value.runnerId) >= 0) {
-      return error("state.invalidShape", "state.patternRunnerStates must be ordered by unique runnerId");
+      return coreError("state.invalidShape", "state.patternRunnerStates must be ordered by unique runnerId");
     }
     previousRunnerId = state.value.runnerId;
     if (typeof state.value.patternId !== "string" || !isNamespacedId(state.value.patternId, "pattern")) {
-      return error("state.invalidShape", "pattern runner state patternId must be a valid pattern id");
+      return coreError("state.invalidShape", "pattern runner state patternId must be a valid pattern id");
     }
     if (!isPositiveSafeInteger(state.value.stateVersion)) {
-      return error("state.invalidShape", "pattern runner stateVersion must be a positive safe integer");
+      return coreError("state.invalidShape", "pattern runner stateVersion must be a positive safe integer");
     }
     const payload = validateRestoreJsonPayload(
       state.value.payload,
@@ -2133,10 +2133,10 @@ function validateRestoreEnabledFeatureStates(
       typeof state.value.feature !== "string"
       || !isRestoreJsonStringWithinSingleValueBudget(state.value.feature)
     ) {
-      return error("state.invalidShape", "enabled feature state feature must be a restore-safe string");
+      return coreError("state.invalidShape", "enabled feature state feature must be a restore-safe string");
     }
     if (!isPositiveSafeInteger(state.value.stateVersion)) {
-      return error("state.invalidShape", "enabled feature stateVersion must be a positive safe integer");
+      return coreError("state.invalidShape", "enabled feature stateVersion must be a positive safe integer");
     }
     const payload = validateRestoreJsonPayload(
       state.value.payload,
@@ -2234,7 +2234,7 @@ function createRestoreSpawnBudget(
 
     const pattern = content.patternsById.get(step.action.pattern);
     if (!pattern) {
-      return error("state.registryInvalid", "stage timeline references an unknown pattern");
+      return coreError("state.registryInvalid", "stage timeline references an unknown pattern");
     }
     if (pattern.fireOnSpawn) {
       const position = resolveEnemyBulletSpawnPosition(
@@ -2244,7 +2244,7 @@ function createRestoreSpawnBudget(
         pattern.fireOnSpawn,
       );
       if (!position.ok) {
-        return error("state.registryInvalid", "stage timeline contains an invalid enemy bullet spawn position");
+        return coreError("state.registryInvalid", "stage timeline contains an invalid enemy bullet spawn position");
       }
       enemyBulletCandidates.push({
         tick: step.tick,
@@ -2269,7 +2269,7 @@ function validateRestoreAllocationEnvelope(
     + spawnBudget.enemyBulletCandidates.length
     + maxPlayerShotAllocations;
   if (state.nextEntityId > maxReachableNextEntityId) {
-    return error("state.invalidShape", "nextEntityId exceeds the deterministic allocation envelope");
+    return coreError("state.invalidShape", "nextEntityId exceeds the deterministic allocation envelope");
   }
 
   return okResult(null);
@@ -2288,11 +2288,11 @@ function consumeRestoreEnemySpawnBudget(
     && isSameRestorePosition(candidate.position, position)
   ));
   if (index === -1) {
-    return error("state.invalidShape", "enemy runtime entity must originate from a processed timeline spawn");
+    return coreError("state.invalidShape", "enemy runtime entity must originate from a processed timeline spawn");
   }
   const [candidate] = candidates.splice(index, 1);
   if (!candidate) {
-    return error("state.invalidShape", "enemy runtime entity must originate from a processed timeline spawn");
+    return coreError("state.invalidShape", "enemy runtime entity must originate from a processed timeline spawn");
   }
 
   return okResult(Object.freeze({
@@ -2313,11 +2313,11 @@ function consumeRestoreEnemyBulletBudget(
     && isSameRestorePosition(candidate.position, position)
   ));
   if (index === -1) {
-    return error("state.invalidShape", "enemy bullet runtime entity must originate from a processed timeline spawn");
+    return coreError("state.invalidShape", "enemy bullet runtime entity must originate from a processed timeline spawn");
   }
   const [candidate] = candidates.splice(index, 1);
   if (!candidate) {
-    return error("state.invalidShape", "enemy bullet runtime entity must originate from a processed timeline spawn");
+    return coreError("state.invalidShape", "enemy bullet runtime entity must originate from a processed timeline spawn");
   }
 
   return okResult(Object.freeze({
@@ -2353,19 +2353,19 @@ function validateRestoreSameTickAllocationOrder(
   for (const bullet of enemyBullets) {
     for (const enemy of enemies) {
       if (bullet.tick === enemy.tick && bullet.id < enemy.id) {
-        return error("state.invalidShape", "enemy bullet id must follow same-tick enemy allocations");
+        return coreError("state.invalidShape", "enemy bullet id must follow same-tick enemy allocations");
       }
     }
   }
   for (const shot of playerShots) {
     for (const enemy of enemies) {
       if (shot.spawnTick === enemy.tick && shot.id < enemy.id) {
-        return error("state.invalidShape", "player shot id must follow same-tick enemy allocations");
+        return coreError("state.invalidShape", "player shot id must follow same-tick enemy allocations");
       }
     }
     for (const bullet of enemyBullets) {
       if (shot.spawnTick === bullet.tick && shot.id < bullet.id) {
-        return error("state.invalidShape", "player shot id must follow same-tick enemy bullet allocations");
+        return coreError("state.invalidShape", "player shot id must follow same-tick enemy bullet allocations");
       }
     }
   }
@@ -2387,7 +2387,7 @@ function validateRestoreSameKindAllocationOrder(
   for (const match of matches) {
     const latestOrder = latestOrderByTick.get(match.tick);
     if (latestOrder !== undefined && match.allocationOrder <= latestOrder) {
-      return error("state.invalidShape", `${label} runtime entity ids must follow same-tick allocation order`);
+      return coreError("state.invalidShape", `${label} runtime entity ids must follow same-tick allocation order`);
     }
     latestOrderByTick.set(match.tick, match.allocationOrder);
   }
@@ -2425,7 +2425,7 @@ function validateRestoreCrossTickAllocationOrder(
   let previous: (typeof allocations)[number] | null = null;
   for (const allocation of allocations) {
     if (previous && compareRestoreAllocationOrder(previous, allocation) >= 0) {
-      return error("state.invalidShape", "runtime entity ids must follow deterministic allocation order across ticks");
+      return coreError("state.invalidShape", "runtime entity ids must follow deterministic allocation order across ticks");
     }
     previous = allocation;
   }
@@ -2450,7 +2450,7 @@ function validateRestoreInitialPlayerEntity(
 ): CoreResult<null> {
   const player = content.playersById.get(entity.definitionId);
   if (!player) {
-    return error("state.registryInvalid", "player runtime entity references an unknown player");
+    return coreError("state.registryInvalid", "player runtime entity references an unknown player");
   }
   if (
     !isSameRestorePosition(DEFAULT_PLAYER_START_POSITION, entity.position)
@@ -2458,7 +2458,7 @@ function validateRestoreInitialPlayerEntity(
     || entity.invincibleTicksRemaining !== 0
     || entity.nextShotAllowedTick !== 0
   ) {
-    return error("state.invalidShape", "initial player runtime entity must match startStage defaults");
+    return coreError("state.invalidShape", "initial player runtime entity must match startStage defaults");
   }
 
   return okResult(null);
@@ -2478,20 +2478,20 @@ function validateRestoreRuntimeEntityCommon(
     || entity.id <= previousEntityId
     || entity.id >= nextEntityId
   ) {
-    return error("state.invalidShape", `state.runtimeEntities[${index}].id must be positive, ascending, and below nextEntityId`);
+    return coreError("state.invalidShape", `state.runtimeEntities[${index}].id must be positive, ascending, and below nextEntityId`);
   }
   if (!isRestoreRuntimeEntityKind(entity.kind)) {
-    return error("state.invalidShape", `state.runtimeEntities[${index}].kind is not supported`);
+    return coreError("state.invalidShape", `state.runtimeEntities[${index}].kind is not supported`);
   }
   if (!isRestoreTopLevelString(entity.definitionId)) {
-    return error("state.invalidShape", `state.runtimeEntities[${index}].definitionId must be a string`);
+    return coreError("state.invalidShape", `state.runtimeEntities[${index}].definitionId must be a string`);
   }
   const position = validateRestoreVector2(entity.position, `state.runtimeEntities[${index}].position`);
   if (!position.ok) {
     return position;
   }
   if (!isPositiveFiniteNumber(entity.collisionRadius)) {
-    return error("state.invalidShape", `state.runtimeEntities[${index}].collisionRadius must be a positive finite number`);
+    return coreError("state.invalidShape", `state.runtimeEntities[${index}].collisionRadius must be a positive finite number`);
   }
 
   return okResult(Object.freeze({
@@ -2513,41 +2513,41 @@ function validateRestorePlayerRuntimeEntity(
   expectedTick: number,
 ): CoreResult<PlayerRuntimeEntity> {
   if (!hasOnlyKeys(entity, RESTORE_RUNTIME_PLAYER_KEYS)) {
-    return error("state.invalidShape", "player runtime entity contains unknown fields");
+    return coreError("state.invalidShape", "player runtime entity contains unknown fields");
   }
   if (
     !isNonNegativeSafeInteger(entity.lives)
     || !isNonNegativeSafeInteger(entity.invincibleTicksRemaining)
     || !isNonNegativeSafeInteger(entity.nextShotAllowedTick)
   ) {
-    return error("state.invalidShape", "player runtime counters must be non-negative safe integers");
+    return coreError("state.invalidShape", "player runtime counters must be non-negative safe integers");
   }
   const movement = cloneRestorePlainRecord(entity.movement, "player runtime movement", ["speed", "focusSpeed"]);
   if (!movement.ok) {
     return movement;
   }
   if (!isPositiveFiniteNumber(movement.value.speed) || movement.value.speed > MAX_PLAYER_MOVEMENT_SPEED) {
-    return error("state.invalidShape", "player movement.speed exceeds the runtime budget");
+    return coreError("state.invalidShape", "player movement.speed exceeds the runtime budget");
   }
   if (!isPositiveFiniteNumber(movement.value.focusSpeed) || movement.value.focusSpeed > MAX_PLAYER_MOVEMENT_SPEED) {
-    return error("state.invalidShape", "player movement.focusSpeed exceeds the runtime budget");
+    return coreError("state.invalidShape", "player movement.focusSpeed exceeds the runtime budget");
   }
   if (typeof entity.shotDefinitionId !== "string") {
-    return error("state.invalidShape", "player shotDefinitionId must be a string");
+    return coreError("state.invalidShape", "player shotDefinitionId must be a string");
   }
   if (!isNamespacedId(entity.shotDefinitionId, "playerShot")) {
-    return error("state.invalidShape", "player shotDefinitionId must be a valid playerShot id");
+    return coreError("state.invalidShape", "player shotDefinitionId must be a valid playerShot id");
   }
   if (typeof entity.definitionId !== "string" || !isNamespacedId(entity.definitionId, "player")) {
-    return error("state.invalidShape", "player definitionId must be a valid player id");
+    return coreError("state.invalidShape", "player definitionId must be a valid player id");
   }
   const player = content.playersById.get(entity.definitionId);
   if (!player) {
-    return error("state.registryInvalid", "player runtime entity references an unknown player");
+    return coreError("state.registryInvalid", "player runtime entity references an unknown player");
   }
   const playerShot = content.playerShotsById.get(entity.shotDefinitionId);
   if (!playerShot) {
-    return error("state.registryInvalid", "player runtime entity references an unknown player shot");
+    return coreError("state.registryInvalid", "player runtime entity references an unknown player shot");
   }
   if (
     entity.collisionRadius !== player.collision.radius
@@ -2555,10 +2555,10 @@ function validateRestorePlayerRuntimeEntity(
     || movement.value.focusSpeed !== player.movement.focusSpeed
     || entity.shotDefinitionId !== player.shot.definition
   ) {
-    return error("state.invalidShape", "player runtime entity must match immutable player definition fields");
+    return coreError("state.invalidShape", "player runtime entity must match immutable player definition fields");
   }
   if (!isPlayerPositionInsidePlayfield(common.position)) {
-    return error("state.invalidShape", "player runtime position must stay inside the playfield");
+    return coreError("state.invalidShape", "player runtime position must stay inside the playfield");
   }
   if (
     entity.lives > player.life.initialLives
@@ -2568,7 +2568,7 @@ function validateRestorePlayerRuntimeEntity(
       MAX_PLAYER_SHOT_FIRE_INTERVAL_TICKS,
     ))
   ) {
-    return error("state.invalidShape", "player runtime counters exceed restorable gameplay bounds");
+    return coreError("state.invalidShape", "player runtime counters exceed restorable gameplay bounds");
   }
 
   return okResult(createRestoredPlayerRuntimeEntity({
@@ -2599,40 +2599,40 @@ function validateRestoreEnemyRuntimeEntity(
   content: LoadedContentIndex,
 ): CoreResult<EnemyRuntimeEntity> {
   if (!hasOnlyKeys(entity, RESTORE_RUNTIME_ENEMY_KEYS)) {
-    return error("state.invalidShape", "enemy runtime entity contains unknown fields");
+    return coreError("state.invalidShape", "enemy runtime entity contains unknown fields");
   }
   if (!isPositiveFiniteNumber(entity.hp) || !isNonNegativeSafeInteger(entity.scoreOnKill)) {
-    return error("state.invalidShape", "enemy runtime hp must be positive and scoreOnKill must be non-negative");
+    return coreError("state.invalidShape", "enemy runtime hp must be positive and scoreOnKill must be non-negative");
   }
   if (typeof entity.pathId !== "string") {
-    return error("state.invalidShape", "enemy pathId must be a string");
+    return coreError("state.invalidShape", "enemy pathId must be a string");
   }
   if (typeof entity.patternId !== "string") {
-    return error("state.invalidShape", "enemy patternId must be a string");
+    return coreError("state.invalidShape", "enemy patternId must be a string");
   }
   if (!isNamespacedId(entity.pathId, "path")) {
-    return error("state.invalidShape", "enemy pathId must be a valid path id");
+    return coreError("state.invalidShape", "enemy pathId must be a valid path id");
   }
   if (!isNamespacedId(entity.patternId, "pattern")) {
-    return error("state.invalidShape", "enemy patternId must be a valid pattern id");
+    return coreError("state.invalidShape", "enemy patternId must be a valid pattern id");
   }
   if (typeof entity.definitionId !== "string" || !isNamespacedId(entity.definitionId, "enemy")) {
-    return error("state.invalidShape", "enemy definitionId must be a valid enemy id");
+    return coreError("state.invalidShape", "enemy definitionId must be a valid enemy id");
   }
   const enemy = content.enemiesById.get(entity.definitionId);
   if (!enemy) {
-    return error("state.registryInvalid", "enemy runtime entity references an unknown enemy");
+    return coreError("state.registryInvalid", "enemy runtime entity references an unknown enemy");
   }
   const path = content.pathsById.get(entity.pathId);
   if (!path) {
-    return error("state.registryInvalid", "enemy runtime entity references an unknown path");
+    return coreError("state.registryInvalid", "enemy runtime entity references an unknown path");
   }
   const pattern = content.patternsById.get(entity.patternId);
   if (!pattern) {
-    return error("state.registryInvalid", "enemy runtime entity references an unknown pattern");
+    return coreError("state.registryInvalid", "enemy runtime entity references an unknown pattern");
   }
   if (entity.collisionRadius !== enemy.collision.radius || entity.scoreOnKill !== enemy.score || entity.hp > enemy.hp) {
-    return error("state.invalidShape", "enemy runtime entity must match immutable enemy definition fields");
+    return coreError("state.invalidShape", "enemy runtime entity must match immutable enemy definition fields");
   }
 
   return okResult(createRestoredEnemyRuntimeEntity({
@@ -2654,17 +2654,17 @@ function validateRestoreEnemyBulletRuntimeEntity(
   content: LoadedContentIndex,
 ): CoreResult<EnemyBulletRuntimeEntity> {
   if (!hasOnlyKeys(entity, RESTORE_RUNTIME_ENEMY_BULLET_KEYS)) {
-    return error("state.invalidShape", "enemy bullet runtime entity contains unknown fields");
+    return coreError("state.invalidShape", "enemy bullet runtime entity contains unknown fields");
   }
   if (typeof entity.definitionId !== "string" || !isNamespacedId(entity.definitionId, "bullet")) {
-    return error("state.invalidShape", "enemy bullet definitionId must be a valid bullet id");
+    return coreError("state.invalidShape", "enemy bullet definitionId must be a valid bullet id");
   }
   const bullet = content.bulletsById.get(entity.definitionId);
   if (!bullet) {
-    return error("state.registryInvalid", "enemy bullet runtime entity references an unknown bullet");
+    return coreError("state.registryInvalid", "enemy bullet runtime entity references an unknown bullet");
   }
   if (entity.collisionRadius !== bullet.collision.radius) {
-    return error("state.invalidShape", "enemy bullet runtime entity must match immutable bullet definition fields");
+    return coreError("state.invalidShape", "enemy bullet runtime entity must match immutable bullet definition fields");
   }
 
   return okResult(createRestoredEnemyBulletRuntimeEntity({
@@ -2683,14 +2683,14 @@ function validateRestorePlayerShotRuntimeEntity(
   expectedTick: number,
 ): CoreResult<RestorePlayerShotValidation> {
   if (!hasOnlyKeys(entity, RESTORE_RUNTIME_PLAYER_SHOT_KEYS)) {
-    return error("state.invalidShape", "player shot runtime entity contains unknown fields");
+    return coreError("state.invalidShape", "player shot runtime entity contains unknown fields");
   }
   const velocity = validateRestoreVector2(entity.velocity, "player shot velocity");
   if (!velocity.ok) {
     return velocity;
   }
   if (Math.abs(velocity.value.x) > MAX_PLAYER_SHOT_SPEED_PER_AXIS || Math.abs(velocity.value.y) > MAX_PLAYER_SHOT_SPEED_PER_AXIS) {
-    return error("state.invalidShape", "player shot velocity exceeds the runtime budget");
+    return coreError("state.invalidShape", "player shot velocity exceeds the runtime budget");
   }
   const remainingLifetimeTicks = entity.remainingLifetimeTicks;
   if (
@@ -2699,17 +2699,17 @@ function validateRestorePlayerShotRuntimeEntity(
     || remainingLifetimeTicks <= 0
     || remainingLifetimeTicks > MAX_PLAYER_SHOT_LIFETIME_TICKS
   ) {
-    return error("state.invalidShape", "player shot remainingLifetimeTicks exceeds the runtime budget");
+    return coreError("state.invalidShape", "player shot remainingLifetimeTicks exceeds the runtime budget");
   }
   if (!isPositiveFiniteNumber(entity.damage)) {
-    return error("state.invalidShape", "player shot damage must be a positive finite number");
+    return coreError("state.invalidShape", "player shot damage must be a positive finite number");
   }
   if (typeof entity.definitionId !== "string" || !isNamespacedId(entity.definitionId, "playerShot")) {
-    return error("state.invalidShape", "player shot definitionId must be a valid playerShot id");
+    return coreError("state.invalidShape", "player shot definitionId must be a valid playerShot id");
   }
   const playerShot = content.playerShotsById.get(entity.definitionId);
   if (!playerShot) {
-    return error("state.registryInvalid", "player shot runtime entity references an unknown player shot");
+    return coreError("state.registryInvalid", "player shot runtime entity references an unknown player shot");
   }
   if (
     entity.collisionRadius !== playerShot.collision.radius
@@ -2718,12 +2718,12 @@ function validateRestorePlayerShotRuntimeEntity(
     || entity.damage !== playerShot.damage
     || remainingLifetimeTicks > playerShot.projectile.lifetimeTicks
   ) {
-    return error("state.invalidShape", "player shot runtime entity must match immutable player shot definition fields");
+    return coreError("state.invalidShape", "player shot runtime entity must match immutable player shot definition fields");
   }
   const elapsedTicks = playerShot.projectile.lifetimeTicks - remainingLifetimeTicks;
   const spawnTick = expectedTick - 1 - elapsedTicks;
   if (!Number.isSafeInteger(spawnTick) || spawnTick < 0 || spawnTick >= expectedTick) {
-    return error("state.invalidShape", "player shot remainingLifetimeTicks is not reachable from expectedTick");
+    return coreError("state.invalidShape", "player shot remainingLifetimeTicks is not reachable from expectedTick");
   }
 
   return okResult(Object.freeze({
@@ -2747,10 +2747,10 @@ function validateRestoreVector2(value: unknown, fieldName: string): CoreResult<R
     return vector;
   }
   if (typeof vector.value.x !== "number" || !Number.isFinite(vector.value.x)) {
-    return error("state.invalidShape", `${fieldName}.x must be finite`);
+    return coreError("state.invalidShape", `${fieldName}.x must be finite`);
   }
   if (typeof vector.value.y !== "number" || !Number.isFinite(vector.value.y)) {
-    return error("state.invalidShape", `${fieldName}.y must be finite`);
+    return coreError("state.invalidShape", `${fieldName}.y must be finite`);
   }
 
   return okResult(Object.freeze({ x: vector.value.x, y: vector.value.y }));
@@ -2767,31 +2767,31 @@ function isNonNegativeSafeInteger(value: unknown): value is number {
 function parseInputFrame(value: unknown): CoreResult<InputFrame> {
   const record = asRecord(value);
   if (!record) {
-    return error("input.invalidShape", "InputFrame must be an object");
+    return coreError("input.invalidShape", "InputFrame must be an object");
   }
   if (!hasOnlyKeys(record, ["tick", "axes", "held", "pressed", "released"])) {
-    return error("input.invalidShape", "InputFrame contains unknown fields");
+    return coreError("input.invalidShape", "InputFrame contains unknown fields");
   }
   if (typeof record.tick !== "number" || !Number.isSafeInteger(record.tick) || record.tick < 0) {
-    return error("input.invalidShape", "input.tick must be a non-negative safe integer");
+    return coreError("input.invalidShape", "input.tick must be a non-negative safe integer");
   }
 
   const axes = asRecord(record.axes);
   if (!axes || !isAxisValue(axes.moveX) || !isAxisValue(axes.moveY)) {
-    return error("input.invalidShape", "input.axes must contain moveX/moveY values of -1, 0, or 1");
+    return coreError("input.invalidShape", "input.axes must contain moveX/moveY values of -1, 0, or 1");
   }
   if (!hasOnlyKeys(axes, ["moveX", "moveY"])) {
-    return error("input.invalidShape", "input.axes contains unknown fields");
+    return coreError("input.invalidShape", "input.axes contains unknown fields");
   }
 
   const held = parseActionArray(record.held);
   const pressed = parseActionArray(record.pressed);
   const released = parseActionArray(record.released);
   if (!held || !pressed || !released) {
-    return error("input.invalidShape", "input action arrays must contain unique supported gameplay actions");
+    return coreError("input.invalidShape", "input action arrays must contain unique supported gameplay actions");
   }
   if (hasIntersection(held, released)) {
-    return error("input.invalidShape", "input.held and input.released must not contain the same action");
+    return coreError("input.invalidShape", "input.held and input.released must not contain the same action");
   }
 
   return okResult(deepFreezeClone({
@@ -2857,21 +2857,21 @@ function isRestoreTopLevelString(value: unknown): value is string {
 function cloneRestoreTopLevelPlainRecord(value: unknown): CoreResult<Record<string, unknown>> {
   try {
     if (!isPlainObjectContainer(value)) {
-      return error("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
+      return coreError("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
     }
     const record = value as Record<string, unknown>;
     const clone = Object.create(null) as Record<string, unknown>;
     for (const key of Object.getOwnPropertyNames(record)) {
       const descriptor = Object.getOwnPropertyDescriptor(record, key);
       if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
-        return error("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
+        return coreError("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
       }
       clone[key] = descriptor.value;
     }
 
     return okResult(Object.freeze(clone));
   } catch {
-    return error("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
+    return coreError("state.invalidShape", "SerializedGameState must be JSON-compatible plain data at top level");
   }
 }
 
@@ -2883,29 +2883,29 @@ function cloneRestorePlainRecord(
 ): CoreResult<Record<string, unknown>> {
   try {
     if (!isPlainObjectContainer(value)) {
-      return error("state.invalidShape", `${fieldName} must be a plain object`);
+      return coreError("state.invalidShape", `${fieldName} must be a plain object`);
     }
     const source = value as Record<string, unknown>;
     const clone = Object.create(null) as Record<string, unknown>;
     const propertyNames = Object.getOwnPropertyNames(source);
     if (propertyNames.length > allowedKeys.length) {
-      return error("state.invalidShape", `${fieldName} contains unknown fields`);
+      return coreError("state.invalidShape", `${fieldName} contains unknown fields`);
     }
     const allowed = new Set(allowedKeys);
     for (const key of propertyNames) {
       if (!allowed.has(key)) {
-        return error("state.invalidShape", `${fieldName} contains unknown fields`);
+        return coreError("state.invalidShape", `${fieldName} contains unknown fields`);
       }
       const descriptor = Object.getOwnPropertyDescriptor(source, key);
       if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
-        return error("state.invalidShape", `${fieldName} must contain only enumerable data properties`);
+        return coreError("state.invalidShape", `${fieldName} must contain only enumerable data properties`);
       }
       clone[key] = descriptor.value;
     }
 
     return okResult(Object.freeze(clone));
   } catch {
-    return error("state.invalidShape", `${fieldName} must be a plain object`);
+    return coreError("state.invalidShape", `${fieldName} must be a plain object`);
   }
 }
 
@@ -2917,10 +2917,10 @@ function cloneRestoreArray(
 ): CoreResult<readonly unknown[]> {
   try {
     if (!Array.isArray(value)) {
-      return error("state.invalidShape", `${fieldName} must be an array`);
+      return coreError("state.invalidShape", `${fieldName} must be an array`);
     }
     if (Object.getPrototypeOf(value) !== Array.prototype) {
-      return error("state.invalidShape", `${fieldName} must be a dense data array`);
+      return coreError("state.invalidShape", `${fieldName} must be a dense data array`);
     }
     const length = value.length;
     if (
@@ -2929,11 +2929,11 @@ function cloneRestoreArray(
       || length > maxLength
       || Object.getOwnPropertySymbols(value).length > 0
     ) {
-      return error("state.invalidShape", `${fieldName} must be a dense data array`);
+      return coreError("state.invalidShape", `${fieldName} must be a dense data array`);
     }
     const propertyNames = Object.getOwnPropertyNames(value);
     if (propertyNames.length > length + 1) {
-      return error("state.invalidShape", `${fieldName} must be a dense data array`);
+      return coreError("state.invalidShape", `${fieldName} must be a dense data array`);
     }
     for (const key of propertyNames) {
       if (key === "length") {
@@ -2941,25 +2941,25 @@ function cloneRestoreArray(
       }
       const index = Number(key);
       if (!Number.isSafeInteger(index) || index < 0 || index >= length || String(index) !== key) {
-        return error("state.invalidShape", `${fieldName} must be a dense data array`);
+        return coreError("state.invalidShape", `${fieldName} must be a dense data array`);
       }
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
-        return error("state.invalidShape", `${fieldName} must be a dense data array`);
+        return coreError("state.invalidShape", `${fieldName} must be a dense data array`);
       }
     }
     const clone: unknown[] = [];
     for (let index = 0; index < length; index += 1) {
       const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
       if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
-        return error("state.invalidShape", `${fieldName} must be a dense data array`);
+        return coreError("state.invalidShape", `${fieldName} must be a dense data array`);
       }
       clone.push(descriptor.value);
     }
 
     return okResult(Object.freeze(clone));
   } catch {
-    return error("state.invalidShape", `${fieldName} must be an array`);
+    return coreError("state.invalidShape", `${fieldName} must be an array`);
   }
 }
 
@@ -2967,12 +2967,12 @@ function cloneRestoreArray(
 function parseRestoreEnabledFeatures(value: unknown): CoreResult<readonly string[]> {
   const denseFeatures = cloneRestoreArray(value, "enabledFeatures", MAX_RESTORE_ENABLED_FEATURES_LENGTH);
   if (!denseFeatures.ok) {
-    return error("state.invalidShape", "enabledFeatures must be an array of strings");
+    return coreError("state.invalidShape", "enabledFeatures must be an array of strings");
   }
   const clone: string[] = [];
   for (const feature of denseFeatures.value) {
     if (typeof feature !== "string" || feature.length > MAX_RESTORE_TOP_LEVEL_STRING_LENGTH) {
-      return error("state.invalidShape", "enabledFeatures must be an array of strings");
+      return coreError("state.invalidShape", "enabledFeatures must be an array of strings");
     }
     clone.push(feature);
   }
@@ -2986,7 +2986,7 @@ function validateRestoreEnabledFeatureContract(features: readonly string[]): Cor
   let previousKnownIndex = -1;
   for (const feature of features) {
     if (seen.has(feature)) {
-      return error("state.invalidShape", "enabledFeatures must use canonical order without duplicates");
+      return coreError("state.invalidShape", "enabledFeatures must use canonical order without duplicates");
     }
     seen.add(feature);
     const knownIndex = (KNOWN_ENABLED_FEATURES as readonly string[]).indexOf(feature);
@@ -2994,7 +2994,7 @@ function validateRestoreEnabledFeatureContract(features: readonly string[]): Cor
       continue;
     }
     if (knownIndex <= previousKnownIndex) {
-      return error("state.invalidShape", "enabledFeatures must use canonical order without duplicates");
+      return coreError("state.invalidShape", "enabledFeatures must use canonical order without duplicates");
     }
     previousKnownIndex = knownIndex;
   }
@@ -3025,9 +3025,4 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 /** union 型の追加時に switch の更新漏れを型エラーとして検出する。 */
 function assertNever(value: never): never {
   throw new Error(`Unhandled value: ${String(value)}`);
-}
-
-/** 単一エラーを `CoreResult` の失敗として返すための小さな helper。 */
-function error<T>(code: CoreErrorCode, message: string): CoreResult<T> {
-  return coreError(code, message);
 }
