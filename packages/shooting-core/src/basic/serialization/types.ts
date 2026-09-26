@@ -1,35 +1,8 @@
-import type {
-  BulletId,
-  Difficulty,
-  EnabledFeature,
-  EnemyId,
-  PathId,
-  PatternId,
-  PlayerId,
-  PlayerShotId,
-  StageId,
-} from "../content/types.ts";
-
-/**
- * serialize 用 DTO で共有する座標・速度の plain-data 表現。
- *
- * Phase 1B-5 で追加する restore は各 field を finite number として検証する。position / velocity の
- * ように小数が自然に発生する値は整数化を要求せず、state hash では finite number の
- * canonical binary encoding に任せる。
- */
-type SerializedVector2 = Readonly<{
-  x: number;
-  y: number;
-}>;
-
-/**
- * serialized schema 上の entity ID。Core 内部の採番実装型には依存させない。
- *
- * Phase 1B-5 で追加する restore は正の safe integer だけを受け付ける。`runtimeEntities` 内では
- * strict ascending / unique / `id < nextEntityId` を満たす必要があり、0、負数、
- * 小数、重複、`nextEntityId` 以上の値は restore 用の shape error として拒否する。
- */
-export type SerializedEntityId = number;
+import type { Difficulty, EnabledFeature, PatternId, PlayerId, StageId } from "../content/types.ts";
+import type { SerializedEnemyBulletRuntimeEntityState } from "../entities/enemy-bullet/snapshot.ts";
+import type { SerializedEnemyRuntimeEntityState } from "../entities/enemy/snapshot.ts";
+import type { SerializedPlayerShotRuntimeEntityState } from "../entities/player-shot/snapshot.ts";
+import type { SerializedPlayerRuntimeEntityState } from "../entities/player/snapshot.ts";
 
 /**
  * Pattern runner の serialized state に使う namespace 付き ID。
@@ -85,85 +58,6 @@ export type SerializedPendingEvent = Readonly<{
   type: "stageStarted";
   tick: 0;
   stageId: StageId;
-}>;
-
-/**
- * serialize 対象 entity が共通して持つ deterministic な runtime 情報。
- *
- * Phase 1B-5 で追加する restore は common field の shape に加え、position が有限座標、
- * collisionRadius が正の有限値であることを検証する。collisionRadius の上限は
- * content validation 側に同じ上限を導入する slice まで restore 専用には持たせない。
- */
-type SerializedRuntimeEntityBase = Readonly<{
-  id: SerializedEntityId;
-  kind: "player" | "enemy" | "enemyBullet" | "playerShot";
-  definitionId: string;
-  position: SerializedVector2;
-  collisionRadius: number;
-}>;
-
-/**
- * restore に必要な player runtime state。render-only 情報は含めない。
- *
- * Phase 1B-5 で追加する restore は PlayerDefinition と一致する collision / movement /
- * shotDefinitionId を要求し、position は playfield 内、lives / invincibleTicksRemaining /
- * nextShotAllowedTick は非負 safe integer かつ gameplay から到達可能な上限内として検証する。
- */
-type SerializedPlayerRuntimeEntityState = SerializedRuntimeEntityBase & Readonly<{
-  kind: "player";
-  definitionId: PlayerId;
-  lives: number;
-  invincibleTicksRemaining: number;
-  nextShotAllowedTick: number;
-  movement: Readonly<{
-    speed: number;
-    focusSpeed: number;
-  }>;
-  shotDefinitionId: PlayerShotId;
-}>;
-
-/**
- * restore に必要な enemy runtime state。sprite / view id は adapter 側の責務に残す。
- *
- * Phase 1B-5 で追加する restore は active enemy hp を正の finite number かつ EnemyDefinition
- * の初期 hp 以下、scoreOnKill / collisionRadius / pathId / patternId は loaded EnemyDefinition
- * と同じ immutable field として検証する。PathRunner が segment state を持つ slice では、この payload に
- * schema version 付きの path runner state を追加し、現在座標から movement state を逆算しない。
- */
-type SerializedEnemyRuntimeEntityState = SerializedRuntimeEntityBase & Readonly<{
-  kind: "enemy";
-  definitionId: EnemyId;
-  hp: number;
-  scoreOnKill: number;
-  pathId: PathId;
-  patternId: PatternId;
-}>;
-
-/**
- * restore に必要な enemy bullet runtime state。
- *
- * Phase 1B-3 では現行 `EnemyBulletRuntimeEntity` に存在する state だけに限定する。
- * velocity / damage / lifetime を Core が所有するまでは、public DTO に未復元の
- * `projectile` state を受け入れない。
- */
-type SerializedEnemyBulletRuntimeEntityState = SerializedRuntimeEntityBase & Readonly<{
-  kind: "enemyBullet";
-  definitionId: BulletId;
-}>;
-
-/**
- * restore に必要な player shot runtime state。
- *
- * Phase 1B-5 で追加する restore は velocity / collisionRadius / damage を PlayerShotDefinition
- * と一致させ、remainingLifetimeTicks は正の safe integer かつ definition lifetime 内、
- * expectedTick から逆算した spawn tick が到達可能な値として検証する。
- */
-type SerializedPlayerShotRuntimeEntityState = SerializedRuntimeEntityBase & Readonly<{
-  kind: "playerShot";
-  definitionId: PlayerShotId;
-  velocity: SerializedVector2;
-  remainingLifetimeTicks: number;
-  damage: number;
 }>;
 
 /**

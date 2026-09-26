@@ -24,6 +24,7 @@ const SHOOTING_CORE_LAYER_RULES = Object.freeze([
   { target: "session/", allowedImporters: ["core.ts"] },
   { target: "serialization/restore/", allowedImporters: ["session/"] },
   { target: "serialization/restore-plain-data.ts", allowedImporters: ["serialization/restore/", "entities/restore-common.ts", "entities/*/restore.ts"] },
+  { target: "entities/*/snapshot.ts", allowedImporters: ["serialization/types.ts", "state/", "hash/", "entities/*/restore.ts"] },
   { target: "entities/*/restore.ts", allowedImporters: ["serialization/restore/"] },
   { target: "entities/restore-common.ts", allowedImporters: ["serialization/restore/", "entities/*/restore.ts"] },
   { target: "state/", allowedImporters: ["session/", "serialization/restore/", "instrumentation/"] },

@@ -1,3 +1,7 @@
+import { projectEnemyBulletRuntimeEntityForSerializedState } from "../entities/enemy-bullet/snapshot.ts";
+import { projectEnemyRuntimeEntityForSerializedState } from "../entities/enemy/snapshot.ts";
+import { projectPlayerShotRuntimeEntityForSerializedState } from "../entities/player-shot/snapshot.ts";
+import { projectPlayerRuntimeEntityForSerializedState } from "../entities/player/snapshot.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import { okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
@@ -64,49 +68,13 @@ export function serializeCommittedStageState(
 function projectRuntimeEntityForSerializedState(entity: RuntimeEntityState): SerializedRuntimeEntityState {
   switch (entity.kind) {
     case "player":
-      return {
-        id: entity.id,
-        kind: "player",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-        lives: entity.lives,
-        invincibleTicksRemaining: entity.invincibleTicksRemaining,
-        nextShotAllowedTick: entity.nextShotAllowedTick,
-        movement: { speed: entity.movement.speed, focusSpeed: entity.movement.focusSpeed },
-        shotDefinitionId: entity.shotDefinitionId,
-      };
+      return projectPlayerRuntimeEntityForSerializedState(entity);
     case "enemy":
-      return {
-        id: entity.id,
-        kind: "enemy",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-        hp: entity.hp,
-        scoreOnKill: entity.scoreOnKill,
-        pathId: entity.pathId,
-        patternId: entity.patternId,
-      };
+      return projectEnemyRuntimeEntityForSerializedState(entity);
     case "enemyBullet":
-      return {
-        id: entity.id,
-        kind: "enemyBullet",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-      };
+      return projectEnemyBulletRuntimeEntityForSerializedState(entity);
     case "playerShot":
-      return {
-        id: entity.id,
-        kind: "playerShot",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-        velocity: { x: entity.velocity.x, y: entity.velocity.y },
-        remainingLifetimeTicks: entity.remainingLifetimeTicks,
-        damage: entity.damage,
-      };
+      return projectPlayerShotRuntimeEntityForSerializedState(entity);
   }
 }
 
