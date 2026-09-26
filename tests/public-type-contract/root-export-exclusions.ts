@@ -27,6 +27,9 @@ import type { HeadlessDebugStateSerializer } from "@shooting-sample/shooting-cor
 // @ts-expect-error headless debug serializer register type は test-only で root public contract に含めない。
 import type { RegisterHeadlessDebugStateSerializer } from "@shooting-sample/shooting-core";
 
+// @ts-expect-error digest 計算前の headless debug checkpoint は root public contract に含めない。
+import type { HeadlessDebugCheckpoint } from "@shooting-sample/shooting-core";
+
 // @ts-expect-error headless debug serializer は test-only で root public contract に含めない。
 import { serializeDebugStateForTest } from "@shooting-sample/shooting-core";
 
@@ -134,6 +137,12 @@ import { createShootingCoreWithTestingHooksForInternalTest } from "@shooting-sam
 
 // @ts-expect-error test-only hook options are not part of the root public contract.
 import type { StageSessionTestingHooks } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error internal stage session hook options are not part of the root public contract.
+import type { StageSessionTestingHookOptions } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error per-session hook consumption state is not part of the root public contract.
+import type { ActiveStageSessionTestingHooks } from "@shooting-sample/shooting-core";
 
 // @ts-expect-error internal runtime component is not part of the root public contract.
 import type { EnemyRuntimeEntity } from "@shooting-sample/shooting-core";
