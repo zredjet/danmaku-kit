@@ -1,5 +1,6 @@
-import type { LoadedGame } from "../api-types.ts";
+import type { LoadedGame, StageSession } from "../api-types.ts";
 import type { LoadedContentIndex } from "../content/content-index.ts";
+import type { PlayerDefinition, StageDefinition } from "../content/types.ts";
 import { deepFreezePlainData } from "../shared/immutable.ts";
 import { createActiveStageSessionTestingHooks } from "../instrumentation/stage-session-testing-hooks.ts";
 import type { StageSessionTestingHookOptions } from "../instrumentation/stage-session-testing-hooks.ts";
@@ -16,6 +17,7 @@ import { createPlayerRuntimeEntity } from "../simulation/runtime-entity.ts";
 import { createCommittedStageState } from "../state/committed-state.ts";
 import { parseStartStageOptions } from "./start-stage-options.ts";
 import { createStageSession } from "./stage-session.ts";
+import type { StageSessionContext } from "./stage-session.ts";
 
 /**
  * 検証済み snapshot から `LoadedGame` を作る。
@@ -42,17 +44,10 @@ export function createLoadedGame(
         return coreError("state.contentMismatch", "serialized content metadata does not match the loaded content");
       }
 
-      return okResult(createStageSession({
-        bulletsById: content.bulletsById,
+      return okResult(createStageSessionFromContent(content, stage, player, testingHooks, {
         debugSeed: null,
-        enemiesById: content.enemiesById,
         initialState: restoredState.value.committedState,
         serializationMetadata: restoredState.value.serializationMetadata,
-        patternsById: content.patternsById,
-        playerShotsById: content.playerShotsById,
-        stage,
-        player,
-        testingHooks: createActiveStageSessionTestingHooks(testingHooks),
       }));
     },
     startStage(rawOptions) {
@@ -95,10 +90,8 @@ export function createLoadedGame(
         score: 0,
         timelineCursor: 0,
       });
-      return okResult(createStageSession({
-        bulletsById: content.bulletsById,
+      return okResult(createStageSessionFromContent(content, stage, player, testingHooks, {
         debugSeed: options.value.seed,
-        enemiesById: content.enemiesById,
         initialState,
         serializationMetadata: {
           coreVersion,
@@ -111,12 +104,33 @@ export function createLoadedGame(
           difficulty: options.value.difficulty,
           playerId,
         },
-        patternsById: content.patternsById,
-        playerShotsById: content.playerShotsById,
-        stage,
-        player,
-        testingHooks: createActiveStageSessionTestingHooks(testingHooks),
       }));
     },
+  });
+}
+
+/**
+ * load 済み content と session ごとの初期値から stage session を作る。
+ *
+ * testing hook の消費状態は session ごとに新しく作り、同じ `LoadedGame` から作った別 session へ持ち越さない。
+ */
+function createStageSessionFromContent(
+  content: LoadedContentIndex,
+  stage: StageDefinition,
+  player: PlayerDefinition,
+  testingHooks: StageSessionTestingHookOptions,
+  initial: Pick<StageSessionContext, "debugSeed" | "initialState" | "serializationMetadata">,
+): StageSession {
+  return createStageSession({
+    bulletsById: content.bulletsById,
+    debugSeed: initial.debugSeed,
+    enemiesById: content.enemiesById,
+    initialState: initial.initialState,
+    serializationMetadata: initial.serializationMetadata,
+    patternsById: content.patternsById,
+    playerShotsById: content.playerShotsById,
+    stage,
+    player,
+    testingHooks: createActiveStageSessionTestingHooks(testingHooks),
   });
 }
