@@ -46,17 +46,23 @@ export class KeyboardInputAdapter {
     this.#actionsByKey = resolveKeyBindings(bindings);
   }
 
-  /** keydown / keyup を届いた順に反映する。割り当てのない key と、それ以外の event type は無視する。 */
-  handleKeyEvent(event: KeyboardInputEvent): void {
+  /**
+   * keydown / keyup を届いた順に反映し、割り当てのある key なら true を返す。
+   *
+   * 割り当てのない key と、keydown / keyup 以外の event type は無視する。呼び出し側は true のとき browser の既定動作
+   * （矢印 key の scroll など）を止める。
+   */
+  handleKeyEvent(event: KeyboardInputEvent): boolean {
     const action = this.#actionsByKey.get(event.code);
     if (action === undefined) {
-      return;
+      return false;
     }
     if (event.type === "keydown") {
       this.#handleKeyDown(event.code, event.repeat, action);
     } else if (event.type === "keyup") {
       this.#handleKeyUp(event.code, action);
     }
+    return true;
   }
 
   /**

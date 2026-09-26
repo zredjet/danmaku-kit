@@ -1,14 +1,10 @@
 import assert from "node:assert/strict";
-import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
-import { createShootingCore, type GameEvent, type InputFrame } from "@shooting-sample/shooting-core";
-import { loadValidatedGameDefinition } from "@shooting-sample/validate-content";
+import type { GameEvent, InputFrame } from "@shooting-sample/shooting-core";
 
+import { startSampleTitleStage } from "../../test-support/sample-title-game.ts";
 import { KeyboardInputAdapter } from "./keyboard-input.ts";
-
-const sampleTitleRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
 function press(adapter: KeyboardInputAdapter, code: string, repeat = false): void {
   adapter.handleKeyEvent({ type: "keydown", code, repeat });
@@ -164,31 +160,14 @@ test("rejects tick ranges that Core cannot accept", () => {
 });
 
 test("produces frames that the Core stage session accepts as player input", async () => {
-  const loaded = await loadValidatedGameDefinition({
-    gameDefinitionPath: path.join(sampleTitleRoot, "config/game-definition.yaml"),
-    contentRoot: path.join(sampleTitleRoot, "content"),
-  });
-  assert.equal(loaded.ok, true);
-  if (!loaded.ok) {
-    return;
-  }
-  const game = createShootingCore().load(loaded.definition);
-  assert.equal(game.ok, true);
-  if (!game.ok) {
-    return;
-  }
-  const session = game.value.startStage({ stageId: "stage.stage_01", difficulty: "normal", seed: "keyboard-input" });
-  assert.equal(session.ok, true);
-  if (!session.ok) {
-    return;
-  }
+  const session = await startSampleTitleStage("keyboard-input");
   const adapter = new KeyboardInputAdapter();
   const events: GameEvent["type"][] = [];
   const playerPositions: { x: number; y: number }[] = [];
   let nextTick = 0;
   const runTicks = (count: number): void => {
     for (const frame of adapter.sampleTicks(nextTick, count)) {
-      const result = session.value.tick(frame);
+      const result = session.tick(frame);
       assert.equal(result.ok, true, JSON.stringify(result.ok ? null : result.errors));
       if (!result.ok) {
         return;
