@@ -368,7 +368,7 @@ system order は replay determinism の一部として扱い、Core の major ve
 したがって同 tick に enemy spawn、enemy bullet、player shot が重なる場合の spawn substep 内 event order は `entitySpawned`、`enemyBulletsSpawnedBatch`、`playerShotsSpawnedBatch` とする。collision / scoring が発生する場合は、その後に `playerHit`、`entityDestroyed`、`scoreChanged` を collision resolution order で追加し、最後に `tickAdvanced` を出す。
 tick 0 の `stageStarted` は system order 外の pending lifecycle event として frame 先頭に drain される。
 
-`update movement` では player を入力で、enemy を path で、player shot を projectile 定義で進める。敵弾の生成位置は spawn substep で決まるため、spawn tick に path で動いた enemy でも `fireOnSpawn` は spawn 位置を基準にする。`update lifetime` では寿命の切れた player shot と、path を終えて cleanup 境界の外にいる enemy を event なしで取り除く。
+`update movement` では player を入力で、enemy を path で、enemy bullet を velocity で、player shot を projectile 定義で進める。敵弾の生成位置は spawn substep で決まるため、spawn tick に path で動いた enemy でも `fireOnSpawn` は spawn 位置を基準にし、生成した敵弾はその tick から動く。`update lifetime` では寿命の切れた player shot、path を終えて cleanup 境界の外にいる enemy、cleanup 境界の外に出た enemy bullet を event なしで取り除く。
 
 Rank feature が有効な場合だけ step 12 に rank update、Phase 2B の Pickup feature が有効な場合だけ step 6 に pickup spawn、step 12 に pickup score / collect processing を追加する。feature 追加分も登録順と entity id 昇順で安定化し、Core minimum の system order を暗黙に変更しない。
 
@@ -601,9 +601,10 @@ version: 1
 fireOnSpawn:
   bullet: bullet.red_small
   offset: { x: 0, y: 8 }
+  velocity: { x: 0, y: 3 }
 ```
 
-`fireOnSpawn` は Stage timeline で enemy が生成された tick の `spawn bullets / player shots` step 内で player shot より先に解決し、`enemyBulletsSpawnedBatch` event と `EnemyBulletRuntimeEntity` を生成する。`offset` は enemy の spawn position からの相対座標である。`wait`、`loop`、`aim`、`fan`、speed を含む本来の Pattern DSL は Phase 2A 以降で `PatternProgram` として追加する。
+`fireOnSpawn` は Stage timeline で enemy が生成された tick の `spawn bullets / player shots` step 内で player shot より先に解決し、`enemyBulletsSpawnedBatch` event と `EnemyBulletRuntimeEntity` を生成する。`offset` は enemy の spawn position からの相対座標である。`velocity` は敵弾の速度（px / tick）で、省略した敵弾は動かない。敵弾は生成した tick の update movement から動き、位置は毎 tick `spawnPosition + velocity * ageTicks`（`ageTicks` は生成から動いた tick 数）として求め直して加算誤差を積まない。swept collision を導入するまでは、1 tick の移動量が自機と敵弾の判定半径の合計を大きく超えてすり抜けないよう、content validation で `velocity` を axis ごとに ±8 px/tick に制限する。敵弾は中心が playfield を 32 px の余白より外れた tick の update lifetime で event を出さずに取り除く。`wait`、`loop`、`aim`、`fan`、speed を含む本来の Pattern DSL は Phase 2A 以降で `PatternProgram` として追加する。
 
 将来の DSL 例:
 
@@ -949,7 +950,7 @@ Phase 2B 追加 budget:
 | --- | --- |
 | pickup | 300 |
 
-Phase 1A では object pool はまだ実装せず、deterministic な ID 採番、batch 上限、immutable snapshot の契約を先に固定する。`fireOnSpawn` で保証する budget は同 tick の spawn 数と batch allocation の失敗時 rollback までとし、active enemy bullet 2,000 の上限、移動、cleanup、上限超過時の runtime policy は collision / lifetime system 導入時に固定する。Phase 2B 以降で負荷が見えた段階で、Core は bullet、shot と event builder に object pool を導入し、tick 中の一時 allocation を避ける。Pickup feature は pickup pool を feature module 側で持つ。ただし `GameFrame.events` として返す event はコピー済み immutable value とし、次 tick の pool 再利用で過去 frame が変化しないようにする。上限超過時は dev では hard error、本番では stage load error または content error として扱い、無音で entity を落とさない。
+Phase 1A では object pool はまだ実装せず、deterministic な ID 採番、batch 上限、immutable snapshot の契約を先に固定する。`fireOnSpawn` で保証する budget は同 tick の spawn 数と batch allocation の失敗時 rollback までとする。Phase 2A-3 で active enemy bullet 2,000 の上限を runtime policy として固定した。敵弾を生成すると active な敵弾が 2,000 を超える tick は、敵弾を 1 発も生成せず（entity id も消費せず）`enemyBullet.budgetExceeded` を内部 error として `stageSession.fatal` に latch する。無音で弾を落とすと replay と見た目が食い違うため、上限は content 側で守る。restore も 2,000 を超える敵弾を持つ snapshot を拒否する。Phase 2B 以降で負荷が見えた段階で、Core は bullet、shot と event builder に object pool を導入し、tick 中の一時 allocation を避ける。Pickup feature は pickup pool を feature module 側で持つ。ただし `GameFrame.events` として返す event はコピー済み immutable value とし、次 tick の pool 再利用で過去 frame が変化しないようにする。上限超過時は dev では hard error、本番では stage load error または content error として扱い、無音で entity を落とさない。
 
 大量発生する弾生成は per-bullet の simulation event にしない。Simulation event では `enemyBulletsSpawnedBatch` のような batch event を使い、render 用には別 stream の render event を生成する。Render event は budget 超過時に集約 event へ畳めるが、Simulation event と replay/state hash は変化させない。
 
@@ -1423,6 +1424,9 @@ type SerializedRuntimeEntityState =
       definitionId: BulletId;
       position: SerializedVector2;
       collisionRadius: number;
+      velocity: SerializedVector2;
+      spawnPosition: SerializedVector2;
+      ageTicks: number;
     }>
   | Readonly<{
       id: SerializedEntityId;
@@ -1527,7 +1531,7 @@ Runtime は `tick()` の戻り値に含まれる `GameFrame.events` を読んで
 
 `SerializedPrngSnapshot` は public DTO とし、`state` は platform-independent な non-zero uint32 とする。Core 内部で使う旧 `SerializedPrngState` 相当の型名は root export せず、public snapshot の名前は `SerializedPrngSnapshot` に統一する。PRNG algorithm を変更する場合は snapshot field を暗黙変換せず、`ShootingCore.coreVersion` と restore compatibility policy で扱う。
 
-`SerializedPendingEvent` は `GameFrame.events` の `GameEvent` と用途を分ける。`GameFrame.events` はその tick で発生して runtime adapter が消費する通知であり、`SerializedPendingEvent` は serialize / restore をまたいで未処理のまま再通知する queue だけを表す。Phase 1B では startStage 直後に残り得る tick 0 の `stageStarted` のみに限定し、`entitySpawned`、`playerShotsSpawnedBatch`、`enemyBulletsSpawnedBatch`、`playerHit`、`entityDestroyed`、`scoreChanged`、`tickAdvanced` は drain 済み frame event として pending queue へ保存しない。Phase 1B の restore は `expectedTick === 0` の snapshot では同一 `stageId` の `stageStarted` 1 件だけを要求し、`expectedTick > 0` では `pendingEvents` を空に限定する。feature / progression event は、restore 後にも pending として残る実装上の正本を持つ slice でだけ `SerializedPendingEvent` へ追加する。EnemyBullet の serialized state は Phase 1B では現行 runtime state から生成できる `definitionId`、`position`、`collisionRadius` までに限定する。enemy bullet の `velocity`、`damage`、lifetime は Core runtime が正本を持つ slice で schema version を上げて追加し、それ以前の restore は `projectile` のような未知 field を `state.invalidShape` として拒否する。
+`SerializedPendingEvent` は `GameFrame.events` の `GameEvent` と用途を分ける。`GameFrame.events` はその tick で発生して runtime adapter が消費する通知であり、`SerializedPendingEvent` は serialize / restore をまたいで未処理のまま再通知する queue だけを表す。Phase 1B では startStage 直後に残り得る tick 0 の `stageStarted` のみに限定し、`entitySpawned`、`playerShotsSpawnedBatch`、`enemyBulletsSpawnedBatch`、`playerHit`、`entityDestroyed`、`scoreChanged`、`tickAdvanced` は drain 済み frame event として pending queue へ保存しない。Phase 1B の restore は `expectedTick === 0` の snapshot では同一 `stageId` の `stageStarted` 1 件だけを要求し、`expectedTick > 0` では `pendingEvents` を空に限定する。feature / progression event は、restore 後にも pending として残る実装上の正本を持つ slice でだけ `SerializedPendingEvent` へ追加する。EnemyBullet の serialized state は Phase 2A-3 で `velocity`、`spawnPosition`、`ageTicks` を追加し、`stateHashVersion` を 3 に上げた。restore は現在座標から移動を逆算せず、処理済み timeline の `fireOnSpawn` と同じ弾・生成位置・速度で、`ageTicks` が生成 tick から `expectedTick` までの tick 数、`position` が `spawnPosition + velocity * ageTicks` と完全一致する spawn を選ぶ。等速直線運動の各座標は tick に対して単調なので、1 tick 目と現在の位置がどちらも cleanup 境界の内側であることで、途中で cleanup されずに残る敵弾だけを受け付ける。enemy bullet の `damage` と lifetime は Core runtime が正本を持つ slice で追加し、それまでの restore は `projectile` のような未知 field を `state.invalidShape` として拒否する。
 
 `SerializedDeterministicState.runtimeEntities` は serialize 時に entity id 昇順で出力する。entity id は正の safe integer とし、`runtimeEntities` 内では strict ascending / unique / `id < nextEntityId` を満たす必要がある。restore は 0、負数、小数、unsafe integer、重複、`nextEntityId` 以上、昇順でない `runtimeEntities`、到達不能な `nextEntityId` envelope、同 tick の system order から作れない ID 並びを `state.invalidShape` として拒否し、受け取った順序を暗黙に sort しない。これにより collision / event order の tie-breaker と state hash の入力順を同じ契約に固定する。Core minimum の `score` は fixed `scoreOnKill` の加算結果なので、restore では non-negative safe integer として検証する。restore 成功時に active state へ入る player は playfield 内座標、`lives <= initialLives`、`invincibleTicksRemaining <= invincibleTicksAfterHit`、`nextShotAllowedTick <= expectedTick - 1 + fire.intervalTicks` を要求し、active enemy は `hp > 0` を要求する。倒された enemy は collision cleanup 後の snapshot から消えている必要があり、`hp: 0` の active enemy として復元しない。
 
@@ -1636,7 +1640,7 @@ State hash は canonical encoding を固定する。hash input は `stateHashVer
 
 entity は id 昇順、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は canonical feature order で列挙する。state hash 用 DTO は public serialize DTO とは別の `HashableGameState` として定義し、`stateHashVersion`、`ShootingCore.coreVersion`、`schemaVersion`、`expectedTick`、`nextEntityId`、`timelineCursor`、`prngState`、`score`、runtime entities、pending events、pattern runner states、enabled feature states を持つ。runtime entity DTO には entity id と component values を一度だけ入れ、`entity ids` や `component values` を別配列として二重 encode しない。`lives` や `nextShotAllowedTick` は player runtime entity payload 内の field として encode する。
 
-固定 DTO は fixedStruct として encode する。fixedStruct は `0x07` tag、struct name の UTF-8 byte length u32 little-endian、struct name bytes、field count u32 little-endian、schema 定義順の field value bytes の順に出力し、object key bytes は出さない。type discriminant を持つ union DTO では `kind` などの discriminant field も schema 定義順の通常 field として encode する。nested field は flatten せず、`position` は `fixedStruct("vector2", [x, y])`、player `movement` は `fixedStruct("playerMovement", [speed, focusSpeed])`、enemy `pathRunnerState` は `fixedStruct("enemyPathRunnerState", [segmentIndex, fixedStruct("vector2", [x, y]), segmentElapsedTicks])` として encode する。たとえば player entity は現在の `HashableRuntimeEntityState` schema に合わせて `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`lives`、`invincibleTicksRemaining`、`nextShotAllowedTick`、`movement`、`shotDefinitionId` の順に、enemy entity は `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`hp`、`scoreOnKill`、`pathId`、`patternId`、`pathRunnerState` の順に encode する。
+固定 DTO は fixedStruct として encode する。fixedStruct は `0x07` tag、struct name の UTF-8 byte length u32 little-endian、struct name bytes、field count u32 little-endian、schema 定義順の field value bytes の順に出力し、object key bytes は出さない。type discriminant を持つ union DTO では `kind` などの discriminant field も schema 定義順の通常 field として encode する。nested field は flatten せず、`position` は `fixedStruct("vector2", [x, y])`、player `movement` は `fixedStruct("playerMovement", [speed, focusSpeed])`、enemy `pathRunnerState` は `fixedStruct("enemyPathRunnerState", [segmentIndex, fixedStruct("vector2", [x, y]), segmentElapsedTicks])`、enemy bullet の `velocity` と `spawnPosition` はそれぞれ `fixedStruct("vector2", [x, y])` として encode する。たとえば player entity は現在の `HashableRuntimeEntityState` schema に合わせて `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`lives`、`invincibleTicksRemaining`、`nextShotAllowedTick`、`movement`、`shotDefinitionId` の順に、enemy entity は `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`hp`、`scoreOnKill`、`pathId`、`patternId`、`pathRunnerState` の順に、enemy bullet entity は `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`velocity`、`spawnPosition`、`ageTicks` の順に encode する。
 
 fixedStruct name の実行時正本は `HASHABLE_FIXED_STRUCT_NAME_BY_DTO` とし、次の表はその内容を示す。
 

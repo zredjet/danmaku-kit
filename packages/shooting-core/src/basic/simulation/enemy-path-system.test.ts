@@ -45,6 +45,9 @@ test("moves enemies along their path and keeps other kinds and finished enemies 
     definitionId: "bullet.red_small",
     position: Object.freeze({ x: 1, y: 1 }),
     collisionRadius: 4,
+    velocity: Object.freeze({ x: 0, y: 0 }),
+    spawnPosition: Object.freeze({ x: 1, y: 1 }),
+    ageTicks: 1,
   });
 
   const advanced = advance([moving, still, bullet]);

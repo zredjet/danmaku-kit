@@ -65,7 +65,7 @@ test("creates enemy runtime components from enemy content and spawn action", () 
 test("creates bullet and player shot runtime components from content hitboxes", () => {
   const definition = createMinimumDefinition();
   const allocator = new EntityAllocator();
-  const bullet = createEnemyBulletRuntimeEntity(allocator, definition.content.bullets[0]!, { x: 100, y: 120 });
+  const bullet = createEnemyBulletRuntimeEntity(allocator, definition.content.bullets[0]!, { x: 100, y: 120 }, { x: 0, y: 3 });
   const shot = createPlayerShotRuntimeEntity(allocator, definition.content.playerShots[0]!, { x: 200, y: 360 });
 
   assert.equal(bullet.ok, true);
@@ -79,6 +79,9 @@ test("creates bullet and player shot runtime components from content hitboxes", 
     definitionId: "bullet.red_small",
     position: { x: 100, y: 120 },
     collisionRadius: 4,
+    velocity: { x: 0, y: 3 },
+    spawnPosition: { x: 100, y: 120 },
+    ageTicks: 0,
   });
   assert.deepEqual(shot.value, {
     id: 2,
@@ -99,6 +102,7 @@ test("rejects non-finite enemy bullet positions before consuming ids", () => {
     allocator,
     definition.content.bullets[0]!,
     { x: Number.POSITIVE_INFINITY, y: 120 },
+    { x: 0, y: 0 },
   );
 
   assert.equal(bullet.ok, false);
@@ -146,7 +150,12 @@ test("projects runtime components to public readonly snapshots without leaking i
   assert.equal(Object.isFrozen(snapshot), true);
   assert.equal(Object.isFrozen(snapshot.position), true);
 
-  const bullet = createEnemyBulletRuntimeEntity(new EntityAllocator(), definition.content.bullets[0]!, { x: 100, y: 120 });
+  const bullet = createEnemyBulletRuntimeEntity(
+    new EntityAllocator(),
+    definition.content.bullets[0]!,
+    { x: 100, y: 120 },
+    { x: 0, y: 3 },
+  );
   assert.equal(bullet.ok, true);
   if (!bullet.ok) {
     assert.fail("expected enemy bullet entity");

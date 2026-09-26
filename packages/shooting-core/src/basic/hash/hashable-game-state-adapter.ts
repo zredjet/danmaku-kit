@@ -138,6 +138,8 @@ function adaptRuntimeEntity(value: HashableRuntimeEntityState): CanonicalFixedSt
       const canonicalEntity = {
         ...value,
         position: adaptVector2(value.position),
+        velocity: adaptVector2(value.velocity),
+        spawnPosition: adaptVector2(value.spawnPosition),
       } satisfies Record<keyof typeof value, CanonicalEntityFieldValue>;
       return fixedStructFromFieldOrder(
         HASHABLE_FIXED_STRUCT_NAME_BY_DTO.enemyBulletRuntimeEntity,

@@ -7,7 +7,7 @@ import { adaptHashableGameStateToCanonicalValue } from "./hashable-game-state-ad
 
 test("adapts hashable game state through the fixed schema tables", () => {
   const state: HashableGameState = {
-    stateHashVersion: 2,
+    stateHashVersion: 3,
     coreVersion: "core.test",
     schemaVersion: "1",
     expectedTick: 4,
@@ -32,6 +32,9 @@ test("adapts hashable game state through the fixed schema tables", () => {
         definitionId: "bullet.red",
         position: { x: 10, y: 11 },
         collisionRadius: 4,
+        velocity: { x: 0, y: 2 },
+        spawnPosition: { x: 10, y: 5 },
+        ageTicks: 3,
       },
       {
         id: 2,
@@ -84,7 +87,7 @@ test("adapts hashable game state through the fixed schema tables", () => {
 
   const canonical = adaptHashableGameStateToCanonicalValue(state);
   const expected = fixedStruct("hashableGameState", [
-    2,
+    3,
     "core.test",
     "1",
     4,
@@ -123,6 +126,9 @@ test("adapts hashable game state through the fixed schema tables", () => {
         "bullet.red",
         fixedStruct("vector2", [10, 11]),
         4,
+        fixedStruct("vector2", [0, 2]),
+        fixedStruct("vector2", [10, 5]),
+        3,
       ]),
       fixedStruct("playerShotRuntimeEntity", [
         4,

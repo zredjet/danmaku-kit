@@ -183,3 +183,57 @@ export function createEnemyPathDefinition(): GameDefinition {
     },
   };
 }
+
+/**
+ * tick 0 に動く敵弾を 2 発出す definition。
+ *
+ * (192, 100) の enemy は下向き（0, 6）の敵弾を (192, 108) から撃ち、敵弾は tick 47 に自機（192, 400）へ当たる。(50, 100) の enemy は
+ * 上向き（0, -8）の敵弾を撃ち、敵弾は 17 tick 目（tick 16）に cleanup 余白（32 px）の外に出る。
+ */
+export function createMovingEnemyBulletDefinition(): GameDefinition {
+  const definition = createMinimumDefinition();
+  return {
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        timeline: [
+          {
+            tick: 0,
+            action: {
+              type: "spawnEnemy",
+              enemy: "enemy.scout",
+              path: "path.none",
+              pattern: "pattern.down",
+              position: { x: 192, y: 100 },
+            },
+          },
+          {
+            tick: 0,
+            action: {
+              type: "spawnEnemy",
+              enemy: "enemy.scout",
+              path: "path.none",
+              pattern: "pattern.up",
+              position: { x: 50, y: 100 },
+            },
+          },
+        ],
+      }],
+      patterns: [
+        ...definition.content.patterns,
+        {
+          id: "pattern.down",
+          version: 1,
+          fireOnSpawn: { bullet: "bullet.red_small", offset: { x: 0, y: 8 }, velocity: { x: 0, y: 6 } },
+        },
+        {
+          id: "pattern.up",
+          version: 1,
+          fireOnSpawn: { bullet: "bullet.red_small", offset: { x: 0, y: 0 }, velocity: { x: 0, y: -8 } },
+        },
+      ],
+    },
+  };
+}

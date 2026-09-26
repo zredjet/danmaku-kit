@@ -99,7 +99,16 @@ test("fixes and freezes hashable canonical schema tables", () => {
         "patternId",
         "pathRunnerState",
       ],
-      enemyBullet: ["id", "kind", "definitionId", "position", "collisionRadius"],
+      enemyBullet: [
+        "id",
+        "kind",
+        "definitionId",
+        "position",
+        "collisionRadius",
+        "velocity",
+        "spawnPosition",
+        "ageTicks",
+      ],
       playerShot: [
         "id",
         "kind",

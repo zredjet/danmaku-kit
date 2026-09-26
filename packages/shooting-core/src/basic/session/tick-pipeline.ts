@@ -9,6 +9,7 @@ import { consumeWorkingMutationFailureForTesting } from "../instrumentation/stag
 import type { ActiveStageSessionTestingHooks } from "../instrumentation/stage-session-testing-hooks.ts";
 import type { CoreError, CoreResult } from "../result.ts";
 import { resolveCollisionAndScoring } from "../simulation/collision-system.ts";
+import { advanceEnemyBullets } from "../simulation/enemy-bullet-movement-system.ts";
 import { spawnEnemyBulletsOnSpawn } from "../simulation/enemy-bullet-system.ts";
 import { advanceEnemyPaths } from "../simulation/enemy-path-system.ts";
 import { advancePlayerMovement } from "../simulation/player-movement-system.ts";
@@ -91,6 +92,7 @@ export function runStageTick(
     timelineSpawn.value.entities,
     content.patternsById,
     content.bulletsById,
+    countActiveEnemyBullets(working.activeEntities),
   );
   if (!enemyBulletSpawn.ok) {
     return fatalTickOutcome(enemyBulletSpawn.errors);
@@ -139,13 +141,15 @@ export function runStageTick(
     return Object.freeze({ kind: "rejected", result: injectedFailure });
   }
 
-  // system order の updateMovement / updateLifetime。player は入力で、enemy は path で、player shot は projectile 定義で進める。
+  // system order の updateMovement / updateLifetime。player は入力で、enemy は path で、enemy bullet は velocity で、
+  // player shot は projectile 定義で進める。
   const movedEntities = advancePlayerMovement(working.activeEntities, input);
   const pathMovedEntities = advanceEnemyPaths(movedEntities, content.pathsById);
   if (!pathMovedEntities.ok) {
     return fatalTickOutcome(pathMovedEntities.errors);
   }
-  const advancedEntities = advancePlayerShotLifecycle(pathMovedEntities.value, {
+  const bulletMovedEntities = advanceEnemyBullets(pathMovedEntities.value);
+  const advancedEntities = advancePlayerShotLifecycle(bulletMovedEntities, {
     spawnedThisTickEntityIds: spawnedPlayerShotEntityIds,
   });
   const collision = resolveCollisionAndScoring(advancedEntities, {
@@ -222,6 +226,17 @@ function toReadonlyPlayerState(player: PlayerRuntimeEntity): ReadonlyPlayerState
     lives: player.lives,
     invincibleTicksRemaining: player.invincibleTicksRemaining,
   });
+}
+
+/** active な enemy bullet の数を数える。敵弾生成の上限判定に使う。 */
+function countActiveEnemyBullets(entities: readonly RuntimeEntityState[]): number {
+  let count = 0;
+  for (const entity of entities) {
+    if (entity.kind === "enemyBullet") {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 /** working entity list 内の同一 ID entity を、更新済み immutable entity へ差し替える。 */

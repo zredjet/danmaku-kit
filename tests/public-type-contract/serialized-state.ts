@@ -61,6 +61,9 @@ const serializedEnemyBulletEntity: SerializedRuntimeEntityState = {
   definitionId: "bullet.red_small",
   position: { x: 192, y: 120 },
   collisionRadius: 4,
+  velocity: { x: 0, y: 2 },
+  spawnPosition: { x: 192, y: 100 },
+  ageTicks: 10,
 };
 const serializedPlayerShotEntity: SerializedRuntimeEntityState = {
   id: 4,
@@ -98,7 +101,7 @@ const serializedGameState: SerializedGameState = {
   schemaVersion: "1",
   contentVersion: "1",
   inputFormatVersion: "1",
-  stateHashVersion: 2,
+  stateHashVersion: 3,
   enabledFeatures: [],
   stageId: "stage.stage_01",
   difficulty: "normal",
@@ -225,6 +228,9 @@ const invalidSerializedEnemyBulletDefinition: SerializedEnemyBulletEntityForCont
   definitionId: "playerShot.basic",
   position: { x: 192, y: 120 },
   collisionRadius: 4,
+  velocity: { x: 0, y: 2 },
+  spawnPosition: { x: 192, y: 100 },
+  ageTicks: 10,
 };
 
 const invalidSerializedEnemyBulletProjectile: SerializedRuntimeEntityState = {
@@ -233,7 +239,10 @@ const invalidSerializedEnemyBulletProjectile: SerializedRuntimeEntityState = {
   definitionId: "bullet.red_small",
   position: { x: 192, y: 120 },
   collisionRadius: 4,
-  // @ts-expect-error Phase 1B の enemy bullet serialized state は復元不能な projectile field を持たない。
+  velocity: { x: 0, y: 2 },
+  spawnPosition: { x: 192, y: 100 },
+  ageTicks: 10,
+  // @ts-expect-error enemy bullet serialized state は runtime が正本を持たない projectile field を持たない。
   projectile: {
     velocity: { x: 0, y: 2 },
     damage: 1,
@@ -310,7 +319,7 @@ const invalidSerializedGameStateWithoutState: SerializedGameState = {
   schemaVersion: "1",
   contentVersion: "1",
   inputFormatVersion: "1",
-  stateHashVersion: 2,
+  stateHashVersion: 3,
   enabledFeatures: [],
   stageId: "stage.stage_01",
   difficulty: "normal",

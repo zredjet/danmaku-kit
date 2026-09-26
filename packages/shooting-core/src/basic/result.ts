@@ -14,6 +14,7 @@ export type CoreErrorCode =
   | "definition.unknownField"
   | "difficulty.notSupported"
   | "enemy.notFound"
+  | "enemyBullet.budgetExceeded"
   | "entityAllocator.invalidState"
   | "feature.duplicate"
   | "feature.unknown"

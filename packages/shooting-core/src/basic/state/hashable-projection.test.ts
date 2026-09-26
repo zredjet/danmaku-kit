@@ -36,7 +36,7 @@ test("records hashable state from committed state without public-only metadata",
   const serialized = assertSerializeOk(started.serialize(), "initial serialize with hashable state");
   assert.equal(hashableStates.length, 1);
   assert.deepEqual(hashableStates[0], {
-    stateHashVersion: 2,
+    stateHashVersion: 3,
     coreVersion: "core.test",
     schemaVersion: "1",
     expectedTick: 0,
@@ -93,7 +93,7 @@ test("records identical hashable state after restore roundtrip", () => {
   const serialized = assertSerializeOk(started.serialize(), "source serialize with hashable state");
   assert.equal(hashableStates.length, 1);
   const expectedHashableState: HashableGameState = {
-    stateHashVersion: 2,
+    stateHashVersion: 3,
     coreVersion: "core.test",
     schemaVersion: "1",
     expectedTick: 1,
@@ -132,6 +132,9 @@ test("records identical hashable state after restore roundtrip", () => {
         definitionId: "bullet.red_small",
         position: { x: 192, y: 88 },
         collisionRadius: 4,
+        velocity: { x: 0, y: 0 },
+        spawnPosition: { x: 192, y: 88 },
+        ageTicks: 1,
       },
       {
         id: 4,
@@ -180,12 +183,12 @@ test("fixes gameplay state-hash digest goldens for score and player-hit transiti
   assert.deepEqual(
     collectStateHashSamples(createCollisionScoreDefinition(), [createShotInputFrame(0), createShotInputFrame(1)])
       .map((sample) => sample.hash),
-    ["9ca3b520aa2def6f", "7510e6ba535e5113"],
+    ["934333d411df7351", "520109f7b5797c8b"],
   );
   assert.deepEqual(
     collectStateHashSamples(createEnemyBulletHitDefinition(), [createEmptyInputFrame(0), createEmptyInputFrame(1)])
       .map((sample) => sample.hash),
-    ["294974eddde126b4", "648c0f1c3712e228"],
+    ["72e9b531eb4ba4ee", "3dd62d4031963a5d"],
   );
 });
 

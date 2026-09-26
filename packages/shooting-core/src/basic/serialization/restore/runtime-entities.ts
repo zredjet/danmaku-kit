@@ -1,4 +1,5 @@
 import type { LoadedContentIndex } from "../../content/content-index.ts";
+import { MAX_ACTIVE_ENEMY_BULLETS } from "../../content/runtime-budgets.ts";
 import type { StageDefinition } from "../../content/types.ts";
 import { RESTORE_RUNTIME_ENEMY_BULLET_KEYS, validateRestoreEnemyBulletRuntimeEntity } from "../../entities/enemy-bullet/restore.ts";
 import { RESTORE_RUNTIME_ENEMY_KEYS, validateRestoreEnemyRuntimeEntity } from "../../entities/enemy/restore.ts";
@@ -119,9 +120,16 @@ export function validateRestoreRuntimeEntities(
         if (!bullet.ok) {
           return bullet;
         }
-        const budget = consumeRestoreEnemyBulletBudget(spawnBudget.value.enemyBulletCandidates, entity.value, common.value.position);
+        const budget = consumeRestoreEnemyBulletBudget(
+          spawnBudget.value.enemyBulletCandidates,
+          bullet.value,
+          state.expectedTick,
+        );
         if (!budget.ok) {
           return budget;
+        }
+        if (activeEnemyBulletMatches.length >= MAX_ACTIVE_ENEMY_BULLETS) {
+          return coreError("state.invalidShape", `state.runtimeEntities must contain at most ${MAX_ACTIVE_ENEMY_BULLETS} enemy bullets`);
         }
         activeEnemyBulletMatches.push(budget.value);
         activeEntities.push(bullet.value);

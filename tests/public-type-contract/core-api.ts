@@ -35,6 +35,7 @@ const contextualCoreError: CoreError = {
 };
 const errorCode: CoreErrorCode = "input.invalidShape";
 const bulletErrorCode: CoreErrorCode = "bullet.notFound";
+const enemyBulletBudgetErrorCode: CoreErrorCode = "enemyBullet.budgetExceeded";
 const invalidConstraintErrorCode: CoreErrorCode = "definition.invalidConstraint";
 const playerShotErrorCode: CoreErrorCode = "playerShot.notFound";
 const fatalStageSessionErrorCode: CoreErrorCode = "stageSession.fatal";
@@ -114,6 +115,7 @@ void loaded;
 void loadedAsResult;
 void errorCode;
 void bulletErrorCode;
+void enemyBulletBudgetErrorCode;
 void invalidConstraintErrorCode;
 void playerShotErrorCode;
 void fatalStageSessionErrorCode;

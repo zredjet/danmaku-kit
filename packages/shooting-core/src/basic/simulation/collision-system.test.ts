@@ -385,6 +385,9 @@ function createEnemyBullet(options: {
     definitionId: "bullet.red_small",
     position: Object.freeze({ x: options.position.x, y: options.position.y }),
     collisionRadius: 4,
+    velocity: Object.freeze({ x: 0, y: 0 }),
+    spawnPosition: Object.freeze({ x: options.position.x, y: options.position.y }),
+    ageTicks: 1,
   });
 }
 

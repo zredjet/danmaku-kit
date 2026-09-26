@@ -18,12 +18,13 @@ test("spawns enemy bullets from fireOnSpawn patterns in enemy order", () => {
     ],
     new Map([
       ["pattern.fire_a", createPattern("pattern.fire_a", "bullet.red_small", { x: 1, y: 2 })],
-      ["pattern.fire_b", createPattern("pattern.fire_b", "bullet.blue_small", { x: -4, y: 8 })],
+      ["pattern.fire_b", createPattern("pattern.fire_b", "bullet.blue_small", { x: -4, y: 8 }, { x: 1, y: 3 })],
     ]),
     new Map([
       ["bullet.red_small", createBullet("bullet.red_small")],
       ["bullet.blue_small", createBullet("bullet.blue_small")],
     ]),
+    0,
   );
 
   assert.equal(result.ok, true);
@@ -38,6 +39,9 @@ test("spawns enemy bullets from fireOnSpawn patterns in enemy order", () => {
       definitionId: "bullet.red_small",
       position: { x: 101, y: 52 },
       collisionRadius: 4,
+      velocity: { x: 0, y: 0 },
+      spawnPosition: { x: 101, y: 52 },
+      ageTicks: 0,
     },
     {
       id: 2,
@@ -45,6 +49,9 @@ test("spawns enemy bullets from fireOnSpawn patterns in enemy order", () => {
       definitionId: "bullet.blue_small",
       position: { x: 196, y: 78 },
       collisionRadius: 4,
+      velocity: { x: 1, y: 3 },
+      spawnPosition: { x: 196, y: 78 },
+      ageTicks: 0,
     },
   ]);
   assert.deepEqual(result.value.spawnedBullets, [
@@ -100,6 +107,7 @@ test("returns null without consuming ids when no fireOnSpawn pattern exists", ()
     [createEnemy({ id: 10, patternId: "pattern.none", position: { x: 100, y: 50 } })],
     new Map([["pattern.none", Object.freeze({ id: "pattern.none", version: 1 })]]),
     new Map([["bullet.red_small", createBullet("bullet.red_small")]]),
+    0,
   );
 
   assert.equal(result.ok, true);
@@ -121,6 +129,7 @@ test("skips non-firing enemies and spawns later fireOnSpawn bullets", () => {
       ["pattern.fire", createPattern("pattern.fire", "bullet.red_small", { x: -4, y: 8 })],
     ]),
     new Map([["bullet.red_small", createBullet("bullet.red_small")]]),
+    0,
   );
 
   assert.equal(result.ok, true);
@@ -152,6 +161,7 @@ test("does not consume ids when a later enemy bullet reference fails", () => {
       ["pattern.missing_bullet", createPattern("pattern.missing_bullet", "bullet.missing", { x: 0, y: 0 })],
     ]),
     new Map([["bullet.red_small", createBullet("bullet.red_small")]]),
+    0,
   );
 
   assert.equal(result.ok, false);
@@ -167,6 +177,7 @@ test("does not consume ids when an enemy pattern reference is missing", () => {
     [createEnemy({ id: 10, patternId: "pattern.missing", position: { x: 100, y: 50 } })],
     new Map([["pattern.other", createPattern("pattern.other", "bullet.red_small", { x: 1, y: 2 })]]),
     new Map([["bullet.red_small", createBullet("bullet.red_small")]]),
+    0,
   );
 
   assert.equal(result.ok, false);
@@ -193,6 +204,7 @@ test("does not consume ids when allocator cannot allocate the full bullet batch"
       ["pattern.fire_b", createPattern("pattern.fire_b", "bullet.red_small", { x: -4, y: 8 })],
     ]),
     new Map([["bullet.red_small", createBullet("bullet.red_small")]]),
+    0,
   );
 
   assert.equal(result.ok, false);
@@ -208,11 +220,42 @@ test("rejects non-finite generated bullet positions without consuming ids", () =
     [createEnemy({ id: 10, patternId: "pattern.overflow", position: { x: Number.MAX_VALUE, y: 50 } })],
     new Map([["pattern.overflow", createPattern("pattern.overflow", "bullet.red_small", { x: Number.MAX_VALUE, y: 0 })]]),
     new Map([["bullet.red_small", createBullet("bullet.red_small")]]),
+    0,
   );
 
   assert.equal(result.ok, false);
   assert.equal(!result.ok && result.errors[0]?.code, "definition.invalidConstraint");
   assert.equal(allocator.snapshot(), 1);
+});
+
+test("fails without consuming ids when the batch would exceed the active enemy bullet budget", () => {
+  const spawn = (activeEnemyBulletCount: number) => {
+    const allocator = new EntityAllocator();
+    const result = spawnEnemyBulletsOnSpawn(
+      allocator,
+      0,
+      [
+        createEnemy({ id: 10, patternId: "pattern.fire", position: { x: 100, y: 50 } }),
+        createEnemy({ id: 11, patternId: "pattern.fire", position: { x: 200, y: 70 } }),
+      ],
+      new Map([["pattern.fire", createPattern("pattern.fire", "bullet.red_small", { x: 0, y: 8 })]]),
+      new Map([["bullet.red_small", createBullet("bullet.red_small")]]),
+      activeEnemyBulletCount,
+    );
+    return { result, nextEntityId: allocator.snapshot() };
+  };
+
+  const atBudget = spawn(1_998);
+  const overBudget = spawn(1_999);
+
+  assert.equal(atBudget.result.ok, true);
+  assert.equal(atBudget.nextEntityId, 3);
+  assert.equal(overBudget.result.ok, false);
+  assert.deepEqual(!overBudget.result.ok && overBudget.result.errors, [{
+    code: "enemyBullet.budgetExceeded",
+    message: "Active enemy bullets would exceed 2000: 1999 + 2",
+  }]);
+  assert.equal(overBudget.nextEntityId, 1);
 });
 
 function createEnemy(options: {
@@ -241,6 +284,7 @@ function createPattern(
   id: PatternDefinition["id"],
   bullet: BulletDefinition["id"],
   offset: { x: number; y: number },
+  velocity?: { x: number; y: number },
 ): PatternDefinition {
   return Object.freeze({
     id,
@@ -251,6 +295,7 @@ function createPattern(
         x: offset.x,
         y: offset.y,
       }),
+      ...(velocity === undefined ? {} : { velocity: Object.freeze({ x: velocity.x, y: velocity.y }) }),
     }),
   });
 }

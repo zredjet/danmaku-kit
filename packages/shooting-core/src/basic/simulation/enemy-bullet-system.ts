@@ -1,3 +1,4 @@
+import { MAX_ACTIVE_ENEMY_BULLETS } from "../content/runtime-budgets.ts";
 import type { BulletDefinition, PatternDefinition } from "../content/types.ts";
 import { createEnemyBulletRuntimeEntity } from "../entities/enemy-bullet/model.ts";
 import type { EnemyBulletRuntimeEntity } from "../entities/enemy-bullet/model.ts";
@@ -16,7 +17,10 @@ type EnemyBulletSpawnEventItem = Readonly<{
 type EnemyBulletSpawnPlan = Readonly<{
   bullet: BulletDefinition;
   position: EnemyBulletRuntimeEntity["position"];
+  velocity: EnemyBulletRuntimeEntity["velocity"];
 }>;
+
+const STATIONARY_VELOCITY: EnemyBulletRuntimeEntity["velocity"] = Object.freeze({ x: 0, y: 0 });
 
 /** 敵弾生成 system が tick へ返す差分。 */
 export type EnemyBulletSpawnResult = Readonly<{
@@ -28,9 +32,8 @@ export type EnemyBulletSpawnResult = Readonly<{
 /**
  * spawn 直後の enemy pattern から敵弾を 1 batch 生成する。
  *
- * Phase 1A では pattern DSL 全体を実行せず、`fireOnSpawn` だけを deterministic な
- * enemy bullet 生成経路として扱う。これにより次の collision スライスで参照できる
- * enemy bullet runtime entity を用意する。
+ * pattern DSL 全体はまだ実行せず、`fireOnSpawn` だけを deterministic な enemy bullet 生成経路として扱う。生成すると active な
+ * enemy bullet が `MAX_ACTIVE_ENEMY_BULLETS` を超える場合は、entity を落とさず error を返し、呼び出し側で fatal として扱う。
  */
 export function spawnEnemyBulletsOnSpawn(
   allocator: EntityAllocator,
@@ -38,6 +41,7 @@ export function spawnEnemyBulletsOnSpawn(
   spawnedEnemies: readonly EnemyRuntimeEntity[],
   patternsById: ReadonlyMap<string, PatternDefinition>,
   bulletsById: ReadonlyMap<string, BulletDefinition>,
+  activeEnemyBulletCount: number,
 ): CoreResult<EnemyBulletSpawnResult | null> {
   const plans: EnemyBulletSpawnPlan[] = [];
 
@@ -63,6 +67,7 @@ export function spawnEnemyBulletsOnSpawn(
     plans.push(Object.freeze({
       bullet,
       position: position.value,
+      velocity: resolveEnemyBulletSpawnVelocity(fireOnSpawn),
     }));
   }
 
@@ -70,6 +75,12 @@ export function spawnEnemyBulletsOnSpawn(
     return okResult(null);
   }
 
+  if (activeEnemyBulletCount + plans.length > MAX_ACTIVE_ENEMY_BULLETS) {
+    return coreError(
+      "enemyBullet.budgetExceeded",
+      `Active enemy bullets would exceed ${MAX_ACTIVE_ENEMY_BULLETS}: ${activeEnemyBulletCount} + ${plans.length}`,
+    );
+  }
   const capacity = allocator.canAllocate(plans.length);
   if (!capacity.ok) {
     return capacity;
@@ -79,7 +90,7 @@ export function spawnEnemyBulletsOnSpawn(
   const spawnedBullets: EnemyBulletSpawnEventItem[] = [];
 
   for (const plan of plans) {
-    const entity = createEnemyBulletRuntimeEntity(allocator, plan.bullet, plan.position);
+    const entity = createEnemyBulletRuntimeEntity(allocator, plan.bullet, plan.position, plan.velocity);
     if (!entity.ok) {
       return entity;
     }
@@ -140,4 +151,13 @@ export function resolveEnemyBulletSpawnPosition(
   }
 
   return okResult(Object.freeze({ x, y }));
+}
+
+/** `fireOnSpawn` の敵弾速度を返す。velocity を省略した敵弾は動かない。restore の spawn 候補も同じ値を使う。 */
+export function resolveEnemyBulletSpawnVelocity(
+  fireOnSpawn: NonNullable<PatternDefinition["fireOnSpawn"]>,
+): EnemyBulletRuntimeEntity["velocity"] {
+  return fireOnSpawn.velocity
+    ? Object.freeze({ x: fireOnSpawn.velocity.x, y: fireOnSpawn.velocity.y })
+    : STATIONARY_VELOCITY;
 }

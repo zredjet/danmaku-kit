@@ -1,10 +1,15 @@
 import type { LoadedContentIndex } from "../../content/content-index.ts";
 import type { PathSegmentDefinition, StageDefinition } from "../../content/types.ts";
+import type { EnemyBulletRuntimeEntity } from "../../entities/enemy-bullet/model.ts";
 import type { EnemyRuntimeEntity } from "../../entities/enemy/model.ts";
 import { isSameRestorePosition } from "../../entities/restore-common.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
-import { resolveEnemyBulletSpawnPosition } from "../../simulation/enemy-bullet-system.ts";
+import {
+  isOutsideEnemyBulletCleanupBounds,
+  resolveEnemyBulletPositionAt,
+} from "../../simulation/enemy-bullet-movement-system.ts";
+import { resolveEnemyBulletSpawnPosition, resolveEnemyBulletSpawnVelocity } from "../../simulation/enemy-bullet-system.ts";
 import { isOutsideEnemyCleanupBounds } from "../../simulation/enemy-path-system.ts";
 import { resolvePathRunnerAt } from "../../simulation/path-runner.ts";
 import type { RestoreTopLevelState } from "./top-level-state.ts";
@@ -28,6 +33,7 @@ type RestoreEnemyBulletCandidate = Readonly<{
   allocationOrder: number;
   definitionId: string;
   position: Readonly<{ x: number; y: number }>;
+  velocity: Readonly<{ x: number; y: number }>;
 }>;
 
 export type RestoreMatchedSpawn = Readonly<{
@@ -82,6 +88,7 @@ export function createRestoreSpawnBudget(
         allocationOrder: enemyBulletCandidates.length,
         definitionId: pattern.fireOnSpawn.bullet,
         position: position.value,
+        velocity: resolveEnemyBulletSpawnVelocity(pattern.fireOnSpawn),
       });
     }
   }
@@ -156,29 +163,46 @@ function isEnemyAtPathProgress(
     && isSameRestorePosition(expected.position, enemy.position);
 }
 
-/** active enemyBullet が処理済み fireOnSpawn と同じ弾・位置から来ていることを検証する。 */
+/**
+ * active enemyBullet が処理済み fireOnSpawn と同じ弾・速度から生成され、その生成 tick から動いた状態にあることを検証する。
+ *
+ * 生成位置と速度が spawn と一致し、`ageTicks` が生成 tick から `expectedTick` までの tick 数と、`position` が
+ * `spawnPosition + velocity * ageTicks` と完全一致する spawn を選ぶ。等速直線運動の各座標は tick に対して単調なので、1 tick 目と
+ * 現在の位置がどちらも cleanup 境界の内側なら途中でも内側にあり、cleanup されずに残る敵弾だけを受け付けられる。
+ */
 export function consumeRestoreEnemyBulletBudget(
   candidates: RestoreEnemyBulletCandidate[],
-  entity: Record<string, unknown>,
-  position: Readonly<{ x: number; y: number }>,
+  bullet: EnemyBulletRuntimeEntity,
+  expectedTick: number,
 ): CoreResult<RestoreMatchedSpawn> {
   const index = candidates.findIndex((candidate) => (
-    candidate.definitionId === entity.definitionId
-    && isSameRestorePosition(candidate.position, position)
+    candidate.definitionId === bullet.definitionId
+    && isSameRestorePosition(candidate.position, bullet.spawnPosition)
+    && isSameRestorePosition(candidate.velocity, bullet.velocity)
+    && bullet.ageTicks === expectedTick - candidate.tick
+    && isEnemyBulletAtAge(bullet)
   ));
   if (index === -1) {
-    return coreError("state.invalidShape", "enemy bullet runtime entity must originate from a processed timeline spawn");
+    return coreError("state.invalidShape", "enemy bullet runtime entity must move from a processed timeline spawn");
   }
   const [candidate] = candidates.splice(index, 1);
   if (!candidate) {
-    return coreError("state.invalidShape", "enemy bullet runtime entity must originate from a processed timeline spawn");
+    return coreError("state.invalidShape", "enemy bullet runtime entity must move from a processed timeline spawn");
   }
 
   return okResult(Object.freeze({
-    id: Number(entity.id),
+    id: bullet.id,
     tick: candidate.tick,
     allocationOrder: candidate.allocationOrder,
   }));
+}
+
+/** 敵弾の位置が生成位置から `ageTicks` 動いた位置と一致し、1 tick 目から現在まで cleanup 境界の内側にあるかを返す。 */
+function isEnemyBulletAtAge(bullet: EnemyBulletRuntimeEntity): boolean {
+  const expectedPosition = resolveEnemyBulletPositionAt(bullet.spawnPosition, bullet.velocity, bullet.ageTicks);
+  return isSameRestorePosition(expectedPosition, bullet.position)
+    && !isOutsideEnemyBulletCleanupBounds(resolveEnemyBulletPositionAt(bullet.spawnPosition, bullet.velocity, 1))
+    && !isOutsideEnemyBulletCleanupBounds(expectedPosition);
 }
 
 /** 同じ tick では enemy、enemyBullet、playerShot の順に採番されることを検証する。 */

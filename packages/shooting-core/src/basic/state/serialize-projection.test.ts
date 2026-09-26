@@ -35,7 +35,7 @@ test("serializes initial stage state with metadata and pending startup event", (
     schemaVersion: "1",
     contentVersion: "shooting-sample@content.0",
     inputFormatVersion: "1",
-    stateHashVersion: 2,
+    stateHashVersion: 3,
     enabledFeatures: [],
     stageId: "stage.stage_01",
     difficulty: "normal",
@@ -208,6 +208,9 @@ test("serializes enemy and enemy bullet runtime entities", () => {
       definitionId: "bullet.red_small",
       position: { x: 192, y: 88 },
       collisionRadius: 4,
+      velocity: { x: 0, y: 0 },
+      spawnPosition: { x: 192, y: 88 },
+      ageTicks: 1,
     },
   ]);
 });
