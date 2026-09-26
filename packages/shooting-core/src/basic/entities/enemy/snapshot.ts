@@ -1,5 +1,6 @@
-import type { EnemyId, PathId, PatternId } from "../../content/types.ts";
-import type { SerializedRuntimeEntityBase } from "../snapshot-common.ts";
+import type { EnemyDefinition, EnemyId, PathId, PatternDefinition, PatternId } from "../../content/types.ts";
+import { defineFieldOrder } from "../../shared/field-order.ts";
+import type { HashableVector2, SerializedRuntimeEntityBase } from "../snapshot-common.ts";
 import type { EnemyRuntimeEntity } from "./model.ts";
 
 /**
@@ -23,6 +24,50 @@ export type SerializedEnemyRuntimeEntityState = SerializedRuntimeEntityBase & Re
 export function projectEnemyRuntimeEntityForSerializedState(
   entity: EnemyRuntimeEntity,
 ): SerializedEnemyRuntimeEntityState {
+  return {
+    id: entity.id,
+    kind: "enemy",
+    definitionId: entity.definitionId,
+    position: { x: entity.position.x, y: entity.position.y },
+    collisionRadius: entity.collisionRadius,
+    hp: entity.hp,
+    scoreOnKill: entity.scoreOnKill,
+    pathId: entity.pathId,
+    patternId: entity.patternId,
+  };
+}
+
+/** HashableGameState に含める enemy runtime entity の内部 hash 専用 DTO。 */
+export type HashableEnemyRuntimeEntityState = Readonly<{
+  id: number;
+  kind: "enemy";
+  definitionId: EnemyDefinition["id"];
+  position: HashableVector2;
+  collisionRadius: number;
+  hp: number;
+  scoreOnKill: number;
+  pathId: PathId;
+  patternId: PatternDefinition["id"];
+}>;
+
+/** enemy runtime entity の hash DTO field を canonical encoding 順に固定する。 */
+export const HASHABLE_ENEMY_RUNTIME_ENTITY_FIELD_ORDER = defineFieldOrder<
+  HashableEnemyRuntimeEntityState,
+  EnemyRuntimeEntity
+>()([
+  "id",
+  "kind",
+  "definitionId",
+  "position",
+  "collisionRadius",
+  "hp",
+  "scoreOnKill",
+  "pathId",
+  "patternId",
+]);
+
+/** enemy runtime entity を hash 専用 DTO へ明示的に写す。 */
+export function projectEnemyRuntimeEntityForHashableState(entity: EnemyRuntimeEntity): HashableEnemyRuntimeEntityState {
   return {
     id: entity.id,
     kind: "enemy",

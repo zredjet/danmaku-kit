@@ -1,18 +1,14 @@
-import type {
-  BulletDefinition,
-  EnabledFeature,
-  EnemyDefinition,
-  PathId,
-  PatternDefinition,
-  PlayerId,
-  PlayerShotDefinition,
-  StageId,
-} from "../content/types.ts";
-import type { EnemyBulletRuntimeEntity } from "../entities/enemy-bullet/model.ts";
-import type { EnemyRuntimeEntity } from "../entities/enemy/model.ts";
+import type { EnabledFeature, PatternDefinition, StageId } from "../content/types.ts";
+import { HASHABLE_ENEMY_BULLET_RUNTIME_ENTITY_FIELD_ORDER } from "../entities/enemy-bullet/snapshot.ts";
+import type { HashableEnemyBulletRuntimeEntityState } from "../entities/enemy-bullet/snapshot.ts";
+import { HASHABLE_ENEMY_RUNTIME_ENTITY_FIELD_ORDER } from "../entities/enemy/snapshot.ts";
+import type { HashableEnemyRuntimeEntityState } from "../entities/enemy/snapshot.ts";
 import type { Vector2 } from "../entities/model-common.ts";
-import type { PlayerShotRuntimeEntity } from "../entities/player-shot/model.ts";
-import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
+import { HASHABLE_PLAYER_SHOT_RUNTIME_ENTITY_FIELD_ORDER } from "../entities/player-shot/snapshot.ts";
+import type { HashablePlayerShotRuntimeEntityState } from "../entities/player-shot/snapshot.ts";
+import { HASHABLE_PLAYER_RUNTIME_ENTITY_FIELD_ORDER } from "../entities/player/snapshot.ts";
+import type { HashablePlayerRuntimeEntityState } from "../entities/player/snapshot.ts";
+import type { HashableVector2 } from "../entities/snapshot-common.ts";
 import type { SERIALIZED_STATE_HASH_VERSION } from "../serialization/metadata.ts";
 import type {
   SerializedEnabledFeatureState,
@@ -24,12 +20,6 @@ import type { SerializedPrngState } from "../simulation/prng.ts";
 
 /** Hash 対象の PRNG snapshot。 */
 export type HashablePrngState = Readonly<{ state: number }>;
-
-/** Hash 対象の 2D vector。position / velocity で共通利用する。 */
-export type HashableVector2 = Readonly<{ x: number; y: number }>;
-
-/** Hash 対象の player movement 設定。vector と別 fixedStruct として encode する。 */
-export type HashablePlayerMovement = Readonly<{ speed: number; focusSpeed: number }>;
 
 /**
  * state hash 用に使う内部 deterministic snapshot。
@@ -51,54 +41,6 @@ export type HashableGameState = Readonly<{
   pendingEvents: ReadonlyArray<HashablePendingEvent>;
   patternRunnerStates: ReadonlyArray<HashablePatternRunnerState>;
   enabledFeatureStates: ReadonlyArray<HashableEnabledFeatureState>;
-}>;
-
-/** HashableGameState に含める player runtime entity の内部 hash 専用 DTO。 */
-export type HashablePlayerRuntimeEntityState = Readonly<{
-  id: number;
-  kind: "player";
-  definitionId: PlayerId;
-  position: HashableVector2;
-  collisionRadius: number;
-  lives: number;
-  invincibleTicksRemaining: number;
-  nextShotAllowedTick: number;
-  movement: HashablePlayerMovement;
-  shotDefinitionId: PlayerShotDefinition["id"];
-}>;
-
-/** HashableGameState に含める enemy runtime entity の内部 hash 専用 DTO。 */
-export type HashableEnemyRuntimeEntityState = Readonly<{
-  id: number;
-  kind: "enemy";
-  definitionId: EnemyDefinition["id"];
-  position: HashableVector2;
-  collisionRadius: number;
-  hp: number;
-  scoreOnKill: number;
-  pathId: PathId;
-  patternId: PatternDefinition["id"];
-}>;
-
-/** HashableGameState に含める enemy bullet runtime entity の内部 hash 専用 DTO。 */
-export type HashableEnemyBulletRuntimeEntityState = Readonly<{
-  id: number;
-  kind: "enemyBullet";
-  definitionId: BulletDefinition["id"];
-  position: HashableVector2;
-  collisionRadius: number;
-}>;
-
-/** HashableGameState に含める player shot runtime entity の内部 hash 専用 DTO。 */
-export type HashablePlayerShotRuntimeEntityState = Readonly<{
-  id: number;
-  kind: "playerShot";
-  definitionId: PlayerShotDefinition["id"];
-  position: HashableVector2;
-  collisionRadius: number;
-  velocity: HashableVector2;
-  remainingLifetimeTicks: number;
-  damage: number;
 }>;
 
 /** HashableGameState に含める runtime entity の内部 hash 専用 DTO。 */
@@ -178,15 +120,6 @@ export const HASHABLE_VECTOR2_FIELD_ORDER = defineFieldOrder<HashableVector2, Ve
   "y",
 ]);
 
-/** HashablePlayerMovement の canonical encoding 順を固定する。 */
-export const HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER = defineFieldOrder<
-  HashablePlayerMovement,
-  PlayerRuntimeEntity["movement"]
->()([
-  "speed",
-  "focusSpeed",
-]);
-
 /** HashableGameState の canonical encoding 順を型と同じ場所で固定する。 */
 export const HASHABLE_GAME_STATE_FIELD_ORDER = defineFieldOrder<HashableGameState>()([
   "stateHashVersion",
@@ -205,46 +138,10 @@ export const HASHABLE_GAME_STATE_FIELD_ORDER = defineFieldOrder<HashableGameStat
 
 /** Hashable runtime entity の kind 別 canonical encoding 順を固定する。 */
 export const HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND = Object.freeze({
-  player: defineFieldOrder<HashablePlayerRuntimeEntityState, PlayerRuntimeEntity>()([
-    "id",
-    "kind",
-    "definitionId",
-    "position",
-    "collisionRadius",
-    "lives",
-    "invincibleTicksRemaining",
-    "nextShotAllowedTick",
-    "movement",
-    "shotDefinitionId",
-  ]),
-  enemy: defineFieldOrder<HashableEnemyRuntimeEntityState, EnemyRuntimeEntity>()([
-    "id",
-    "kind",
-    "definitionId",
-    "position",
-    "collisionRadius",
-    "hp",
-    "scoreOnKill",
-    "pathId",
-    "patternId",
-  ]),
-  enemyBullet: defineFieldOrder<HashableEnemyBulletRuntimeEntityState, EnemyBulletRuntimeEntity>()([
-    "id",
-    "kind",
-    "definitionId",
-    "position",
-    "collisionRadius",
-  ]),
-  playerShot: defineFieldOrder<HashablePlayerShotRuntimeEntityState, PlayerShotRuntimeEntity>()([
-    "id",
-    "kind",
-    "definitionId",
-    "position",
-    "collisionRadius",
-    "velocity",
-    "remainingLifetimeTicks",
-    "damage",
-  ]),
+  player: HASHABLE_PLAYER_RUNTIME_ENTITY_FIELD_ORDER,
+  enemy: HASHABLE_ENEMY_RUNTIME_ENTITY_FIELD_ORDER,
+  enemyBullet: HASHABLE_ENEMY_BULLET_RUNTIME_ENTITY_FIELD_ORDER,
+  playerShot: HASHABLE_PLAYER_SHOT_RUNTIME_ENTITY_FIELD_ORDER,
 } as const satisfies Readonly<{
   [Kind in HashableRuntimeEntityState["kind"]]: readonly (keyof Extract<HashableRuntimeEntityState, { kind: Kind }>)[];
 }>);

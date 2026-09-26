@@ -1,5 +1,6 @@
-import type { BulletId } from "../../content/types.ts";
-import type { SerializedRuntimeEntityBase } from "../snapshot-common.ts";
+import type { BulletDefinition, BulletId } from "../../content/types.ts";
+import { defineFieldOrder } from "../../shared/field-order.ts";
+import type { HashableVector2, SerializedRuntimeEntityBase } from "../snapshot-common.ts";
 import type { EnemyBulletRuntimeEntity } from "./model.ts";
 
 /**
@@ -18,6 +19,40 @@ export type SerializedEnemyBulletRuntimeEntityState = SerializedRuntimeEntityBas
 export function projectEnemyBulletRuntimeEntityForSerializedState(
   entity: EnemyBulletRuntimeEntity,
 ): SerializedEnemyBulletRuntimeEntityState {
+  return {
+    id: entity.id,
+    kind: "enemyBullet",
+    definitionId: entity.definitionId,
+    position: { x: entity.position.x, y: entity.position.y },
+    collisionRadius: entity.collisionRadius,
+  };
+}
+
+/** HashableGameState に含める enemy bullet runtime entity の内部 hash 専用 DTO。 */
+export type HashableEnemyBulletRuntimeEntityState = Readonly<{
+  id: number;
+  kind: "enemyBullet";
+  definitionId: BulletDefinition["id"];
+  position: HashableVector2;
+  collisionRadius: number;
+}>;
+
+/** enemy bullet runtime entity の hash DTO field を canonical encoding 順に固定する。 */
+export const HASHABLE_ENEMY_BULLET_RUNTIME_ENTITY_FIELD_ORDER = defineFieldOrder<
+  HashableEnemyBulletRuntimeEntityState,
+  EnemyBulletRuntimeEntity
+>()([
+  "id",
+  "kind",
+  "definitionId",
+  "position",
+  "collisionRadius",
+]);
+
+/** enemy bullet runtime entity を hash 専用 DTO へ明示的に写す。 */
+export function projectEnemyBulletRuntimeEntityForHashableState(
+  entity: EnemyBulletRuntimeEntity,
+): HashableEnemyBulletRuntimeEntityState {
   return {
     id: entity.id,
     kind: "enemyBullet",

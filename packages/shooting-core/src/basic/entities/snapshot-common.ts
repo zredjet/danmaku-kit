@@ -33,3 +33,6 @@ export type SerializedRuntimeEntityBase = Readonly<{
   position: SerializedVector2;
   collisionRadius: number;
 }>;
+
+/** Hash 対象の 2D vector。position / velocity で共通利用する。 */
+export type HashableVector2 = Readonly<{ x: number; y: number }>;

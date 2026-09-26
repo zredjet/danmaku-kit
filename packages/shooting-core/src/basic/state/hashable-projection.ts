@@ -1,3 +1,7 @@
+import { projectEnemyBulletRuntimeEntityForHashableState } from "../entities/enemy-bullet/snapshot.ts";
+import { projectEnemyRuntimeEntityForHashableState } from "../entities/enemy/snapshot.ts";
+import { projectPlayerShotRuntimeEntityForHashableState } from "../entities/player-shot/snapshot.ts";
+import { projectPlayerRuntimeEntityForHashableState } from "../entities/player/snapshot.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import type { HashableGameState, HashablePendingEvent, HashableRuntimeEntityState } from "../hash/hashable-state.ts";
 import { okResult } from "../result.ts";
@@ -47,49 +51,13 @@ export function createHashableGameState(
 function projectRuntimeEntityForHashableState(entity: RuntimeEntityState): HashableRuntimeEntityState {
   switch (entity.kind) {
     case "player":
-      return {
-        id: entity.id,
-        kind: "player",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-        lives: entity.lives,
-        invincibleTicksRemaining: entity.invincibleTicksRemaining,
-        nextShotAllowedTick: entity.nextShotAllowedTick,
-        movement: { speed: entity.movement.speed, focusSpeed: entity.movement.focusSpeed },
-        shotDefinitionId: entity.shotDefinitionId,
-      };
+      return projectPlayerRuntimeEntityForHashableState(entity);
     case "enemy":
-      return {
-        id: entity.id,
-        kind: "enemy",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-        hp: entity.hp,
-        scoreOnKill: entity.scoreOnKill,
-        pathId: entity.pathId,
-        patternId: entity.patternId,
-      };
+      return projectEnemyRuntimeEntityForHashableState(entity);
     case "enemyBullet":
-      return {
-        id: entity.id,
-        kind: "enemyBullet",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-      };
+      return projectEnemyBulletRuntimeEntityForHashableState(entity);
     case "playerShot":
-      return {
-        id: entity.id,
-        kind: "playerShot",
-        definitionId: entity.definitionId,
-        position: { x: entity.position.x, y: entity.position.y },
-        collisionRadius: entity.collisionRadius,
-        velocity: { x: entity.velocity.x, y: entity.velocity.y },
-        remainingLifetimeTicks: entity.remainingLifetimeTicks,
-        damage: entity.damage,
-      };
+      return projectPlayerShotRuntimeEntityForHashableState(entity);
   }
 }
 

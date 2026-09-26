@@ -6,22 +6,22 @@ import {
   HASHABLE_GAME_STATE_FIELD_ORDER,
   HASHABLE_PATTERN_RUNNER_STATE_FIELD_ORDER,
   HASHABLE_PENDING_EVENT_FIELD_ORDER,
-  HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER,
   HASHABLE_PRNG_STATE_FIELD_ORDER,
   HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND,
   HASHABLE_VECTOR2_FIELD_ORDER,
 } from "./hashable-state.ts";
+import { HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER } from "../entities/player/snapshot.ts";
 import type {
   HashableEnabledFeatureState,
   HashableGameState,
   HashableJsonValue,
   HashablePatternRunnerState,
   HashablePendingEvent,
-  HashablePlayerMovement,
   HashablePrngState,
   HashableRuntimeEntityState,
-  HashableVector2,
 } from "./hashable-state.ts";
+import type { HashablePlayerMovement } from "../entities/player/snapshot.ts";
+import type { HashableVector2 } from "../entities/snapshot-common.ts";
 import { compareUtf8Lexicographic } from "../shared/utf8-order.ts";
 import { fixedStruct } from "./canonical-encoder.ts";
 import type { CanonicalFixedStruct, CanonicalValue } from "./canonical-encoder.ts";
