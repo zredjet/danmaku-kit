@@ -14,6 +14,7 @@ import type {
   SerializedPatternRunnerState,
   SerializedPendingEvent,
 } from "../serialization/types.ts";
+import { defineFieldOrder } from "../shared/field-order.ts";
 import type { SerializedPrngState } from "../simulation/prng.ts";
 import type {
   EnemyBulletRuntimeEntity,
@@ -139,39 +140,6 @@ export type HashableJsonValue =
   | null
   | readonly HashableJsonValue[]
   | { readonly [key: string]: HashableJsonValue };
-
-type HasDuplicateField<
-  Keys extends readonly unknown[],
-  Seen extends readonly unknown[] = [],
-> = Keys extends readonly [infer Head, ...infer Tail]
-  ? Head extends Seen[number]
-    ? true
-    : HasDuplicateField<Tail, readonly [...Seen, Head]>
-  : false;
-
-type ExactFieldOrder<T, Keys extends readonly (keyof T)[]> =
-  Exclude<keyof T, Keys[number]> extends never
-    ? HasDuplicateField<Keys> extends true
-      ? never
-      : Keys
-    : never;
-
-/**
- * hash DTO と runtime component の field set が一致することを検査する。
- *
- * Basic core の runtime entity は hash 対象外の cache / render state を持たないため、
- * runtime field の追加時に hash projection だけを更新し忘れることを型エラーにする。
- */
-type ExactFieldSet<Left, Right> =
-  Exclude<keyof Left, keyof Right> extends never
-    ? Exclude<keyof Right, keyof Left> extends never
-      ? unknown
-      : never
-    : never;
-
-const defineFieldOrder = <T, RuntimeContract = T>() => <const Keys extends readonly (keyof T)[]>(
-  keys: ExactFieldOrder<T, Keys> & ExactFieldSet<T, RuntimeContract>,
-): Readonly<Keys> => Object.freeze([...keys]) as unknown as Readonly<Keys>;
 
 type HashableFixedStructDtoKey =
   | "gameState"
