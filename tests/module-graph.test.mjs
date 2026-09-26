@@ -8,8 +8,9 @@ import ts from "typescript";
 import { collectTypeScriptFiles, isTestCodeFile } from "./support/source-files.mjs";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
+const shootingCoreSourceRoot = path.join(repositoryRoot, "packages/shooting-core/src");
 const sourceRoots = [
-  path.join(repositoryRoot, "packages/shooting-core/src"),
+  shootingCoreSourceRoot,
   path.join(repositoryRoot, "tools/validate-content/src"),
 ];
 const shootingCoreBasicRoot = path.join(repositoryRoot, "packages/shooting-core/src/basic");
@@ -63,6 +64,57 @@ test("matches dependency rule paths by file, directory, and single-segment wildc
     cases.map(([modulePath, rulePath]) => matchesModulePath(modulePath, rulePath)),
     cases.map(([, , expected]) => expected),
   );
+});
+
+test("collects every module reference form and accepts only relative paths inside shooting-core src", () => {
+  const file = path.join(shootingCoreBasicRoot, "session/example.ts");
+  const sourceText = [
+    "/// <reference types=\"node\" />",
+    "/// <reference lib=\"dom\" />",
+    "import { a } from \"./a.ts\";",
+    "import type { B } from \"phaser\";",
+    "export { c } from \"../shared/c.ts\";",
+    "export type { D } from \"node:fs\";",
+    "import e = require(\"vite\");",
+    "const f = await import(\"../../../../../node_modules/phaser/src/phaser.js\");",
+    "const g = await import(name);",
+    "type H = import(\"../api-types.ts\").GameFrame;",
+  ].join("\n");
+
+  assert.deepEqual(
+    collectModuleReferences(file, sourceText)
+      .map((reference) => [reference.kind, reference.specifier, isShootingCoreSourceReference(file, reference)]),
+    [
+      ["referenceTypes", "node", false],
+      ["referenceLib", "dom", false],
+      ["import", "./a.ts", true],
+      ["import", "phaser", false],
+      ["export", "../shared/c.ts", true],
+      ["export", "node:fs", false],
+      ["importEquals", "vite", false],
+      ["dynamicImport", "../../../../../node_modules/phaser/src/phaser.js", false],
+      ["dynamicImport", null, false],
+      ["importType", "../api-types.ts", true],
+    ],
+  );
+});
+
+test("keeps shooting-core source free of package and platform imports", async () => {
+  // apps が phaser / vite を root node_modules へ hoist しても、Core から bare specifier で解決させない。
+  const files = (await collectTypeScriptFiles(shootingCoreSourceRoot))
+    .filter((file) => !isTestCodeFile(shootingCoreSourceRoot, file));
+  const violations = [];
+
+  for (const file of files) {
+    const sourceText = await readFile(file, "utf8");
+    for (const reference of collectModuleReferences(file, sourceText)) {
+      if (!isShootingCoreSourceReference(file, reference)) {
+        violations.push(`${toRepositoryPath(file)} -> ${reference.kind} ${reference.specifier ?? "(non-literal)"}`);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, [], "shooting-core source must import only its own modules by relative path");
 });
 
 test("keeps package source free of runtime import cycles", async () => {
@@ -239,6 +291,59 @@ function collectRelativeSpecifiers(file, sourceText, { includeTypeOnly }) {
   }
 
   return specifiers.filter((specifier) => specifier.startsWith("."));
+}
+
+/**
+ * source が module を読み込む記述を、種類と specifier の組で出現順に返す。
+ *
+ * triple-slash reference directive、型だけのものを含む import / export 宣言、`import x = require()`、dynamic `import()`、
+ * 型位置の `import("...")` を対象にする。specifier が文字列 literal でない dynamic import は `specifier: null` とする。
+ */
+function collectModuleReferences(file, sourceText) {
+  const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const references = [
+    ...sourceFile.referencedFiles.map((reference) => ({ kind: "referencePath", specifier: reference.fileName })),
+    ...sourceFile.typeReferenceDirectives.map((reference) => ({ kind: "referenceTypes", specifier: reference.fileName })),
+    ...sourceFile.libReferenceDirectives.map((reference) => ({ kind: "referenceLib", specifier: reference.fileName })),
+  ];
+
+  const visit = (node) => {
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
+      references.push({ kind: ts.isImportDeclaration(node) ? "import" : "export", specifier: stringLiteralText(node.moduleSpecifier) });
+    } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+      references.push({ kind: "importEquals", specifier: stringLiteralText(node.moduleReference.expression) });
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      references.push({ kind: "dynamicImport", specifier: stringLiteralText(node.arguments[0]) });
+    } else if (ts.isImportTypeNode(node)) {
+      const literal = ts.isLiteralTypeNode(node.argument) ? node.argument.literal : undefined;
+      references.push({ kind: "importType", specifier: stringLiteralText(literal) });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+
+  return references;
+}
+
+function stringLiteralText(node) {
+  return node && ts.isStringLiteralLike(node) ? node.text : null;
+}
+
+/**
+ * shooting-core の source から、同じ package の `src/` 配下の module を相対 path で読む記述か判定する。
+ *
+ * bare specifier（npm package）、`node:`、`src/` の外へ出る相対 path、非 literal の dynamic import を拒否する。
+ * triple-slash reference directive は `types` / `lib` で node や DOM の型を持ち込めるため、種類を問わず拒否する。
+ */
+function isShootingCoreSourceReference(file, reference) {
+  if (!["import", "export", "importEquals", "dynamicImport", "importType"].includes(reference.kind)) {
+    return false;
+  }
+  if (reference.specifier === null || !(reference.specifier.startsWith("./") || reference.specifier.startsWith("../"))) {
+    return false;
+  }
+  const target = path.relative(shootingCoreSourceRoot, path.resolve(path.dirname(file), reference.specifier));
+  return !target.startsWith("..") && !path.isAbsolute(target);
 }
 
 /**

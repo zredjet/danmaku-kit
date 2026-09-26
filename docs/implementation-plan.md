@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump と first divergent checkpoint の field-level replay divergence artifact、Phase 1C-R の振る舞いを変えない module 分割リファクタリングも完了し、Phase 1C の tooling minimum を完了した。Phase 2A 着手前の Phase 1C-S（振る舞いを変えない構造整理）で、ディレクトリと依存 layer の対応を整え、entity kind の知識を `entities/<kind>/` へ縦に集めた。「Phase 2A へ進む条件」を確認し、Phase 2A を walking skeleton、Core gameplay、runtime / app、仕上げの slice へ分割した（「Phase 2A タスク分割」）。次は Phase 2A-0 の import guard と Phase 2A-1 の walking skeleton に着手する。
+Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump と first divergent checkpoint の field-level replay divergence artifact、Phase 1C-R の振る舞いを変えない module 分割リファクタリングも完了し、Phase 1C の tooling minimum を完了した。Phase 2A 着手前の Phase 1C-S（振る舞いを変えない構造整理）で、ディレクトリと依存 layer の対応を整え、entity kind の知識を `entities/<kind>/` へ縦に集めた。「Phase 2A へ進む条件」を確認し、Phase 2A を walking skeleton、Core gameplay、runtime / app、仕上げの slice へ分割した（「Phase 2A タスク分割」）。Phase 2A-0 で Core source の import を同じ package の相対 path に限る guard を固定した。次は Phase 2A-1 の walking skeleton に着手する。
 
 Done:
 
@@ -87,10 +87,10 @@ Done:
 - module 分割 1C-R で `core.ts`（3327行）、`core.test.ts`（5350行）、`tests/public-type-contract.ts`（1449行）、`content/validation.ts`、validate-content loader を責務単位の module へ振る舞いを変えずに分割し、runtime import cycle を解消して、依存方向と cycle を `tests/module-graph.test.mjs` で固定する
 - replay divergence 1C-4 で test-only の replay trace recorder / comparator、raw `ReplayMetadata` の検証と互換性分類、first divergent checkpoint の input / entity / component / event / PRNG diff、schema 順 JSON artifact と artifact path を追加する
 - 構造整理 1C-S で `internal/` を `shared/` / `instrumentation/` / `testing/` へ layer 別に分け、restore / hash / committed state の配置と依存の向きを直し、session の fault injection と timeline system を整理し、entity kind の runtime / serialize / hash / restore を `entities/<kind>/` へ縦に集めて field 集合の一致と kind の登録漏れを型と test で固定する
+- import guard 2A-0 で shooting-core の非 test source が同じ `src/` 配下の module だけを相対 path で import し、npm package、`node:`、triple-slash reference directive を型 import も含めて使わないことを `tests/module-graph.test.mjs` で固定する
 
 Next:
 
-- Phase 2A-0: shooting-core の非 test source が相対 path 以外を import しない rule を `tests/module-graph.test.mjs` に固定する
 - Phase 2A-1: `apps/sample-title` の Vite / Phaser skeleton、validate-content の Node API と Vite content plugin、固定 tick clock と keyboard input adapter、`GameFrame` からの view 同期で、ブラウザ上で自機の移動・低速移動・連射ができる walking skeleton を作る
 
 Phase 1C-1 は診断と出力の安定した契約、Phase 1C-2 は実績ある YAML parser と source span 付き診断の CLI 接続、Phase 1C-3 は静的 fixture と実プロセスの JSON / human golden contract を固定した。Phase 1C-4 は renderer / browser field を含まない headless debug state summary と、summary から値を復元せず deterministic snapshot、順序付き frame event、side 別 input、side status を比較する field-level replay divergence artifact を固定した。
@@ -134,7 +134,7 @@ Status legend:
 | `docs/design.md` Debug state dump | headless dump foundation | Done | `packages/shooting-core/src/basic/instrumentation/debug-state.ts`, `packages/shooting-core/src/basic/testing/debug-state.ts`, `packages/shooting-core/src/basic/session/stage-session.ts`, `packages/shooting-core/src/basic/simulation/collision-system.ts` | immutable checkpoint、失敗 tick 不変、restore seed / nullable metrics、collision count、schema-order JSON、hash error、root export 非公開を固定 | `packages/shooting-core/src/basic/testing/debug-state.test.ts`, `packages/shooting-core/src/basic/simulation/collision-system.test.ts`, `tests/public-type-contract/root-export-exclusions.ts`, `tests/public-type-contract/core-api.ts`; `npm test`, `npm run typecheck` |
 | `docs/design.md` 21.4 Golden Test | first divergent checkpoint の replay divergence artifact | Done | `packages/shooting-core/src/basic/testing/replay-trace.ts`, `packages/shooting-core/src/basic/testing/replay-metadata.ts`, `packages/shooting-core/src/basic/testing/replay-diff.ts`, `packages/shooting-core/src/basic/testing/replay-divergence.ts` | `packages/shooting-core/src/basic/testing/replay-divergence.test.ts`, `packages/shooting-core/src/basic/testing/replay-metadata.test.ts`, `tests/public-type-contract/root-export-exclusions.ts` | `npm test`, `npm run typecheck` |
 | `docs/design.md` 4 ディレクトリ構成 | module 分割と依存方向 | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/session/`, `packages/shooting-core/src/basic/state/`, `packages/shooting-core/src/basic/serialization/restore/`, `packages/shooting-core/src/basic/instrumentation/`, `packages/shooting-core/src/basic/shared/`, `packages/shooting-core/src/basic/entities/`, `AGENTS.md` | `tests/module-graph.test.mjs` | `npm test` |
-| `docs/design.md` 22 Phase 2A | Core の bare specifier / `node:` import 禁止 | Next: Phase 2A-0 | `tests/module-graph.test.mjs` | 違反を注入した copy で検出を確認 | `npm test` |
+| `docs/design.md` 22 Phase 2A | Core の bare specifier / `node:` / reference directive 禁止 | Done | `tests/module-graph.test.mjs`, `AGENTS.md` | module reference の収集と判定の単体 test、違反を注入した copy で検出を確認 | `npm test` |
 | `docs/design.md` 5.2 / 19 Content pipeline | validate-content の Node API と sample app の Vite content plugin | Next: Phase 2A-1 | `tools/validate-content/src/index.ts`, `apps/sample-title/vite/`, `apps/sample-title/config/`, `apps/sample-title/content/` | Node API の package boundary / 型契約、既存 CLI golden 不変、sample content の validate-content | `npm run check` |
 | `docs/design.md` 5.4 / 7 / 11 Runtime adapter | Vite / Phaser skeleton、固定 tick clock、keyboard input adapter、`GameFrame` からの view 同期 | Next: Phase 2A-1 | `apps/sample-title/src/runtime/loop/`, `apps/sample-title/src/runtime/input/`, `apps/sample-title/src/runtime/view/`, `apps/sample-title/src/runtime/phaser/` | tap / catch-up / dropped tick / blur 後の再ラッチ抑止を node:test、app の import rule を `tests/module-graph.test.mjs` で検査 | `npm run check`, `npm run dev` |
 | `docs/design.md` 9.8 Path | path movement minimum と `pathRunnerState` | Queued: Phase 2A-2 | `packages/shooting-core/src/basic/content/`, `packages/shooting-core/src/basic/entities/enemy/`, `packages/shooting-core/src/basic/simulation/` | path golden、restore roundtrip、hash golden 更新 | `npm run check` |
@@ -488,7 +488,7 @@ Phase 2A で初期 playable を目標にする。
 
 | 条件 | 結果 | 根拠 / 残作業 |
 | --- | --- | --- |
-| Core が Phaser / Vite に依存していない | 満たす | `packages/shooting-core/package.json` は dependency を持たず、root `tsconfig.json` は `lib: ["ES2024"]`、`types: []` で DOM 型を含めない。ただし `apps/*` の追加で `phaser` / `vite` が root `node_modules` へ hoist されると Core source から bare specifier で解決できるため、Phase 2A-0 で import 制約を test に固定する |
+| Core が Phaser / Vite に依存していない | 満たす | `packages/shooting-core/package.json` は dependency を持たず、root `tsconfig.json` は `lib: ["ES2024"]`、`types: []` で DOM 型を含めない。ただし `apps/*` の追加で `phaser` / `vite` が root `node_modules` へ hoist されると Core source から bare specifier で解決できるため、Phase 2A-0 で import 制約を test に固定した |
 | sample app が Core の `GameFrame` を読むだけで描画できる | 満たす | `GameFrame.state.entities` は kind、definitionId、position を持ち、asset key と collision radius は app が保持する content 定義から definitionId で引ける。自機の focus 状態は app 自身の入力から得る。弾の向きは public state に含まれないため、Phase 2A の仮素材は向きを持たない円形弾にする |
 | keyboard input は runtime adapter で `InputFrame` に変換される | Core 側は満たす | `InputFrame` の parse と canonical order は Core にある。adapter は Phase 2A-1 で実装する |
 | Core event と render-only event が混ざっていない | 満たす | `GameEvent` は gameplay の事実だけを持つ。`RuntimeEvent` は app 側の別型として定義する |
@@ -537,8 +537,8 @@ Phase 1C-S 完了時点の Core では、`PathDefinition` が id / version だ�
 | `e2e/` | Playwright の Browser test |
 
 1. Phase 2A-0: 着手条件の import guard（振る舞いは変えない）
-   - Next: `tests/module-graph.test.mjs` に、shooting-core の非 test source が相対 path の module だけを import し、bare specifier と `node:` を型 import も含めて import しない rule を追加する。`apps/*` の追加で `phaser` / `vite` が root `node_modules` へ hoist された後も、Core から解決させない
-   - Next: 違反を注入した copy で rule が検出することを確認する
+   - Done: `tests/module-graph.test.mjs` に、shooting-core の非 test source が同じ `src/` 配下の module だけを相対 path で import する rule を追加した。import / export 宣言（型だけのものを含む）、`import x = require()`、dynamic `import()`、型位置の `import("...")`、triple-slash reference directive を収集し、bare specifier、`node:`、`src/` の外への相対 path、非 literal の dynamic import、reference directive（`lib="dom"` や `types="node"` で型を持ち込めるため種類を問わない）を拒否する。`apps/*` の追加で `phaser` / `vite` が root `node_modules` へ hoist された後も、Core から解決させない。現状の違反は 0 件
+   - Done: 収集と判定を各 import 形式の合成 source で単体 test し、repository の copy に `phaser` の型 import、`node:fs/promises`、`/// <reference lib="dom" />`、`src/` の外への dynamic import を注入して4件とも検出すること、`node:` を import する `test-support/` は対象外のままであることを確認した。`AGENTS.md` と `docs/design.md` の依存方向に rule を追記した
 2. Phase 2A-1: walking skeleton（ブラウザで自機が動き、低速移動し、ショットを撃てる）
    - Next: 2A-1a: `apps/sample-title` workspace を作る。`phaser` と `vite` を依存に、`@shooting-sample/shooting-core` を workspace 依存にし、browser 用（DOM lib）と Node 用（vite config / plugin）の tsconfig を分けて root `typecheck` に加える。root に `dev` と `build` script を足し、`build` を `npm run check` に含める。Phaser は導入時点の安定版を固定する
    - Next: 2A-1a: `tests/module-graph.test.mjs` に、app が Core を package root からだけ import すること、`phaser` を import してよい module が `src/runtime/phaser/` と entry だけであること、`src/runtime/` の Phaser 非依存 module が DOM global と `import.meta.env` を参照しないことを追加する。`import.meta.env` は entry で読み、引数で渡す

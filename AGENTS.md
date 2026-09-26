@@ -53,6 +53,7 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 ### 依存方向（`packages/shooting-core/src/basic/`）
 
 - 以下の import 制約は非 test source（`*.test.ts` と `test-support/` 以外）に適用する。非 test source は `*.test.ts` と `test-support/` を型 import も含めて import しない（validate-content も同じ）。
+- `packages/shooting-core/src/` の非 test source は同じ `src/` 配下の module だけを相対 path で import する。bare specifier（npm package）、`node:`、`src/` の外への相対 path、非 literal の dynamic import、triple-slash reference directive は型 import も含めて使わない。apps の依存（phaser、vite など）が root `node_modules` にあっても Core から解決させないためで、`tests/module-graph.test.mjs` が検査する。
 - `core.ts` は `createShootingCore()` / `load()` の facade とし、import してよいのは `index.ts` と `testing/testing-hooks.ts` だけにする。公開型は `api-types.ts` に置く。
 - `session/`（stage session、tick pipeline、loaded game）を import してよいのは `core.ts` だけ。
 - `serialization/restore/` を import してよいのは `session/` だけ。
