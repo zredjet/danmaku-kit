@@ -1,8 +1,10 @@
+import type { GameDefinition } from "@shooting-sample/shooting-core";
 import {
   createToolErrorRunResult,
   createValidationRunResult,
   formatValidateContentHuman,
   formatValidateContentJson,
+  loadValidatedGameDefinition,
 } from "@shooting-sample/validate-content";
 import type {
   ContentDiagnostic,
@@ -10,6 +12,7 @@ import type {
   ContentDiagnosticSeverity,
   ContentDiagnosticSummary,
   FeatureGateContentDiagnostic,
+  LoadValidatedGameDefinitionResult,
   ParseOrSchemaContentDiagnostic,
   ReferenceContentDiagnostic,
   ToolContentDiagnostic,
@@ -17,6 +20,7 @@ import type {
   ValidateContentExitCode,
   ValidateContentJsonOutput,
   ValidateContentRunResult,
+  ValidateContentSourcePaths,
 } from "@shooting-sample/validate-content";
 
 import type { AssertTrue, IsExactly } from "./support/type-assertions.ts";
@@ -26,6 +30,9 @@ import type { ContentDiagnostic as DeepContentDiagnostic } from "@shooting-sampl
 
 // @ts-expect-error validate-content internal functions are not importable through a deep package subpath.
 import { createValidationRunResult as DeepCreateValidationRunResult } from "@shooting-sample/validate-content/src/output.ts";
+
+// @ts-expect-error the loader dependency injection entry is not importable through a deep package subpath.
+import { loadValidatedGameDefinitionWith as DeepLoadValidatedGameDefinitionWith } from "@shooting-sample/validate-content/src/game-definition-loader.ts";
 
 type ExpectedBase = Readonly<{
   code: string;
@@ -74,6 +81,10 @@ type ExpectedRunResult =
   | Readonly<{ exitCode: 0; output: ExpectedOutput & Readonly<{ ok: true }> }>
   | Readonly<{ exitCode: 1; output: ExpectedOutput & Readonly<{ ok: false }> }>
   | Readonly<{ exitCode: 2; output: ExpectedOutput & Readonly<{ ok: false }> }>;
+type ExpectedSourcePaths = Readonly<{ gameDefinitionPath: string; contentRoot: string }>;
+type ExpectedLoadResult =
+  | Readonly<{ ok: true; definition: GameDefinition; runResult: ExpectedRunResult }>
+  | Readonly<{ ok: false; runResult: ExpectedRunResult }>;
 
 type ValidateContentContractAssertions = readonly [
   AssertTrue<IsExactly<ContentDiagnosticKind, "parse" | "schema" | "reference" | "featureGate" | "tool">>,
@@ -102,6 +113,14 @@ type ValidateContentContractAssertions = readonly [
   >,
   AssertTrue<IsExactly<typeof formatValidateContentJson, (output: ValidateContentJsonOutput) => string>>,
   AssertTrue<IsExactly<typeof formatValidateContentHuman, (output: ValidateContentJsonOutput) => string>>,
+  AssertTrue<IsExactly<ValidateContentSourcePaths, ExpectedSourcePaths>>,
+  AssertTrue<IsExactly<LoadValidatedGameDefinitionResult, ExpectedLoadResult>>,
+  AssertTrue<
+    IsExactly<
+      typeof loadValidatedGameDefinition,
+      (paths: ValidateContentSourcePaths) => Promise<LoadValidatedGameDefinitionResult>
+    >
+  >,
 ];
 
 const parseDiagnostic: ContentDiagnostic = {
@@ -252,3 +271,4 @@ void invalidValidationSuccess;
 void invalidExitCode;
 void (undefined as unknown as DeepContentDiagnostic);
 void DeepCreateValidationRunResult;
+void DeepLoadValidatedGameDefinitionWith;

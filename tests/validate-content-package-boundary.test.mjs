@@ -20,6 +20,7 @@ test("imports validate-content through the workspace package export", async () =
     "createValidationRunResult",
     "formatValidateContentHuman",
     "formatValidateContentJson",
+    "loadValidatedGameDefinition",
   ]);
 });
 
@@ -33,12 +34,14 @@ test("keeps the validate-content root type export surface explicit", async () =>
     "ContentDiagnosticSeverity",
     "ContentDiagnosticSummary",
     "FeatureGateContentDiagnostic",
+    "LoadValidatedGameDefinitionResult",
     "ParseOrSchemaContentDiagnostic",
     "ReferenceContentDiagnostic",
     "ToolContentDiagnostic",
     "ValidateContentExitCode",
     "ValidateContentJsonOutput",
     "ValidateContentRunResult",
+    "ValidateContentSourcePaths",
     "ValidationContentDiagnostic",
   ]);
 });

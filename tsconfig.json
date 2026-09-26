@@ -20,6 +20,8 @@
   "exclude": [
     "packages/*/src/**/*.test.ts",
     "packages/*/src/**/test-support/**",
-    "tools/*/src/**/*.test.ts"
+    "tools/*/src/**/*.test.ts",
+    // validate-content の public API は Node の filesystem を使うため、その型契約は node 型のある tsconfig.test.json で検査する。
+    "tests/validate-content-type-contract.ts"
   ]
 }
