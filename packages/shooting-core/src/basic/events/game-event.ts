@@ -1,4 +1,4 @@
-import { deepFreezeClone } from "../internal/immutable.ts";
+import { deepFreezeClone } from "../shared/immutable.ts";
 import type { BulletId, EnemyId, PathId, PatternId, PlayerId, PlayerShotId, StageId } from "../content/types.ts";
 import type { EntityId } from "../simulation/entity.ts";
 

@@ -1,9 +1,9 @@
 import { isNamespacedId } from "../content/identifier.ts";
 import { KNOWN_ENABLED_FEATURES } from "../content/types.ts";
 import type { Difficulty, EnabledFeature, PlayerId, StageId } from "../content/types.ts";
-import { asRecord, hasOnlyKeys } from "../internal/guards.ts";
-import { deepFreezePlainData } from "../internal/immutable.ts";
 import type { ReplayMetadata } from "../replay/metadata.ts";
+import { asRecord, hasOnlyKeys } from "../shared/guards.ts";
+import { deepFreezePlainData } from "../shared/immutable.ts";
 
 const REPLAY_METADATA_FIELDS = Object.freeze([
   "coreVersion",

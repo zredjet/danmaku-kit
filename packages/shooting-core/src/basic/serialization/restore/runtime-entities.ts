@@ -1,8 +1,8 @@
 import type { LoadedContentIndex } from "../../content/content-index.ts";
 import type { StageDefinition } from "../../content/types.ts";
-import { assertNever } from "../../internal/guards.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
+import { assertNever } from "../../shared/guards.ts";
 import { DEFAULT_PLAYER_START_POSITION } from "../../simulation/runtime-entity.ts";
 import type { PlayerRuntimeEntity, RuntimeEntityState } from "../../simulation/runtime-entity.ts";
 import {

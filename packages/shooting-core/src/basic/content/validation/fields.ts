@@ -1,5 +1,5 @@
-import { asRecord } from "../../internal/guards.ts";
 import type { CoreError } from "../../result.ts";
+import { asRecord } from "../../shared/guards.ts";
 import { isSafeAssetKey } from "../identifier.ts";
 
 /** object の許可 field を検証する。 */

@@ -1,5 +1,5 @@
 import type { CoreError } from "../result.ts";
-import { deepFreezePlainData } from "../internal/immutable.ts";
+import { deepFreezePlainData } from "../shared/immutable.ts";
 import {
   validateAssetReferences,
   validateNamespacedReference,

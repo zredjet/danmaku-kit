@@ -425,7 +425,7 @@ Phase 1C-R で巨大ファイルは責務単位に分割したが、ディレク
 | `serialization/restore/` | restore orchestration、top-level、deterministic payload、`restore-json.ts`、entity dispatch、allocation order |
 
 1. Phase 1C-S1: 配置の修正（本文は変えない）
-   - Next: `internal/guards.ts` / `internal/immutable.ts` を `shared/` へ移し、`shared/` が basic 内の他 module を import しない leaf rule を `tests/module-graph.test.mjs` に追加する
+   - Done: Phase 1C-S1: `internal/guards.ts` / `internal/immutable.ts` を `shared/` へ移し、`shared/` が basic 内の他 module を型 import も含めて import しない leaf rule を `tests/module-graph.test.mjs` に追加する。import 元22 file は path だけを更新し、specifier 順に並んでいた import はその順序を保つ
    - Next: 残りの `internal/` を `instrumentation/`（`test-hooks-guard.ts`、`stage-session-testing-hooks.ts`、`debug-state.ts`）と `testing/testing-hooks.ts` へ分けて `internal/` を廃止し、`core.ts` / `state/` / `instrumentation/` の layer rule を更新する
    - Next: `compareUtf8Lexicographic` を `shared/utf8-order.ts` へ抽出し、`hash/` から restore 用 module への依存をなくしてから `restore-json.ts` を `serialization/restore/` へ移す。lone surrogate の扱いが異なる `hash/canonical-encoder.ts` の UTF-8 比較とは統合しない
    - Next: `CommittedPendingEvent` を `state/committed-state.ts` で明示定義し、`hash/` を import してよい module を layer rule で固定する

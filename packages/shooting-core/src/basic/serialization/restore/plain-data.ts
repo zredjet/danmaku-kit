@@ -1,6 +1,6 @@
-import { isPlainObjectContainer } from "../../internal/guards.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
+import { isPlainObjectContainer } from "../../shared/guards.ts";
 
 export const MAX_RESTORE_TOP_LEVEL_STRING_LENGTH = 8_192;
 

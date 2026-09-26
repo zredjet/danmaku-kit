@@ -1,9 +1,9 @@
 import type { StageId } from "../content/types.ts";
 import { EventLog } from "../events/game-event.ts";
 import type { HashablePendingEvent } from "../hash/hashable-state.ts";
-import { deepFreezeClone } from "../internal/immutable.ts";
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
+import { deepFreezeClone } from "../shared/immutable.ts";
 import { EntityAllocator } from "../simulation/entity.ts";
 import { XorShift32 } from "../simulation/prng.ts";
 import type { SerializedPrngState } from "../simulation/prng.ts";

@@ -1,6 +1,6 @@
 import type { LoadedGame } from "../api-types.ts";
 import type { LoadedContentIndex } from "../content/content-index.ts";
-import { deepFreezePlainData } from "../internal/immutable.ts";
+import { deepFreezePlainData } from "../shared/immutable.ts";
 import { createActiveStageSessionTestingHooks } from "../internal/stage-session-testing-hooks.ts";
 import type { StageSessionTestingHookOptions } from "../internal/stage-session-testing-hooks.ts";
 import { coreError, okResult } from "../result.ts";

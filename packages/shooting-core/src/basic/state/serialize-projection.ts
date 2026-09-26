@@ -1,5 +1,3 @@
-import { assertNever } from "../internal/guards.ts";
-import { deepFreezeClone } from "../internal/immutable.ts";
 import { okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
 import type { StageSessionSerializationMetadata } from "../serialization/metadata.ts";
@@ -9,6 +7,8 @@ import type {
   SerializedPendingEvent,
   SerializedRuntimeEntityState,
 } from "../serialization/types.ts";
+import { assertNever } from "../shared/guards.ts";
+import { deepFreezeClone } from "../shared/immutable.ts";
 import { XorShift32 } from "../simulation/prng.ts";
 import type { RuntimeEntityState } from "../simulation/runtime-entity.ts";
 import { validateCommittedEntityInvariants, validateCommittedPendingEventInvariants } from "./committed-state.ts";

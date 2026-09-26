@@ -1,10 +1,10 @@
 import type { StartStageOptions } from "../api-types.ts";
 import { isNamespacedId } from "../content/identifier.ts";
 import type { PlayerId, StageId } from "../content/types.ts";
-import { asRecord, hasOnlyKeys } from "../internal/guards.ts";
-import { deepFreezeClone } from "../internal/immutable.ts";
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
+import { asRecord, hasOnlyKeys } from "../shared/guards.ts";
+import { deepFreezeClone } from "../shared/immutable.ts";
 
 const MAX_SEED_LENGTH = 128;
 

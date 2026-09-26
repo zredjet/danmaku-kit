@@ -1,7 +1,7 @@
-import { asRecord, hasOnlyKeys } from "../internal/guards.ts";
-import { deepFreezeClone } from "../internal/immutable.ts";
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
+import { asRecord, hasOnlyKeys } from "../shared/guards.ts";
+import { deepFreezeClone } from "../shared/immutable.ts";
 import { GAMEPLAY_ACTION_ORDER } from "./input-frame.ts";
 import type { InputFrame } from "./input-frame.ts";
 

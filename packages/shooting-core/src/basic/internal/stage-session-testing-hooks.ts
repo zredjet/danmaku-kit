@@ -2,9 +2,9 @@ import type { HashableGameState } from "../hash/hashable-state.ts";
 import { coreError } from "../result.ts";
 import type { CoreResult } from "../result.ts";
 import type { SerializedGameState } from "../serialization/types.ts";
+import { deepFreezeClone } from "../shared/immutable.ts";
 import type { CommittedStageState, UntrustedCommittedStageState, WorkingStageState } from "../state/committed-state.ts";
 import type { RegisterHeadlessDebugStateSerializer } from "./debug-state.ts";
-import { deepFreezeClone } from "./immutable.ts";
 
 export type StageSessionTestingHookOptions = Readonly<{
   corruptCommittedPrngStateTicks?: readonly number[];

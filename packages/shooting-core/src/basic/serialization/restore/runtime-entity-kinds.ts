@@ -8,9 +8,9 @@ import {
   PLAYFIELD_HEIGHT,
   PLAYFIELD_WIDTH,
 } from "../../content/runtime-budgets.ts";
-import { hasOnlyKeys, isNonNegativeSafeInteger, isPositiveFiniteNumber } from "../../internal/guards.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
+import { hasOnlyKeys, isNonNegativeSafeInteger, isPositiveFiniteNumber } from "../../shared/guards.ts";
 import {
   createRestoredEnemyBulletRuntimeEntity,
   createRestoredEnemyRuntimeEntity,

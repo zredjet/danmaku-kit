@@ -26,6 +26,15 @@ const SHOOTING_CORE_LAYER_RULES = Object.freeze([
   { target: "state/", allowedImporters: ["session/", "serialization/restore/", "internal/"] },
 ]);
 
+/**
+ * shooting-core `src/basic/` の最下層 layer。`importer` 配下の module は同じ layer と `allowedTargets` 以外を import しない。
+ *
+ * 型 import も含める。path の表記は `SHOOTING_CORE_LAYER_RULES` と同じ。
+ */
+const SHOOTING_CORE_LEAF_LAYER_RULES = Object.freeze([
+  { importer: "shared/", allowedTargets: [] },
+]);
+
 /** root export から runtime import で到達させない test / tooling 専用 module。state hash と debug dump は test 側で計算する。 */
 const SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES = Object.freeze(["hash/", "testing/"]);
 
@@ -50,6 +59,14 @@ test("keeps shooting-core modules inside their dependency layers", async () => {
           continue;
         }
         if (!rule.allowedImporters.some((allowed) => matchesModulePath(importer, allowed))) {
+          violations.push(`${importer} -> ${target}`);
+        }
+      }
+      for (const rule of SHOOTING_CORE_LEAF_LAYER_RULES) {
+        if (!matchesModulePath(importer, rule.importer) || matchesModulePath(target, rule.importer)) {
+          continue;
+        }
+        if (!rule.allowedTargets.some((allowed) => matchesModulePath(target, allowed))) {
           violations.push(`${importer} -> ${target}`);
         }
       }

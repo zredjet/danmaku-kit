@@ -2,9 +2,9 @@ import type { LoadedContentIndex } from "../../content/content-index.ts";
 import { isNamespacedId } from "../../content/identifier.ts";
 import { KNOWN_ENABLED_FEATURES } from "../../content/types.ts";
 import type { Difficulty, PlayerId, StageId } from "../../content/types.ts";
-import { asRecord, hasOnlyKeys, isPlainObjectContainer } from "../../internal/guards.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
+import { asRecord, hasOnlyKeys, isPlainObjectContainer } from "../../shared/guards.ts";
 import { MAX_RESTORABLE_NEXT_ENTITY_ID } from "../../simulation/entity-id-budget.ts";
 import {
   SERIALIZED_INPUT_FORMAT_VERSION,

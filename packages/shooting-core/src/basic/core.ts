@@ -2,11 +2,11 @@ import type { ShootingCore } from "./api-types.ts";
 import { createLoadedContentIndex } from "./content/content-index.ts";
 import type { GameDefinition } from "./content/types.ts";
 import { validateGameDefinition } from "./content/validation.ts";
-import { deepFreezePlainData } from "./internal/immutable.ts";
 import type { StageSessionTestingHookOptions } from "./internal/stage-session-testing-hooks.ts";
 import { assertInternalTestHooksEnabled } from "./internal/test-hooks-guard.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
 import { createLoadedGame } from "./session/loaded-game.ts";
+import { deepFreezePlainData } from "./shared/immutable.ts";
 
 /**
  * Core minimum 実装を生成する。

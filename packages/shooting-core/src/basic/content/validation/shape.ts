@@ -1,5 +1,5 @@
-import { asRecord } from "../../internal/guards.ts";
 import type { CoreError } from "../../result.ts";
+import { asRecord } from "../../shared/guards.ts";
 import {
   MAX_PLAYER_MOVEMENT_SPEED,
   MAX_PLAYER_SHOT_FIRE_INTERVAL_TICKS,

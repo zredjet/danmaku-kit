@@ -1,6 +1,6 @@
-import { deepFreezePlainData } from "../internal/immutable.ts";
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
+import { deepFreezePlainData } from "../shared/immutable.ts";
 
 /** replay restore 用に保存する PRNG 内部状態。 */
 export type SerializedPrngState = Readonly<{
