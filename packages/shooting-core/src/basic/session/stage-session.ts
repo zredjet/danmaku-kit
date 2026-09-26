@@ -2,13 +2,13 @@ import type { StageSession } from "../api-types.ts";
 import { parseInputFrame } from "../input/parse-input-frame.ts";
 import { createHeadlessDebugCheckpoint, createHeadlessDebugTickMetrics } from "../instrumentation/debug-state.ts";
 import type { HeadlessDebugTickMetrics } from "../instrumentation/debug-state.ts";
-import { createSerializeSourceState } from "../instrumentation/stage-session-testing-hooks.ts";
+import { applyCommittedStateFaultsBeforeTick, createSerializeSourceState } from "../instrumentation/stage-session-testing-hooks.ts";
 import { coreError, errorResult, okResult } from "../result.ts";
 import type { CoreError, CoreResult } from "../result.ts";
 import type { StageSessionSerializationMetadata } from "../serialization/metadata.ts";
 import { deepFreezeClone, deepFreezePlainData } from "../shared/immutable.ts";
 import { createWorkingStageState } from "../state/committed-state.ts";
-import type { CommittedStageState, UntrustedCommittedStageState } from "../state/committed-state.ts";
+import type { CommittedStageState } from "../state/committed-state.ts";
 import { createHashableGameState } from "../state/hashable-projection.ts";
 import { serializeCommittedStageState } from "../state/serialize-projection.ts";
 import { runStageTick } from "./tick-pipeline.ts";
@@ -73,31 +73,9 @@ export function createStageSession(options: StageSessionContext): StageSession {
         return coreError("input.tickMismatch", `Expected tick ${committedState.expectedTick}, got ${input.value.tick}`);
       }
 
-      if (options.testingHooks.corruptCommittedPrngStateTicks.delete(committedState.expectedTick)) {
-        committedState = {
-          ...committedState,
-          prngState: Object.freeze({ state: 0 }),
-        };
-      }
-      if (options.testingHooks.overrideCommittedNextEntityIdByTick.has(committedState.expectedTick)) {
-        const nextEntityId = options.testingHooks.overrideCommittedNextEntityIdByTick.get(committedState.expectedTick)!;
-        options.testingHooks.overrideCommittedNextEntityIdByTick.delete(committedState.expectedTick);
-        committedState = {
-          ...committedState,
-          nextEntityId,
-        };
-      }
-      let workingStateSource: UntrustedCommittedStageState = committedState;
-      if (options.testingHooks.overrideCommittedPendingEventsByTick.has(committedState.expectedTick)) {
-        const pendingEvents = options.testingHooks.overrideCommittedPendingEventsByTick.get(committedState.expectedTick)!;
-        options.testingHooks.overrideCommittedPendingEventsByTick.delete(committedState.expectedTick);
-        workingStateSource = {
-          ...committedState,
-          pendingEvents: deepFreezeClone(pendingEvents),
-        };
-      }
-
-      const working = createWorkingStageState(workingStateSource, options.stage.id);
+      const faults = applyCommittedStateFaultsBeforeTick(committedState, options.testingHooks);
+      committedState = faults.committedState;
+      const working = createWorkingStageState(faults.workingStateSource, options.stage.id);
       if (!working.ok) {
         return latchFatalErrors(working.errors);
       }

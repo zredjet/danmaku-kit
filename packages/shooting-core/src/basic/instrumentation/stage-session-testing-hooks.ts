@@ -84,6 +84,42 @@ function createUniqueTickOverrideMap<TOverride extends Readonly<{ tick: number }
   return map;
 }
 
+/**
+ * tick 開始時の committed state fault injection を適用する。
+ *
+ * PRNG 破壊と `nextEntityId` 上書きは committed state 自体を置き換え、pending event 上書きは working state の
+ * 元になる snapshot にだけ反映する。どの hook もその tick で1回だけ消費する。
+ */
+export function applyCommittedStateFaultsBeforeTick(
+  committedState: CommittedStageState,
+  testingHooks: ActiveStageSessionTestingHooks,
+): Readonly<{ committedState: CommittedStageState; workingStateSource: UntrustedCommittedStageState }> {
+  if (testingHooks.corruptCommittedPrngStateTicks.delete(committedState.expectedTick)) {
+    committedState = {
+      ...committedState,
+      prngState: Object.freeze({ state: 0 }),
+    };
+  }
+  if (testingHooks.overrideCommittedNextEntityIdByTick.has(committedState.expectedTick)) {
+    const nextEntityId = testingHooks.overrideCommittedNextEntityIdByTick.get(committedState.expectedTick)!;
+    testingHooks.overrideCommittedNextEntityIdByTick.delete(committedState.expectedTick);
+    committedState = {
+      ...committedState,
+      nextEntityId,
+    };
+  }
+  let workingStateSource: UntrustedCommittedStageState = committedState;
+  if (testingHooks.overrideCommittedPendingEventsByTick.has(committedState.expectedTick)) {
+    const pendingEvents = testingHooks.overrideCommittedPendingEventsByTick.get(committedState.expectedTick)!;
+    testingHooks.overrideCommittedPendingEventsByTick.delete(committedState.expectedTick);
+    workingStateSource = {
+      ...committedState,
+      pendingEvents: deepFreezeClone(pendingEvents),
+    };
+  }
+  return { committedState, workingStateSource };
+}
+
 /** serialize 専用 fault injection を committed snapshot の clone へだけ反映する。 */
 export function createSerializeSourceState(
   committedState: CommittedStageState,
