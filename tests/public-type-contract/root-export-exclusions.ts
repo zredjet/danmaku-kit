@@ -153,8 +153,8 @@ import type { EnemyBulletSpawnResult as DeepEnemyBulletSpawnResult } from "@shoo
 // @ts-expect-error internal collision system is not importable through a deep package subpath.
 import type { CollisionResolutionResult as DeepCollisionResolutionResult } from "@shooting-sample/shooting-core/src/basic/simulation/collision-system.ts";
 
-// @ts-expect-error internal core module is not importable through a deep package subpath.
-import type { HashableGameState as DeepHashableGameState } from "@shooting-sample/shooting-core/src/basic/core.ts";
+// @ts-expect-error internal hash state module is not importable through a deep package subpath.
+import type { HashableGameState as DeepHashableGameState } from "@shooting-sample/shooting-core/src/basic/hash/hashable-state.ts";
 
 // @ts-expect-error internal serialization module is not importable through a deep package subpath.
 import type { SerializedGameState as DeepSerializedGameState } from "@shooting-sample/shooting-core/src/basic/serialization/types.ts";
@@ -176,6 +176,27 @@ import type { StageTickSystemStep } from "@shooting-sample/shooting-core";
 
 // @ts-expect-error internal vector helper is not part of the root public contract.
 import type { Vector2 } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error committed stage state は session 内部の transactional state で root public contract に含めない。
+import type { CommittedStageState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error tick pipeline の結果型は session 内部 API で root public contract に含めない。
+import type { StageTickOutcome } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error loaded content index は session 内部 API で root public contract に含めない。
+import type { LoadedContentIndex } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error restore 検証済み state は restore 内部 API で root public contract に含めない。
+import type { RestoredStageState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error stage session 生成は deep package subpath からも公開しない。
+import { createStageSession as DeepCreateStageSession } from "@shooting-sample/shooting-core/src/basic/session/stage-session.ts";
+
+// @ts-expect-error committed state は deep package subpath からも公開しない。
+import type { CommittedStageState as DeepCommittedStageState } from "@shooting-sample/shooting-core/src/basic/state/committed-state.ts";
+
+// @ts-expect-error restore 検証 orchestration は deep package subpath からも公開しない。
+import { restoreStageState as DeepRestoreStageState } from "@shooting-sample/shooting-core/src/basic/serialization/restore/restore-stage-state.ts";
 
 void KNOWN_ENABLED_FEATURES;
 void (undefined as unknown as HashableGameState);
@@ -219,3 +240,10 @@ void (undefined as unknown as DeepGameplayActionId);
 void (undefined as unknown as DeepEnemyBulletRuntimeEntity);
 void (undefined as unknown as StageTickSystemStep);
 void (undefined as unknown as Vector2);
+void (undefined as unknown as CommittedStageState);
+void (undefined as unknown as StageTickOutcome);
+void (undefined as unknown as LoadedContentIndex);
+void (undefined as unknown as RestoredStageState);
+void DeepCreateStageSession;
+void (undefined as unknown as DeepCommittedStageState);
+void DeepRestoreStageState;
