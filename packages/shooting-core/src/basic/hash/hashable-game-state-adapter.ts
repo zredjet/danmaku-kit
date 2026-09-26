@@ -29,7 +29,7 @@ import type { CanonicalFixedStruct, CanonicalValue } from "./canonical-encoder.t
 /**
  * HashableGameState を canonical encoder 専用の fixedStruct tree へ変換する。
  *
- * field order と struct name は core.ts の versioned table からのみ取得する。呼び出し元の配列は
+ * field order と struct name は `hashable-state.ts` の versioned table からのみ取得する。呼び出し元の配列は
  * 変更せず、runtime entity / pattern runner / feature state は設計書で定めた順序の copy を作る。
  */
 export function adaptHashableGameStateToCanonicalValue(state: HashableGameState): CanonicalFixedStruct {
