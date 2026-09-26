@@ -15,10 +15,10 @@ type ExactFieldOrder<T, Keys extends readonly (keyof T)[]> =
     : never;
 
 /**
- * hash DTO と runtime component の field set が一致することを検査する。
+ * DTO / key 一覧と、対応する runtime component の field set が一致することを検査する。
  *
  * Basic core の runtime entity は hash 対象外の cache / render state を持たないため、
- * runtime field の追加時に hash projection だけを更新し忘れることを型エラーにする。
+ * runtime field の追加時に hash DTO、public serialize DTO、restore key 一覧のどれかだけを更新し忘れることを型エラーにする。
  */
 type ExactFieldSet<Left, Right> =
   Exclude<keyof Left, keyof Right> extends never
@@ -28,9 +28,10 @@ type ExactFieldSet<Left, Right> =
     : never;
 
 /**
- * DTO の canonical field order を、型の全 field を重複なく1回ずつ並べた frozen 配列として定義する。
+ * 型の全 field を重複なく1回ずつ並べた frozen 配列を定義する。
  *
- * `RuntimeContract` を渡すと、その型と DTO の field 集合が一致しない限り型エラーにする。
+ * hash DTO では配列の順序がそのまま canonical encoding の byte 順になる。restore の key 一覧のように順序に意味がない
+ * 用途でも、`RuntimeContract` を渡すとその型と field 集合が一致しない限り型エラーにする。
  */
 export const defineFieldOrder = <T, RuntimeContract = T>() => <const Keys extends readonly (keyof T)[]>(
   keys: ExactFieldOrder<T, Keys> & ExactFieldSet<T, RuntimeContract>,

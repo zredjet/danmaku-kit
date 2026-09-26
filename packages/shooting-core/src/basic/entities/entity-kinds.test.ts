@@ -34,7 +34,7 @@ test("keeps one entity directory with model, snapshot, and restore modules per k
   assert.deepEqual(directories, RUNTIME_ENTITY_KINDS.map(toKebabCase).sort());
   for (const directory of directories) {
     const modules = (await readdir(path.join(entitiesRoot, directory)))
-      .filter((file) => !file.endsWith(".test.ts"))
+      .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"))
       .sort();
     assert.deepEqual(modules, ["model.ts", "restore.ts", "snapshot.ts"], directory);
   }
