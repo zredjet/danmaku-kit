@@ -1,5 +1,5 @@
 import type { CoreError, LoadedGame, StartStageOptions } from "@shooting-sample/shooting-core";
-import { Scene, type GameObjects, type Types } from "phaser";
+import { Scene, Scenes, type GameObjects, type Types } from "phaser";
 
 import { KeyboardInputAdapter } from "../input/keyboard-input.ts";
 import { StageLoop } from "../loop/stage-loop.ts";
@@ -66,7 +66,8 @@ export class StageScene extends Scene {
       return;
     }
     const frame = step.latestFrame;
-    if (!frame) {
+    // tick が進まなかった render frame（高 refresh rate の display で起きる）は state が変わらないので同期しない。
+    if (!frame || step.ticks === 0) {
       return;
     }
     this.#views?.sync(frame.state.entities, { showPlayerHitbox: step.latestInput?.held.includes("focus") ?? false });
@@ -89,12 +90,15 @@ export class StageScene extends Scene {
     window.addEventListener("keyup", onKey);
     window.addEventListener("blur", onFocusLost);
     document.addEventListener("visibilitychange", onFocusLost);
-    this.events.once("shutdown", () => {
+    const removeListeners = (): void => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKey);
       window.removeEventListener("blur", onFocusLost);
       document.removeEventListener("visibilitychange", onFocusLost);
-    });
+    };
+    // scene の停止は SHUTDOWN、game の破棄は SHUTDOWN を経ず DESTROY だけを出すため、両方で外す。
+    this.events.once(Scenes.Events.SHUTDOWN, removeListeners);
+    this.events.once(Scenes.Events.DESTROY, removeListeners);
   }
 
   #showFatal(errors: readonly CoreError[]): void {

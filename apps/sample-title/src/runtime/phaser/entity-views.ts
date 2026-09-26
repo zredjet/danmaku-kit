@@ -53,7 +53,12 @@ export class EntityViews {
     const player = entities.find((entity) => entity.kind === "player");
     this.#playerHitbox.setVisible(options.showPlayerHitbox && player !== undefined);
     if (player) {
-      this.#playerHitbox.setPosition(player.position.x, player.position.y).setRadius(this.#collisionRadiusOf(player));
+      this.#playerHitbox.setPosition(player.position.x, player.position.y);
+      // setRadius は geometry を作り直すため、自機の定義が変わったときだけ呼ぶ。
+      const radius = this.#collisionRadiusOf(player);
+      if (this.#playerHitbox.radius !== radius) {
+        this.#playerHitbox.setRadius(radius);
+      }
     }
   }
 
