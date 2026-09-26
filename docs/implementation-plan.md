@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration も完了し、次の実装スライスは Phase 1C-4 の headless debug state dump とする。
+Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump foundation も完了し、次の実装スライスは state / ordered event / side別input / side statusを比較する first divergent checkpoint の field-level diff artifact とする。
 
 Done:
 
@@ -83,12 +83,13 @@ Done:
 - validate-content 1C-1 で tooling package、immutable diagnostic / JSON output、human formatter、validation / tool error の exit code contract を追加する
 - validate-content 1C-2 で strict YAML parser、source span、CLI / filesystem boundary、Core validation adapter を追加する
 - validate-content 1C-3 で静的な最小 content fixture と、valid / content parse / content・game-definition schema / reference / budget / CLI argument の実プロセス CLI golden test を追加する
+- debug state 1C-4 foundation で test-only headless schema、state / PRNG hash、entity count、test sessionだけで収集するnullable event / collision metrics、portable artifact path / schema-order JSON formatter、public `CoreErrorCode` を拡張しない内部 hash failure result 境界を追加する
 
 Next:
 
-- headless debug state dump の schema、artifact naming、state hash divergence の最小調査 field を追加する
+- 検証済み replay compatibility metadata と expected / actual の `ok | missing | error` sideを比較し、state hashが同じevent-only差分、side別input差分、早期終了、tick失敗を含む first divergent checkpoint の entity / component / event / PRNG artifactを構築する。`ok` sideにはsummary dumpを添付する
 
-Phase 1C-1 は診断と出力の安定した契約、Phase 1C-2 は実績ある YAML parser と source span 付き診断の CLI 接続、Phase 1C-3 は静的 fixture と実プロセスの JSON / human golden contract を固定した。Phase 1C-4 では renderer / browser field を含まない headless debug state dump を追加する。
+Phase 1C-1 は診断と出力の安定した契約、Phase 1C-2 は実績ある YAML parser と source span 付き診断の CLI 接続、Phase 1C-3 は静的 fixture と実プロセスの JSON / human golden contract を固定した。Phase 1C-4 foundation は renderer / browser field を含まない headless debug state summary を固定した。次の slice は summary から値を復元しようとせず、deterministic snapshot、順序付きframe event、side別input、side statusを比較し、`frameTick`とpost-tick `checkpointTick`を分けてfield-level divergenceを組み立てる。
 
 ## 設計から実装への対応表
 
@@ -126,6 +127,7 @@ Status legend:
 | `docs/design.md` Content validation CLI | output contract | Done | `tools/validate-content/src/types.ts`, `tools/validate-content/src/output.ts` | immutable diagnostic、JSON / human formatter、exit code correlation を固定 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Content validation CLI | parser / filesystem boundary | Done | `tools/validate-content/src/yaml-source.ts`, `tools/validate-content/src/content-loader.ts`, `tools/validate-content/src/core-diagnostic-adapter.ts`, `tools/validate-content/src/cli.ts`, `tools/validate-content/src/cli-entry.ts` | strict YAML、source span、Core diagnostic mapping、実 filesystem を検証 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Content validation CLI | minimum fixture / process golden | Done | `fixtures/game-definition.minimum.yaml`, `fixtures/content-minimum/`, `fixtures/validate-content-golden/`, `tools/validate-content/src/cli-golden.test.ts` | valid / content parse / content・game-definition schema / reference / budget / CLI argument を JSON / human の両形式で固定 | `npm test`, `npm run typecheck` |
+| `docs/design.md` Debug state dump | headless dump foundation | Done | `packages/shooting-core/src/basic/internal/debug-state.ts`, `packages/shooting-core/src/basic/testing/debug-state.ts`, `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/simulation/collision-system.ts` | immutable checkpoint、失敗 tick 不変、restore seed / nullable metrics、collision count、schema-order JSON、hash error、root export 非公開を固定 | `packages/shooting-core/src/basic/testing/debug-state.test.ts`, `packages/shooting-core/src/basic/simulation/collision-system.test.ts`, `tests/public-type-contract.ts`; `npm test`, `npm run typecheck` |
 
 ## 次の作業順
 
@@ -320,8 +322,12 @@ Done:
    - Done: `fixtures/game-definition.minimum.yaml` と `fixtures/content-minimum/` を参照完全な最小 content authoring 契約として追加し、valid、content parse error、content / game-definition schema error、reference error、budget error、CLI argument error の実プロセス CLI integration test を追加する
    - Done: JSON output を CI / editor contract、human output を content authoring contract として `fixtures/validate-content-golden/` に固定する。通常実行は golden を読み取り専用とし、`npm run update-validate-content-goldens` の明示時だけ全 case 検証後に一括再生成する
 4. Phase 1C-4: headless debug state dump
-   - Next: test helper から取得する `DebugStateDump` schema、artifact naming、state hash divergence の最小調査 field を実装する
-   - Queued: debug dump は renderer / browser field を含めず、browser runtime extension は Phase 2A へ分離する
+   - Done: root package へ公開しない test helper から取得する `HeadlessDebugStateDump` schema を実装する。`tick` は次の input tick、start session の `seed` は文字列、restore session は `null`、entity count は current committed state、event / collision metrics は直前の成功 tick とし、start / restore 直後は未計測の `null`、非fatalな失敗 tickでは直前値を保持し、fatal後はdumpを拒否する
+   - Done: collision / event metrics は test serializer 登録sessionでだけ収集し、通常runtimeのtick hot pathではcounter更新とcount object生成を省略する
+   - Done: state hash、PRNG hash、固定 key の entity / event count、narrow-phase collision candidate count、portable artifact slug / path、schema 固定順 + 2-space indent + LF の JSON formatter、public `CoreErrorCode` を拡張しない hash encoding failure result を実装する
+   - Next: raw replay metadataを検証して比較可能性を固定し、expected / actualの`ok | missing | error` sideごとにparse後inputを保持する。`ok` sideの`HashableGameState`、順序付き`GameFrame.events`、summaryを比較し、state hashが同じevent-only差分もfirst divergenceとして検出する
+   - Next: `frameTick: null` / `checkpointTick: 0`の初期比較と、tick後の`checkpointTick === frameTick + 1`を検証し、artifact pathのtickをcheckpoint tickに固定する
+   - Queued: browser runtime dump は`apps/sample-title`がpublic `GameFrame`とruntime adapter stateから作る別schemaとしてPhase 2Aへ分離し、Core内部hash/metricsやdeep importへ依存させない
 
 ## Phase 2A へ進む条件
 

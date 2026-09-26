@@ -1685,33 +1685,59 @@ type PatternProgram = {
 - 600 tick 時点で敵弾が 42 発存在する。
 - 同じ replay は同じ score になる。
 
-Replay divergence 調査では、state hash mismatch の最初の tick を特定し、その tick の entity diff、component diff、event diff、PRNG state diff、input frame を debug artifact として出力する。Golden test は最終 hash だけで失敗させず、first divergent tick を報告する。
+Replay divergence 調査では、各 side の status、parse 後の immutable `InputFrame`、state hash、順序付き `GameFrame.events` の完全 payload を tick ごとに比較し、いずれかが最初に異なる checkpoint を特定する。state hash が同じでも event の欠落、順序、payload が異なれば divergence とする。初期 checkpoint は `frameTick: null` / `checkpointTick: 0`、tick 処理後は `checkpointTick === frameTick + 1` とし、frame と post-tick state を同じ数値で誤結合しない。Golden test は最終 hash だけで失敗させず、この first divergent checkpoint を報告する。
+
+比較前に expected / actual の raw `ReplayMetadata` を内部 validator へ通し、未知 feature、重複、canonical order 違反を拒否した `ValidatedReplayCompatibilityMetadata` を作る。互換性 field が一致しない場合は state divergence report を作らず compatibility diagnostic を返す。report には validator が artifact 用 plain DTO へ投影した両 metadata を残す。入力は side ごとに保持し、同じ入力列を前提にする場合でも一致を検証してから比較する。
 
 ```ts
-type ReplayDivergenceReport = {
+type ReplayDivergenceReport = Readonly<{
   schemaVersion: "1";
   artifactName: string;
   replayId: string;
-  firstDivergentTick: number;
-  expectedStateHash: string;
-  actualStateHash: string;
-  inputFrame: InputFrame;
-  entityDiff: ReplayDiffItem[];
-  componentDiff: ReplayDiffItem[];
-  eventDiff: ReplayDiffItem[];
+  firstDivergentFrameTick: number | null;
+  firstDivergentCheckpointTick: number;
+  expectedMetadata: ReplayCompatibilitySnapshot;
+  actualMetadata: ReplayCompatibilitySnapshot;
+  expected: ReplayDivergenceSide;
+  actual: ReplayDivergenceSide;
+  inputDiff: readonly ReplayDiffItem[];
+  entityDiff: readonly ReplayDiffItem[];
+  componentDiff: readonly ReplayDiffItem[];
+  eventDiff: readonly ReplayDiffItem[];
   prngStateDiff: ReplayDiffItem | null;
-};
+}>;
 
-type ReplayDiffItem = {
+type ReplayDivergenceSide =
+  | Readonly<{
+    status: "ok";
+    inputFrame: InputFrame | null;
+    stateHash: string;
+    summary: HeadlessDebugStateDump;
+    state: HashableGameState;
+    events: readonly GameEvent[];
+  }>
+  | Readonly<{ status: "missing"; inputFrame: InputFrame | null }>
+  | Readonly<{ status: "error"; inputFrame: InputFrame | null; errors: readonly CoreError[] }>;
+
+type ReplayDiffItem = Readonly<{
   path: string;
-  expected: string | number | boolean | null;
-  actual: string | number | boolean | null;
+  expected: ReplayDiffValue;
+  actual: ReplayDiffValue;
   entityId?: number;
   component?: string;
-};
+}>;
+
+type JsonValue = null | boolean | number | string | readonly JsonValue[] | Readonly<{
+  [key: string]: JsonValue;
+}>;
+
+type ReplayDiffValue = JsonValue | Readonly<{ kind: "missing" }> | Readonly<{
+  kind: "error";
+  codes: readonly string[];
+}>;
 ```
 
-CI artifact path は `artifacts/replay-divergence/<replayId>-tick-<tick>.json` とする。
+CI artifact path は `artifacts/replay-divergence/<replayId>-tick-<tick>.json` とし、path の `<tick>` は `firstDivergentCheckpointTick` に固定する。片側だけ replay が終了した場合は `missing`、片側の `tick()` だけ失敗した場合は `error` side として artifact を生成し、存在しない state / events を必須扱いしない。
 
 ### 21.5 Browser Test
 
@@ -1724,37 +1750,74 @@ CI artifact path は `artifacts/replay-divergence/<replayId>-tick-<tick>.json` �
 - viewport は desktop、mobile 相当、`384x448` 未満の fractional downscale、resize 後を含める。
 - DPR は 1 と high DPI 相当で canvas と DOM overlay の座標一致を検証する。
 - debug state dump で tick、seed、entity 数、bullet 数、player 座標、viewport scale、DPR、overlay transform を検証する。
-- deterministic replay smoke test で同一 replay の state hash が一致することを確認する。
+- browser test と同じ replay input を別の Node headless smoke test にも渡し、同一 replay の state hash が一致することを確認する。browser dump 自体には内部 hash を公開しない。
 
 Screenshot diff は flaky になりやすいため、CI では tolerance と mask を使う。判定の正本は debug state dump と deterministic replay smoke test に置き、screenshot diff は視覚崩れ検知の補助とする。
 
-Phase 1C の debug state dump は headless/core dump とし、test helper の `StageSession.serializeDebugState()` から取得する。Browser Test では `window.__SHOOTING_DEBUG_STATE__()` から browser/runtime dump を取得する。CI artifact path は `artifacts/debug-state/<test-name>-tick-<tick>.json` とする。
+Phase 1C の debug state dump は headless/core dump とし、root package へ公開しない package-internal test helper の `serializeDebugStateForTest(session)` から取得する。利用時は test process で `SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS=1` を設定し、`createShootingCoreWithTestingHooksForTest()` から作った session を渡す。通常の `createShootingCore()` から作った session は serializer 未登録として例外で拒否する。これらの helper / factory は package root や deep package subpath から import できる public API にしない。
+
+`tick` は state hash の `expectedTick` と同じく、その committed checkpoint が次に受け付ける入力 tick を表す。開始時の seed は replay snapshot に保存しないため、`startStage()` から作った session では元の文字列、`restore()` から作った session では `null` とする。seed の有無は state hash へ影響させない。canonical hash の resource budget 超過などで digest を生成できない場合、helper は throw せず `debugState.hashFailed` の test-only result error を返す。この内部 code は root 公開の `CoreErrorCode` union へ追加しない。
+
+`entityCounts` は現在の committed entity、`eventCounts` と `collisionCandidates` は直前に成功して commit された tick を表す。start / restore 直後はまだ成功 frame がないため、未計測を実測ゼロと区別して両 field を `null` にする。最初の成功 tick では pending `stageStarted` を含む実際の frame event を集計し、以後も成功 tick ごとに置き換える。非fatalな失敗 tick では直前値を保持し、fatal latch 後は破損し得る committed snapshot をdumpせず `stageSession.fatal` errorを返す。`collisionCandidates` は broad phase 導入前は narrow-phase の円判定を実行した entity pair 数とし、render-only state や object pool state と同様に state hash / serialize 対象へ含めない。
+
+collision / event metrics は test serializer が登録された session でだけ収集する。通常の `createShootingCore()` session では collision counter、event count object、freeze を tick hot path に生成せず、Core の本番性能へ test-only diagnostics の費用を持ち込まない。
+
+Browser Test では Phase 2A 以降に `apps/sample-title` が `BrowserDebugStateDump` を所有し、最新の public `GameFrame` と runtime adapter の lifecycle / viewport / input / asset / audio / overlay state から `window.__SHOOTING_DEBUG_STATE__()` を組み立てる。この global hook は dev / test build にだけ設置し、production build では定義しない。browser schema は headless dump を継承せず、Core 内部の `stateHash`、`prngHash`、`collisionCandidates` を含めないため、非公開 helper のdeep importや新しいCore diagnostics portを必要としない。
+
+CI artifact path は `artifacts/debug-state/<test-name>-tick-<tick>.json` とする。`test-name` は 1..128 文字の lower-case ASCII slug とし、英数字の区間を `.`, `_`, `-` のいずれか1文字で区切る。test helper はこの規則と non-negative safe integer tick を検証し、`/`、`\\`、`..` を artifact path へ流さない。JSON artifact は schema 固定の property order、2-space indent、末尾 LF で固定し、caller object の property 挿入順へ依存させない。
 
 ```ts
-type DebugStateDump = {
+type HeadlessDebugStateDump = Readonly<{
   schemaVersion: "1";
-  kind: "headless" | "browser";
+  kind: "headless";
+  // committed state が次に受け付ける input tick
   tick: number;
-  seed: string;
+  seed: string | null;
   stateHash: string;
   prngHash: string;
-  entityCounts: Record<string, number>;
-  collisionCandidates: number;
-  eventCounts: Record<string, number>;
-  lifecycle?: GameLifecycleState;
-  viewport?: { width: number; height: number; scale: number; dpr: number };
-  inputQueueDepth?: number;
-  assetStatus?: Record<string, "loaded" | "fallback" | "failed" | "skipped">;
-  audioStatus?: {
-    context: "running" | "suspended" | "closed" | "unavailable";
-    degraded: boolean;
-    lastError?: string;
-  };
-  overlayTransform?: string;
-};
+  entityCounts: Readonly<Record<"player" | "enemy" | "enemyBullet" | "playerShot", number>>;
+  collisionCandidates: number | null;
+  eventCounts: Readonly<Record<
+    | "stageStarted"
+    | "tickAdvanced"
+    | "entitySpawned"
+    | "entityDestroyed"
+    | "playerHit"
+    | "playerShotsSpawnedBatch"
+    | "enemyBulletsSpawnedBatch"
+    | "scoreChanged",
+    number
+  >> | null;
+}>;
 ```
 
-headless dump では optional field を省略する。browser/runtime dump では `lifecycle`、`viewport`、`inputQueueDepth`、`assetStatus`、`audioStatus`、`overlayTransform` を含める。
+Phase 1C-4 の最初の slice として、上記 headless summary schema、artifact naming、state / PRNG hash、count metrics は実装済みである。summary dump だけから entity / component / event / PRNG の値は復元できないため、次の field-level diff slice は検証済み replay compatibility metadata と expected / actual の各 `ReplayDivergenceSide` を入力にする。`ok` side だけが `HashableGameState`、順序付き `GameFrame.events`、parse後の `InputFrame`、summaryを持ち、早期終了とtick失敗は `missing` / `error` として扱う。`HeadlessDebugStateDump` はreportの各`ok` sideに置く概要fieldであり、deterministic snapshotの代用にはしない。
+
+Phase 2A の browser/runtime dump は次の別 schema とする。
+
+```ts
+type BrowserDebugStateDump = Readonly<{
+  schemaVersion: "1";
+  kind: "browser";
+  tick: number;
+  seed: string | null;
+  lifecycle: GameLifecycleState;
+  entityCounts: Readonly<Record<"player" | "enemy" | "enemyBullet" | "playerShot", number>>;
+  playerPosition: Readonly<{ x: number; y: number }> | null;
+  viewport: Readonly<{
+    logicalWidth: number;
+    logicalHeight: number;
+    scale: number;
+    devicePixelRatio: number;
+    letterboxX: number;
+    letterboxY: number;
+  }>;
+  inputQueueDepth: number;
+  assetStatus: "loading" | "ready" | "error";
+  audioStatus: "muted" | "suspended" | "running" | "error";
+  overlayTransform: Readonly<{ x: number; y: number; scale: number }>;
+}>;
+```
 
 ### 21.6 初期マイルストーン受け入れテスト
 
@@ -1916,6 +1979,6 @@ MVP では対象外だが、再利用基盤として以下を追跡する。
 
 Phase 1A の Core minimum contract は、TypeScript package、最小 content schema、registry validation、fixed tick、InputFrame、immutable event log、Entity/Component、seed/PRNG、Player / Enemy / EnemyBullet / PlayerShot、minimum Pattern `fireOnSpawn`、MVP collision resolution pair、fixed `scoreOnKill`、package boundary test まで実装済みである。collision broad phase は Phase 1A 完了条件ではなく、playable runtime へ向けた後続性能タスクとして残す。
 
-Phase 1B-5D として、`LoadedGame.restore(state): CoreResult<StageSession>` の public API、top-level error boundary、PRNG snapshot の public restore error 変換、deterministic payload の shape、pending event、runtime entity の kind 別 shape / registry / runtime budget validation、accepted committed state 変換、非空 extension state の shape / JSON guard / feature mismatch 分類、transactional restore、roundtrip determinism は実装済みである。`nextEntityId` は EntityAllocator と共有する上限まで含めて `state.invalidShape` として正規化する。続く Phase 1B-6 の state hash minimum も canonical encoder、fixed seed xxHash64、gameplay digest golden、restore 後の複数 tick 一致まで実装済みである。Phase 1B-7 では metadata-only の `ReplayMetadata` を root type export し、未検証 `enabledFeatures` を replay 互換性 field として含め、snapshot 専用 `stateHashVersion` と replay playback API は公開しない境界を型契約で固定した。Phase 1C-1 では `tools/validate-content` package と immutable diagnostic / JSON / human / exit code contract、Phase 1C-2 では YAML parser、source span、CLI / filesystem boundary、Core validation adapter、Phase 1C-3 では静的な最小 content fixture と valid / content parse / content・game-definition schema / reference / budget / CLI argument の実プロセス CLI golden test を追加した。次の作業は Phase 1C-4 の headless debug state dump とする。
+Phase 1B-5D として、`LoadedGame.restore(state): CoreResult<StageSession>` の public API、top-level error boundary、PRNG snapshot の public restore error 変換、deterministic payload の shape、pending event、runtime entity の kind 別 shape / registry / runtime budget validation、accepted committed state 変換、非空 extension state の shape / JSON guard / feature mismatch 分類、transactional restore、roundtrip determinism は実装済みである。`nextEntityId` は EntityAllocator と共有する上限まで含めて `state.invalidShape` として正規化する。続く Phase 1B-6 の state hash minimum も canonical encoder、fixed seed xxHash64、gameplay digest golden、restore 後の複数 tick 一致まで実装済みである。Phase 1B-7 では metadata-only の `ReplayMetadata` を root type export し、未検証 `enabledFeatures` を replay 互換性 field として含め、snapshot 専用 `stateHashVersion` と replay playback API は公開しない境界を型契約で固定した。Phase 1C-1 では `tools/validate-content` package と immutable diagnostic / JSON / human / exit code contract、Phase 1C-2 では YAML parser、source span、CLI / filesystem boundary、Core validation adapter、Phase 1C-3 では静的な最小 content fixture と実プロセス CLI golden test、Phase 1C-4 の最初の slice では test-only headless debug dump、state / PRNG hash、count metrics、portable artifact path / JSON formatter を追加した。次の作業は first divergent tick の field-level diff artifact とする。
 
 state hash は `docs/implementation-plan.md` の Phase 1B-6、replay metadata minimum は同計画の Phase 1B-7 で実装済みである。

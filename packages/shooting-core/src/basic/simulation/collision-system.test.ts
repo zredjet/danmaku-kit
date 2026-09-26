@@ -21,6 +21,7 @@ test("resolves player hit by enemy bullet before player shot damage", () => {
     { playerInvincibleTicksAfterHit: 120, score: 0, tick: 7 },
   );
 
+  assert.equal(result.collisionCandidates, 2);
   assert.deepEqual(result.events, [
     {
       type: "playerHit",
@@ -81,6 +82,7 @@ test("uses enemy contact as the player hit source when no bullet hit exists", ()
     { playerInvincibleTicksAfterHit: 60, score: 0, tick: 3 },
   );
 
+  assert.equal(result.collisionCandidates, 1);
   assert.deepEqual(result.events, [
     {
       type: "playerHit",
@@ -222,6 +224,7 @@ test("chooses colliding candidates by entity id even when input order is differe
     { playerInvincibleTicksAfterHit: 120, score: 0, tick: 4 },
   );
 
+  assert.equal(result.collisionCandidates, 2);
   assert.deepEqual(result.events.map((event) => event.type), [
     "playerHit",
     "entityDestroyed",
@@ -263,6 +266,8 @@ test("treats touching collision circles as hit and separated circles as no hit",
     { playerInvincibleTicksAfterHit: 120, score: 0, tick: 5 },
   );
 
+  assert.equal(touching.collisionCandidates, 1);
+  assert.equal(separated.collisionCandidates, 1);
   assert.equal(touching.score, 100);
   assert.deepEqual(touching.events.map((event) => event.type), [
     "entityDestroyed",
@@ -282,6 +287,7 @@ test("ignores player hits while invincible and decrements the timer", () => {
     { playerInvincibleTicksAfterHit: 120, score: 0, tick: 10 },
   );
 
+  assert.equal(result.collisionCandidates, 0);
   assert.deepEqual(result.events, []);
   assert.deepEqual(result.entities, [
     {
@@ -301,6 +307,7 @@ test("keeps the player protected for the final invincibility tick", () => {
     { playerInvincibleTicksAfterHit: 120, score: 0, tick: 11 },
   );
 
+  assert.equal(result.collisionCandidates, 0);
   assert.deepEqual(result.events, []);
   assert.deepEqual(result.entities, [
     {
@@ -309,6 +316,19 @@ test("keeps the player protected for the final invincibility tick", () => {
     },
     createEnemyBullet({ id: 3, position: { x: 100, y: 100 } }),
   ]);
+});
+
+test("skips collision candidate counting when runtime metrics are disabled", () => {
+  const result = resolveCollisionAndScoring(
+    [
+      createPlayer({ id: 1, position: { x: 100, y: 100 } }),
+      createEnemyBullet({ id: 3, position: { x: 100, y: 100 } }),
+    ],
+    { collectMetrics: false, playerInvincibleTicksAfterHit: 120, score: 0, tick: 12 },
+  );
+
+  assert.equal(result.collisionCandidates, null);
+  assert.equal(result.events[0]?.type, "playerHit");
 });
 
 function createPlayer(options: {

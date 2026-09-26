@@ -27,8 +27,17 @@ import type {
 import { validateGameDefinition } from "./content/validation.ts";
 import { EventLog } from "./events/game-event.ts";
 import type { GameEvent } from "./events/game-event.ts";
+import { hashHashableGameState, hashHashablePrngState } from "./hash/state-hash.ts";
 import { GAMEPLAY_ACTION_ORDER } from "./input/input-frame.ts";
 import type { InputFrame } from "./input/input-frame.ts";
+import type {
+  HeadlessDebugEntityCounts,
+  HeadlessDebugEventCounts,
+  HeadlessDebugStateResult,
+  HeadlessDebugStateDump,
+  HeadlessDebugTickMetrics,
+  RegisterHeadlessDebugStateSerializer,
+} from "./internal/debug-state.ts";
 import { deepFreezeClone, deepFreezePlainData } from "./internal/immutable.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
 import type { CoreError, CoreErrorCode, CoreResult } from "./result.ts";
@@ -534,6 +543,7 @@ type LoadedContentIndex = Readonly<{
 }>;
 
 type StageSessionContext = {
+  debugSeed: string | null;
   initialState: CommittedStageState;
   serializationMetadata: StageSessionSerializationMetadata;
   bulletsById: ReadonlyMap<string, BulletDefinition>;
@@ -709,9 +719,11 @@ type StageSessionTestingHookOptions = Readonly<{
   overrideCommittedNextEntityIdOnSerialize?: number;
   overrideCommittedPendingEventsOnSerialize?: readonly unknown[];
   overrideCommittedPrngStateOnSerialize?: unknown;
+  failHeadlessDebugStateSerialization?: boolean;
   recordCommittedStateOnFatal?: (state: CommittedStageState) => void;
   recordHashableStateOnSerialize?: (state: HashableGameState) => void;
   recordRestoreSerializedSnapshot?: (state: SerializedGameState) => void;
+  registerHeadlessDebugStateSerializer?: RegisterHeadlessDebugStateSerializer;
 }>;
 
 type ActiveStageSessionTestingHooks = Readonly<{
@@ -723,8 +735,10 @@ type ActiveStageSessionTestingHooks = Readonly<{
   overrideCommittedNextEntityIdOnSerialize?: number;
   overrideCommittedPendingEventsOnSerialize?: readonly unknown[];
   overrideCommittedPrngStateOnSerialize?: unknown;
+  failHeadlessDebugStateSerialization: boolean;
   recordCommittedStateOnFatal?: (state: CommittedStageState) => void;
   recordHashableStateOnSerialize?: (state: HashableGameState) => void;
+  registerHeadlessDebugStateSerializer?: RegisterHeadlessDebugStateSerializer;
 }>;
 
 /** validated content を runtime lookup しやすい形へまとめる。 */
@@ -837,6 +851,7 @@ function createLoadedGame(
 
       return okResult(createStageSession({
         bulletsById: content.bulletsById,
+        debugSeed: null,
         enemiesById: content.enemiesById,
         initialState: restoredState.value.committedState,
         serializationMetadata,
@@ -878,18 +893,20 @@ function createLoadedGame(
       }
 
       // stageStarted は最初の GameFrame で renderer/debug が初期状態を同期するための event。
+      const initialState = createCommittedStageState({
+        activeEntities: [playerEntity.value],
+        expectedTick: 0,
+        nextEntityId: entityAllocator.snapshot(),
+        pendingEvents: [{ type: "stageStarted", tick: 0, stageId: stage.id }],
+        prngState: new XorShift32(options.value.seed).snapshot(),
+        score: 0,
+        timelineCursor: 0,
+      });
       return okResult(createStageSession({
         bulletsById: content.bulletsById,
+        debugSeed: options.value.seed,
         enemiesById: content.enemiesById,
-        initialState: createCommittedStageState({
-          activeEntities: [playerEntity.value],
-          expectedTick: 0,
-          nextEntityId: entityAllocator.snapshot(),
-          pendingEvents: [{ type: "stageStarted", tick: 0, stageId: stage.id }],
-          prngState: new XorShift32(options.value.seed).snapshot(),
-          score: 0,
-          timelineCursor: 0,
-        }),
+        initialState,
         serializationMetadata: {
           coreVersion,
           schemaVersion: content.definition.schemaVersion,
@@ -943,6 +960,8 @@ function canonicalizeEnabledFeatures(features: readonly EnabledFeature[]): reado
  */
 function createStageSession(options: StageSessionContext): StageSession {
   let committedState = options.initialState;
+  const debugMetricsEnabled = options.testingHooks.registerHeadlessDebugStateSerializer !== undefined;
+  let debugTickMetrics: HeadlessDebugTickMetrics | null = null;
   let fatalErrors: readonly CoreError[] | null = null;
   const latchFatalErrors = <T>(errors: readonly CoreError[]): CoreResult<T> => {
     options.testingHooks.recordCommittedStateOnFatal?.(deepFreezeClone(committedState));
@@ -1107,6 +1126,7 @@ function createStageSession(options: StageSessionContext): StageSession {
         spawnedThisTickEntityIds: spawnedPlayerShotEntityIds,
       });
       const collision = resolveCollisionAndScoring(advancedEntities, {
+        collectMetrics: debugMetricsEnabled,
         playerInvincibleTicksAfterHit: options.player.life.invincibleTicksAfterHit,
         score: working.value.score,
         tick: working.value.expectedTick,
@@ -1135,10 +1155,11 @@ function createStageSession(options: StageSessionContext): StageSession {
         score: resolvedScore,
         entities: Object.freeze(orderedEntities.map((entity) => toReadonlyEntityState(entity))),
       });
+      const frameEvents = working.value.eventLog.drain();
       const frame = Object.freeze({
         tick: working.value.expectedTick,
         state,
-        events: working.value.eventLog.drain(),
+        events: frameEvents,
       });
 
       committedState = createCommittedStageState({
@@ -1150,10 +1171,119 @@ function createStageSession(options: StageSessionContext): StageSession {
         score: resolvedScore,
         timelineCursor: working.value.timelineCursor,
       });
+      if (debugMetricsEnabled && collision.collisionCandidates !== null) {
+        debugTickMetrics = createHeadlessDebugTickMetrics(collision.collisionCandidates, frameEvents);
+      }
       return okResult(frame);
     },
   };
+  options.testingHooks.registerHeadlessDebugStateSerializer?.(
+    session,
+    () => fatalErrors
+      ? errorResult(fatalErrors)
+      : serializeHeadlessDebugState(
+        options.serializationMetadata,
+        committedState,
+        options.debugSeed,
+        debugTickMetrics,
+        options.testingHooks.failHeadlessDebugStateSerialization,
+      ),
+  );
   return Object.freeze(session);
+}
+
+/** committed state と process-local metrics から test-only headless dump を作る。 */
+function serializeHeadlessDebugState(
+  metadata: StageSessionSerializationMetadata,
+  committedState: CommittedStageState,
+  seed: string | null,
+  metrics: HeadlessDebugTickMetrics | null,
+  forceHashFailure: boolean,
+): HeadlessDebugStateResult {
+  const hashableState = createHashableGameState(metadata, committedState);
+  if (!hashableState.ok) {
+    return errorResult(hashableState.errors);
+  }
+  let stateHash: string;
+  let prngHash: string;
+  try {
+    if (forceHashFailure) {
+      throw new Error("injected headless debug state hash failure");
+    }
+    stateHash = hashHashableGameState(hashableState.value);
+    prngHash = hashHashablePrngState(hashableState.value.prngState);
+  } catch {
+    return createHeadlessDebugStateHashError();
+  }
+  return okResult(Object.freeze({
+    schemaVersion: "1",
+    kind: "headless",
+    tick: committedState.expectedTick,
+    seed,
+    stateHash,
+    prngHash,
+    entityCounts: countHeadlessDebugEntities(committedState.activeEntities),
+    collisionCandidates: metrics?.collisionCandidates ?? null,
+    eventCounts: metrics?.eventCounts ?? null,
+  }));
+}
+
+/** test-only hash failure を public CoreErrorCode へ漏らさず immutable result にする。 */
+function createHeadlessDebugStateHashError(): HeadlessDebugStateResult {
+  return Object.freeze({
+    ok: false,
+    errors: Object.freeze([
+      Object.freeze({
+        code: "debugState.hashFailed" as const,
+        message: "headless debug state hash could not be encoded",
+      }),
+    ]),
+  });
+}
+
+/** committed entity を固定 kind ごとの件数へ集計する。 */
+function countHeadlessDebugEntities(entities: readonly RuntimeEntityState[]): HeadlessDebugEntityCounts {
+  const counts: Record<RuntimeEntityState["kind"], number> = {
+    player: 0,
+    enemy: 0,
+    enemyBullet: 0,
+    playerShot: 0,
+  };
+  for (const entity of entities) {
+    counts[entity.kind] += 1;
+  }
+  return Object.freeze(counts);
+}
+
+/** frame event を固定 type ごとの件数へ集計し、次の成功 commit まで保持する。 */
+function countHeadlessDebugEvents(
+  events: readonly Readonly<{ type: GameEvent["type"] }>[],
+): HeadlessDebugEventCounts {
+  const counts: Record<GameEvent["type"], number> = {
+    stageStarted: 0,
+    tickAdvanced: 0,
+    entitySpawned: 0,
+    entityDestroyed: 0,
+    playerHit: 0,
+    playerShotsSpawnedBatch: 0,
+    enemyBulletsSpawnedBatch: 0,
+    scoreChanged: 0,
+  };
+  for (const event of events) {
+    counts[event.type] += 1;
+  }
+  return Object.freeze(counts);
+}
+
+/** 成功 tick に付随する非deterministic debug metrics を immutable snapshot にする。 */
+function createHeadlessDebugTickMetrics(
+  collisionCandidates: number,
+  events: readonly Readonly<{ type: GameEvent["type"] }>[],
+): HeadlessDebugTickMetrics {
+  return Object.freeze({
+    collisionCandidates,
+    eventCounts: countHeadlessDebugEvents(events),
+  });
 }
 
 /** committed snapshot と session metadata から public serialize DTO を生成する。 */
@@ -1471,8 +1601,10 @@ function createActiveStageSessionTestingHooks(
     overrideCommittedNextEntityIdOnSerialize: testingHooks.overrideCommittedNextEntityIdOnSerialize,
     overrideCommittedPendingEventsOnSerialize: testingHooks.overrideCommittedPendingEventsOnSerialize,
     overrideCommittedPrngStateOnSerialize: testingHooks.overrideCommittedPrngStateOnSerialize,
+    failHeadlessDebugStateSerialization: testingHooks.failHeadlessDebugStateSerialization ?? false,
     recordCommittedStateOnFatal: testingHooks.recordCommittedStateOnFatal,
     recordHashableStateOnSerialize: testingHooks.recordHashableStateOnSerialize,
+    registerHeadlessDebugStateSerializer: testingHooks.registerHeadlessDebugStateSerializer,
   });
 }
 

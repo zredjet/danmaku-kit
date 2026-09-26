@@ -92,6 +92,42 @@ type ReplayMetadataContractAssertions = readonly [
 // @ts-expect-error 内部 replay/hash snapshot は root public contract に含めない。
 import type { HashableGameState } from "@shooting-sample/shooting-core";
 
+// @ts-expect-error headless debug dump は test-only で root public contract に含めない。
+import type { HeadlessDebugStateDump } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error headless debug entity count は test-only で root public contract に含めない。
+import type { HeadlessDebugEntityCounts } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error headless debug event count は test-only で root public contract に含めない。
+import type { HeadlessDebugEventCounts } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error headless debug tick metrics は test-only で root public contract に含めない。
+import type { HeadlessDebugTickMetrics } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error headless debug result は test-only で root public contract に含めない。
+import type { HeadlessDebugStateResult } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error headless debug error は test-only で root public contract に含めない。
+import type { HeadlessDebugStateError } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error headless debug serializer type は test-only で root public contract に含めない。
+import type { HeadlessDebugStateSerializer } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error headless debug serializer register type は test-only で root public contract に含めない。
+import type { RegisterHeadlessDebugStateSerializer } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error headless debug serializer は test-only で root public contract に含めない。
+import { serializeDebugStateForTest } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error debug artifact path helper は test-only で root public contract に含めない。
+import { createHeadlessDebugStateArtifactPathForTest } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error debug artifact formatter は test-only で root public contract に含めない。
+import { formatHeadlessDebugStateJsonForTest } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error test-only debug helper は deep package subpath からも公開しない。
+import { serializeDebugStateForTest as DeepDebugSerializer } from "@shooting-sample/shooting-core/src/basic/testing/debug-state.ts";
+
 // @ts-expect-error 内部 hash PRNG DTO は root public contract に含めない。
 import type { HashablePrngState } from "@shooting-sample/shooting-core";
 
@@ -1089,6 +1125,9 @@ scoreChangedEvent.total = 0;
 // @ts-expect-error entity.notFound is an internal invariant, not a public CoreErrorCode.
 const invalidCoreErrorCode: CoreErrorCode = "entity.notFound";
 
+// @ts-expect-error debugState.hashFailed は内部test helperの結果型に限定する。
+const invalidDebugStateHashErrorCode: CoreErrorCode = "debugState.hashFailed";
+
 // @ts-expect-error entityAllocator restore failures are normalized before becoming public restore errors.
 const invalidEntityAllocatorRestoreErrorCode: CoreErrorCode = "state.entityAllocatorInvalid";
 
@@ -1349,6 +1388,7 @@ void invalidPlayerEntity;
 void invalidEnemyBulletEntity;
 void invalidPlayerShotEntity;
 void invalidCoreErrorCode;
+void invalidDebugStateHashErrorCode;
 void contextualCoreError;
 void invalidEntityAllocatorRestoreErrorCode;
 void restorePrngInvalidErrorCode;

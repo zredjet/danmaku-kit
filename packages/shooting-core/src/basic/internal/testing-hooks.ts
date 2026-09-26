@@ -1,9 +1,13 @@
 import { createShootingCoreWithTestingHooksForInternalTest } from "../core.ts";
 import type { ShootingCore } from "../core.ts";
+import { registerHeadlessDebugStateSerializerForTest } from "../testing/debug-state.ts";
 
 const INTERNAL_TEST_HOOKS_ENV = "SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS";
 
-type StageSessionTestingHooks = NonNullable<Parameters<typeof createShootingCoreWithTestingHooksForInternalTest>[1]>;
+type InternalStageSessionTestingHooks = NonNullable<
+  Parameters<typeof createShootingCoreWithTestingHooksForInternalTest>[1]
+>;
+type StageSessionTestingHooks = Omit<InternalStageSessionTestingHooks, "registerHeadlessDebugStateSerializer">;
 
 /**
  * Core 内部テスト用に fault-injection 付き Core を作る。
@@ -16,7 +20,10 @@ export function createShootingCoreWithTestingHooksForTest(
   hooks: StageSessionTestingHooks,
 ): ShootingCore {
   assertInternalTestHooksEnabled();
-  return createShootingCoreWithTestingHooksForInternalTest(coreVersion, hooks);
+  return createShootingCoreWithTestingHooksForInternalTest(coreVersion, {
+    ...hooks,
+    registerHeadlessDebugStateSerializer: registerHeadlessDebugStateSerializerForTest,
+  });
 }
 
 function assertInternalTestHooksEnabled(): void {
