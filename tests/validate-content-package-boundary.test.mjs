@@ -7,6 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
+import { collectModuleReferences, isPathInside, MODULE_IMPORT_KINDS } from "./support/module-references.mjs";
 import { collectTypeScriptFiles, isTestCodeFile } from "./support/source-files.mjs";
 
 const packageRoot = fileURLToPath(new URL("../tools/validate-content", import.meta.url));
@@ -152,7 +153,12 @@ async function assertSourceImports(root, allowedImports, declaredDependencies) {
 
   for (const file of sourceFiles) {
     const sourceText = await readFile(file, "utf8");
-    for (const specifier of collectModuleSpecifiers(file, sourceText)) {
+    for (const { kind, specifier } of collectModuleReferences(file, sourceText)) {
+      // reference directive と非 literal の dynamic import は依存先を静的に確かめられないため、package を問わず拒否する。
+      if (!MODULE_IMPORT_KINDS.includes(kind) || specifier === null) {
+        violations.push(`${path.relative(root, file)} -> ${kind} ${specifier ?? "(non-literal)"}`);
+        continue;
+      }
       if (specifier.startsWith(".")) {
         const target = path.resolve(path.dirname(file), specifier);
         if (!isPathInside(root, target)) {
@@ -212,34 +218,3 @@ function getModuleSpecifierText(exportDeclaration) {
     : "<unknown>";
 }
 
-function collectModuleSpecifiers(file, sourceText) {
-  const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const specifiers = [];
-
-  function visit(node) {
-    if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
-      && node.moduleSpecifier
-      && ts.isStringLiteral(node.moduleSpecifier)
-    ) {
-      specifiers.push(node.moduleSpecifier.text);
-    }
-    if (
-      ts.isCallExpression(node)
-      && node.expression.kind === ts.SyntaxKind.ImportKeyword
-      && node.arguments.length === 1
-      && ts.isStringLiteral(node.arguments[0])
-    ) {
-      specifiers.push(node.arguments[0].text);
-    }
-    ts.forEachChild(node, visit);
-  }
-
-  visit(sourceFile);
-  return specifiers;
-}
-
-function isPathInside(root, candidate) {
-  const relative = path.relative(root, candidate);
-  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
-}

@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
+import { collectModuleReferences, isRelativeReferenceInside, MODULE_IMPORT_KINDS } from "./support/module-references.mjs";
 import { collectTypeScriptFiles, isTestCodeFile } from "./support/source-files.mjs";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -65,9 +66,6 @@ const SAMPLE_TITLE_PACKAGE_IMPORT_RULES = Object.freeze([
 /** `import.meta`（Vite 固有の `import.meta.env` など）を読んでよい sample app の module。他の module へは引数で渡す。 */
 const SAMPLE_TITLE_IMPORT_META_READERS = Object.freeze(["main.ts"]);
 
-/** module を specifier で読み込む記述の種類。triple-slash reference directive は含めない。 */
-const MODULE_IMPORT_KINDS = Object.freeze(["import", "export", "importEquals", "dynamicImport", "importType"]);
-
 test("matches dependency rule paths by file, directory, and single-segment wildcard", () => {
   const cases = [
     ["core.ts", "core.ts", true],
@@ -101,6 +99,7 @@ test("collects every module reference form and accepts only relative paths insid
     "const f = await import(\"../../../../../node_modules/phaser/src/phaser.js\");",
     "const g = await import(name);",
     "type H = import(\"../api-types.ts\").GameFrame;",
+    "export { i } from \"./..hidden.ts\";",
   ].join("\n");
 
   assert.deepEqual(
@@ -117,6 +116,7 @@ test("collects every module reference form and accepts only relative paths insid
       ["dynamicImport", "../../../../../node_modules/phaser/src/phaser.js", false],
       ["dynamicImport", null, false],
       ["importType", "../api-types.ts", true],
+      ["export", "./..hidden.ts", true],
     ],
   );
 });
@@ -375,59 +375,6 @@ function collectRelativeSpecifiers(file, sourceText, { includeTypeOnly }) {
   }
 
   return specifiers.filter((specifier) => specifier.startsWith("."));
-}
-
-/**
- * source が module を読み込む記述を、種類と specifier の組で出現順に返す。
- *
- * triple-slash reference directive、型だけのものを含む import / export 宣言、`import x = require()`、dynamic `import()`、
- * 型位置の `import("...")` を対象にする。specifier が文字列 literal でない dynamic import は `specifier: null` とする。
- */
-function collectModuleReferences(file, sourceText) {
-  const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const references = [
-    ...sourceFile.referencedFiles.map((reference) => ({ kind: "referencePath", specifier: reference.fileName })),
-    ...sourceFile.typeReferenceDirectives.map((reference) => ({ kind: "referenceTypes", specifier: reference.fileName })),
-    ...sourceFile.libReferenceDirectives.map((reference) => ({ kind: "referenceLib", specifier: reference.fileName })),
-  ];
-
-  const visit = (node) => {
-    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
-      references.push({ kind: ts.isImportDeclaration(node) ? "import" : "export", specifier: stringLiteralText(node.moduleSpecifier) });
-    } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
-      references.push({ kind: "importEquals", specifier: stringLiteralText(node.moduleReference.expression) });
-    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-      references.push({ kind: "dynamicImport", specifier: stringLiteralText(node.arguments[0]) });
-    } else if (ts.isImportTypeNode(node)) {
-      const literal = ts.isLiteralTypeNode(node.argument) ? node.argument.literal : undefined;
-      references.push({ kind: "importType", specifier: stringLiteralText(literal) });
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-
-  return references;
-}
-
-function stringLiteralText(node) {
-  return node && ts.isStringLiteralLike(node) ? node.text : null;
-}
-
-/**
- * `sourceRoot` 配下の module を相対 path で読む記述か判定する。
- *
- * bare specifier（npm package）、`node:`、`sourceRoot` の外へ出る相対 path、非 literal の dynamic import は false にする。
- * triple-slash reference directive は `types` / `lib` で node や DOM の型を持ち込めるため、種類を問わず false にする。
- */
-function isRelativeReferenceInside(file, reference, sourceRoot) {
-  if (!MODULE_IMPORT_KINDS.includes(reference.kind)) {
-    return false;
-  }
-  if (reference.specifier === null || !(reference.specifier.startsWith("./") || reference.specifier.startsWith("../"))) {
-    return false;
-  }
-  const target = path.relative(sourceRoot, path.resolve(path.dirname(file), reference.specifier));
-  return !target.startsWith("..") && !path.isAbsolute(target);
 }
 
 /** source が `import.meta` を読むかを返す。dynamic `import()` は含めない。 */
