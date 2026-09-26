@@ -1,4 +1,4 @@
-import type { CoreError, LoadedGame, StartStageOptions } from "@shooting-sample/shooting-core";
+import type { CoreError, GameFrame, LoadedGame, StartStageOptions } from "@shooting-sample/shooting-core";
 import { Scene, Scenes, type GameObjects, type Types } from "phaser";
 
 import { KeyboardInputAdapter } from "../input/keyboard-input.ts";
@@ -25,7 +25,8 @@ const TEXT_DEPTH = 10;
  *
  * keyboard event は Phaser の keyboard plugin を使わず window から受けて `KeyboardInputAdapter` に渡し、割り当てのある key は
  * browser の既定動作を止める。focus lost と visibility change では stage loop の clock と入力を捨てる（lifecycle の paused
- * 遷移は Phase 2A-9）。Core が error を返したら stage を止めて error を表示する。
+ * 遷移は Phase 2A-9）。Core が error を返したら stage を止めて error を表示する。stageCleared / gameOver の frame で stage が
+ * 終わったら結果を表示して loop を止める（result 画面と title への遷移は Phase 2A-9）。
  */
 export class StageScene extends Scene {
   readonly #options: StageSceneOptions;
@@ -75,6 +76,10 @@ export class StageScene extends Scene {
       `seed ${this.#options.stage.seed}  tick ${frame.tick}  dropped ${loop.droppedTicksTotal}`,
       `score ${frame.state.score}  lives ${frame.state.player.lives}`,
     ]);
+    if (loop.ended) {
+      this.#loop = null;
+      this.#showResult(frame);
+    }
   }
 
   #listenToBrowser(input: KeyboardInputAdapter, loop: StageLoop): void {
@@ -99,6 +104,19 @@ export class StageScene extends Scene {
     // scene の停止は SHUTDOWN、game の破棄は SHUTDOWN を経ず DESTROY だけを出すため、両方で外す。
     this.events.once(Scenes.Events.SHUTDOWN, removeListeners);
     this.events.once(Scenes.Events.DESTROY, removeListeners);
+  }
+
+  #showResult(frame: GameFrame): void {
+    const cleared = frame.state.status === "stageCleared";
+    this.add
+      .text(PLAYFIELD_WIDTH / 2, PLAYFIELD_HEIGHT / 2, [cleared ? "STAGE CLEAR" : "GAME OVER", `score ${frame.state.score}`], {
+        ...TEXT_STYLE,
+        align: "center",
+        color: cleared ? "#86efac" : "#fca5a5",
+        fontSize: "20px",
+      })
+      .setOrigin(0.5)
+      .setDepth(TEXT_DEPTH);
   }
 
   #showFatal(errors: readonly CoreError[]): void {

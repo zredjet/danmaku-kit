@@ -82,13 +82,17 @@ test("discards paused time and input latches on reset", async () => {
   assert.deepEqual(nextTick.ok && nextTick.latestInput?.held, []);
 });
 
-test("stops ticking and keeps returning the error once a tick fails", () => {
-  const ticked: number[] = [];
-  const session: StageSession = {
+/** tick ごとに `result` の結果を返し、呼ばれた tick を記録する fake session。 */
+function createFakeSession(
+  ticked: number[],
+  result: (tick: number) => CoreResult<GameFrame> | GameFrame["state"]["status"],
+): StageSession {
+  return {
     tick(input: InputFrame): CoreResult<GameFrame> {
       ticked.push(input.tick);
-      if (input.tick === 1) {
-        return { ok: false, errors: [{ code: "stageSession.fatal", message: "broken" }] };
+      const outcome = result(input.tick);
+      if (typeof outcome !== "string") {
+        return outcome;
       }
       return {
         ok: true,
@@ -98,7 +102,7 @@ test("stops ticking and keeps returning the error once a tick fails", () => {
             tick: input.tick,
             stageId: "stage.fake",
             playerId: "player.fake",
-            status: "playing",
+            status: outcome,
             player: { lives: 1, invincibleTicksRemaining: 0 },
             score: 0,
             entities: [],
@@ -112,7 +116,13 @@ test("stops ticking and keeps returning the error once a tick fails", () => {
       throw new Error("not used");
     },
   };
-  const loop = new StageLoop(session, new KeyboardInputAdapter());
+}
+
+test("stops ticking and keeps returning the error once a tick fails", () => {
+  const ticked: number[] = [];
+  const loop = new StageLoop(createFakeSession(ticked, (tick) => (
+    tick === 1 ? { ok: false, errors: [{ code: "stageSession.fatal", message: "broken" }] } : "playing"
+  )), new KeyboardInputAdapter());
 
   const failed = loop.advance(TICK_MS * 3);
   const again = loop.advance(TICK_MS * 3);
@@ -120,4 +130,26 @@ test("stops ticking and keeps returning the error once a tick fails", () => {
   assert.deepEqual(failed, { ok: false, errors: [{ code: "stageSession.fatal", message: "broken" }] });
   assert.equal(again, failed);
   assert.deepEqual(ticked, [0, 1]);
+});
+
+test("stops at the tick that ends the stage and then stays idle on the last frame", () => {
+  const ticked: number[] = [];
+  const loop = new StageLoop(createFakeSession(ticked, (tick) => tick === 2 ? "gameOver" : "playing"), new KeyboardInputAdapter());
+
+  assert.equal(loop.ended, false);
+  const ending = loop.advance(TICK_MS * 5);
+  const idle = loop.advance(TICK_MS * 5);
+
+  assert.equal(ending.ok && ending.ticks, 3);
+  assert.equal(ending.ok && ending.latestFrame?.state.status, "gameOver");
+  assert.equal(loop.ended, true);
+  assert.deepEqual(idle, {
+    ok: true,
+    latestFrame: ending.ok ? ending.latestFrame : null,
+    latestInput: ending.ok ? ending.latestInput : null,
+    events: [],
+    ticks: 0,
+    droppedTicks: 0,
+  });
+  assert.deepEqual(ticked, [0, 1, 2]);
 });

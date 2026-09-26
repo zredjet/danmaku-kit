@@ -13,6 +13,7 @@ export type StageLoopStep =
     latestInput: InputFrame | null;
     /** この render frame で実行した全 tick の event を、実行順に連結したもの。 */
     events: readonly GameEvent[];
+    /** この render frame で実行した tick 数。stage が終わった tick で止めるため、clock が返した数より少ないことがある。 */
     ticks: number;
     droppedTicks: number;
   }>
@@ -24,7 +25,9 @@ type StageLoopInput = Pick<KeyboardInputAdapter, "sampleTicks" | "reset">;
  * render frame ごとに固定 tick clock、入力 adapter、stage session を 1 本につなぐ loop。
  *
  * clock が返した tick 数だけ入力を sampling して `tick()` を連番で呼ぶ。Core が error を返した tick 以降は session を進めず、
- * 同じ error を返し続ける（tick 番号の食い違いも runtime の不整合なので、fatal と同じく止める）。
+ * 同じ error を返し続ける（tick 番号の食い違いも runtime の不整合なので、fatal と同じく止める）。`state.status` が
+ * `playing` でない frame（stageCleared / gameOver）を受け取ったら、Core は以後の tick を受け付けないため、その tick で止まり、
+ * 以後は clock も入力も進めずに最後の frame を返す。
  */
 export class StageLoop {
   readonly #session: StageSession;
@@ -51,8 +54,12 @@ export class StageLoop {
     if (this.#failure) {
       return this.#failure;
     }
+    if (this.ended) {
+      return this.#step([], 0, 0);
+    }
     const { ticks, droppedTicks } = this.#clock.advance(deltaMs);
     const events: GameEvent[] = [];
+    let executedTicks = 0;
     for (const input of this.#input.sampleTicks(this.#nextTick, ticks)) {
       const result = this.#session.tick(input);
       if (!result.ok) {
@@ -60,24 +67,37 @@ export class StageLoop {
         return this.#failure;
       }
       this.#nextTick += 1;
+      executedTicks += 1;
       this.#latestFrame = result.value;
       this.#latestInput = input;
       events.push(...result.value.events);
+      if (this.ended) {
+        break;
+      }
     }
-    return Object.freeze({
-      ok: true,
-      latestFrame: this.#latestFrame,
-      latestInput: this.#latestInput,
-      events: Object.freeze(events),
-      ticks,
-      droppedTicks,
-    });
+    return this.#step(events, executedTicks, droppedTicks);
+  }
+
+  /** 直近の frame で stage が stageCleared か gameOver になっていれば true。 */
+  get ended(): boolean {
+    return this.#latestFrame !== null && this.#latestFrame.state.status !== "playing";
   }
 
   /** pause、focus lost、visibility change で、停止中の経過時間と入力ラッチを捨てる。 */
   reset(): void {
     this.#clock.reset();
     this.#input.reset();
+  }
+
+  #step(events: readonly GameEvent[], ticks: number, droppedTicks: number): StageLoopStep {
+    return Object.freeze({
+      ok: true,
+      latestFrame: this.#latestFrame,
+      latestInput: this.#latestInput,
+      events: Object.freeze([...events]),
+      ticks,
+      droppedTicks,
+    });
   }
 
   /** 起動からの `RuntimeDroppedTicks` の合計。 */
