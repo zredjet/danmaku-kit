@@ -1,6 +1,7 @@
 import type { CoreError } from "../../result.ts";
 import { asRecord } from "../../shared/guards.ts";
 import { isSafeAssetKey } from "../identifier.ts";
+import { isKnownDifficulty } from "../types.ts";
 
 /** object の許可 field を検証する。 */
 export function validateAllowedKeys(
@@ -87,7 +88,7 @@ export function validateDifficultyArray(path: string, value: unknown, errors: Co
   }
   const seen = new Set<string>();
   for (const item of value) {
-    if (item !== "normal" && item !== "hard") {
+    if (!isKnownDifficulty(item)) {
       errors.push({ code: "definition.invalidShape", message: `${path} must contain supported difficulties` });
       continue;
     }

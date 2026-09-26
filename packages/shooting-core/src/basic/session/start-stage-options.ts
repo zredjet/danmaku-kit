@@ -1,5 +1,6 @@
 import type { StartStageOptions } from "../api-types.ts";
 import { isNamespacedId } from "../content/identifier.ts";
+import { isKnownDifficulty } from "../content/types.ts";
 import type { PlayerId, StageId } from "../content/types.ts";
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
@@ -28,7 +29,7 @@ export function parseStartStageOptions(value: unknown): CoreResult<StartStageOpt
   if (!isNamespacedId(record.stageId, "stage")) {
     return coreError("startStage.invalidShape", "stageId must use the stage.* namespace");
   }
-  if (record.difficulty !== "normal" && record.difficulty !== "hard") {
+  if (!isKnownDifficulty(record.difficulty)) {
     return coreError("startStage.invalidShape", "difficulty must be normal or hard");
   }
   if (typeof record.seed !== "string") {

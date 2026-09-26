@@ -105,6 +105,12 @@ import type { SerializedPrngState } from "@shooting-sample/shooting-core";
 // @ts-expect-error 内部 feature order value は root public contract に含めない。
 import { KNOWN_ENABLED_FEATURES } from "@shooting-sample/shooting-core";
 
+// @ts-expect-error 内部 difficulty 一覧は root public contract に含めない。
+import { KNOWN_DIFFICULTIES } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 difficulty guard は root public contract に含めない。
+import { isKnownDifficulty } from "@shooting-sample/shooting-core";
+
 // @ts-expect-error serialized runner id helper は root public contract に含めない。
 import type { SerializedPatternRunnerId } from "@shooting-sample/shooting-core";
 
@@ -211,6 +217,8 @@ import { compareReplayTracesForTest } from "@shooting-sample/shooting-core";
 import { compareReplayTracesForTest as DeepCompareReplayTraces } from "@shooting-sample/shooting-core/src/basic/testing/replay-divergence.ts";
 
 void KNOWN_ENABLED_FEATURES;
+void KNOWN_DIFFICULTIES;
+void isKnownDifficulty;
 void (undefined as unknown as HashableGameState);
 void (undefined as unknown as HashablePrngState);
 void (undefined as unknown as HashableVector2);

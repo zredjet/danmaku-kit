@@ -1,6 +1,14 @@
 /** basic core が直接扱う難易度。 */
 export type Difficulty = "normal" | "hard";
 
+/** `Difficulty` の実行時一覧。validator は未検証の値をこの一覧で判定する。 */
+export const KNOWN_DIFFICULTIES = Object.freeze(["normal", "hard"] as const satisfies readonly Difficulty[]);
+
+/** 未検証の値が basic core の難易度かを判定する。 */
+export function isKnownDifficulty(value: unknown): value is Difficulty {
+  return (KNOWN_DIFFICULTIES as readonly unknown[]).includes(value);
+}
+
 /**
  * optional module の feature 名。
  *

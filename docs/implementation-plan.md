@@ -430,7 +430,7 @@ Phase 1C-R で巨大ファイルは責務単位に分割したが、ディレク
    - Done: Phase 1C-S1: `serialization/restore-json.ts` の `compareUtf8Lexicographic` と private の `encodeUtf8Bytes` を本文そのままで `shared/utf8-order.ts` へ抽出し、`hash/hashable-game-state-adapter.ts` が restore 用 module を import しないようにする。lone surrogate を throw する `hash/canonical-encoder.ts` の UTF-8 比較とは契約が異なるため統合しない
    - Done: Phase 1C-S1: `restore-json.ts` と test を、唯一の利用者 `deterministic-payload.ts` と同じ `serialization/restore/` へ移す
    - Done: Phase 1C-S1: `CommittedPendingEvent` を `HashablePendingEvent` の alias ではなく `state/committed-state.ts` で明示定義し、committed model から hash DTO への依存をなくす。形が食い違えば `assertNever` を持つ serialize / hash projection が型エラーになる。`hash/` を import してよい module を `state/hashable-projection.ts`、`instrumentation/`、`testing/` に固定する
-   - Next: difficulty の error message を test で固定してから、`content/types.ts` の `KNOWN_DIFFICULTIES` / `isKnownDifficulty()` へ4箇所の列挙を寄せる。各 error message は literal のまま残す
+   - Done: Phase 1C-S1: startStage option、stage content、restore top-level、replay metadata の4箇所で difficulty の error code と message を test で固定してから、`content/types.ts` の `KNOWN_DIFFICULTIES` と型 guard `isKnownDifficulty()` へ列挙を寄せる。各 error message は literal のまま残し、公開型 `Difficulty` は表示名を保つため literal union のまま残し、一覧との一致を型 test で固定する。両者は root export に含めないことを型契約で固定する
    - Next: validate-content の `output.ts` を、diagnostic 正規化・比較（`diagnostic-normalization.ts`）、result 構築（`output.ts`）、JSON / human formatter（`output-format.ts`）へ一方向の依存で分ける
    - Next: 古いコメント、存在しない `StageSessionTestingHooks` を検査している型契約、参照のない `containsLoneSurrogate` を個別 commit で直す
    - Next: `AGENTS.md`、`docs/design.md` の module 構成と依存方向、この文書の対応表を新 path へ更新する

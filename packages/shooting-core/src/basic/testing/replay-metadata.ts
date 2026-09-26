@@ -1,5 +1,5 @@
 import { isNamespacedId } from "../content/identifier.ts";
-import { KNOWN_ENABLED_FEATURES } from "../content/types.ts";
+import { KNOWN_ENABLED_FEATURES, isKnownDifficulty } from "../content/types.ts";
 import type { Difficulty, EnabledFeature, PlayerId, StageId } from "../content/types.ts";
 import type { ReplayMetadata } from "../replay/metadata.ts";
 import { asRecord, hasOnlyKeys } from "../shared/guards.ts";
@@ -16,7 +16,6 @@ const REPLAY_METADATA_FIELDS = Object.freeze([
   "enabledFeatures",
   "seed",
 ] as const satisfies readonly (keyof ReplayMetadata)[]);
-const KNOWN_DIFFICULTIES: readonly Difficulty[] = Object.freeze(["normal", "hard"]);
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 
@@ -111,7 +110,7 @@ export function validateReplayMetadataForComparison(
   if (playerId !== undefined && (typeof playerId !== "string" || !isNamespacedId(playerId, "player"))) {
     invalid("playerId", "playerId must use the player.* namespace");
   }
-  if (difficulty !== undefined && !KNOWN_DIFFICULTIES.includes(difficulty as Difficulty)) {
+  if (difficulty !== undefined && !isKnownDifficulty(difficulty)) {
     invalid("difficulty", "difficulty must be normal or hard");
   }
   if (enabledFeatures !== undefined) {

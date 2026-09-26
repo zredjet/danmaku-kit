@@ -1,6 +1,6 @@
 import type { LoadedContentIndex } from "../../content/content-index.ts";
 import { isNamespacedId } from "../../content/identifier.ts";
-import { KNOWN_ENABLED_FEATURES } from "../../content/types.ts";
+import { KNOWN_ENABLED_FEATURES, isKnownDifficulty } from "../../content/types.ts";
 import type { Difficulty, PlayerId, StageId } from "../../content/types.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
@@ -192,7 +192,7 @@ export function parseRestoreCompatibilityMetadata(
   if (!isNamespacedId(stageId.value, "stage")) {
     return coreError("state.invalidShape", "stageId must use the stage.* namespace");
   }
-  if (record.difficulty !== "normal" && record.difficulty !== "hard") {
+  if (!isKnownDifficulty(record.difficulty)) {
     return coreError("state.invalidShape", "difficulty must be normal or hard");
   }
   const playerId = parseRestoreTopLevelStringField(record, "playerId");
