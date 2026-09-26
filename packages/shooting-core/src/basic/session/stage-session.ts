@@ -66,6 +66,10 @@ export function createStageSession(options: StageSessionContext): StageSession {
       if (fatalErrors) {
         return errorResult(fatalErrors);
       }
+      // stageCleared / gameOver の後の tick は caller precondition error で、session を fatal にしない。
+      if (committedState.stageStatus !== "playing") {
+        return coreError("stageSession.ended", `Stage session has ended: ${committedState.stageStatus}`);
+      }
       const plainInput = deepFreezePlainData(rawInput);
       if (!plainInput) {
         return coreError("input.invalidShape", "InputFrame must be JSON-compatible plain data");

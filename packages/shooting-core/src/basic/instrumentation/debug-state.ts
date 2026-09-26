@@ -21,7 +21,7 @@ export type HeadlessDebugEventCounts = Readonly<Record<GameEvent["type"], number
  * `collisionCandidates` と `eventCounts` を `null` にする。
  */
 export type HeadlessDebugStateDump = Readonly<{
-  schemaVersion: "1";
+  schemaVersion: "2";
   kind: "headless";
   tick: number;
   seed: string | null;
@@ -137,6 +137,8 @@ function countHeadlessDebugEvents(
     playerShotsSpawnedBatch: 0,
     enemyBulletsSpawnedBatch: 0,
     scoreChanged: 0,
+    stageCleared: 0,
+    gameOver: 0,
   };
   for (const event of events) {
     counts[event.type] += 1;

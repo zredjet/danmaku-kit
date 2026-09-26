@@ -8,6 +8,7 @@ import { deepFreezeClone } from "../shared/immutable.ts";
 import { EntityAllocator } from "../simulation/entity.ts";
 import { XorShift32 } from "../simulation/prng.ts";
 import type { SerializedPrngState } from "../simulation/prng.ts";
+import type { StageStatus } from "../simulation/stage-status.ts";
 import { freezeEntitiesInIdOrder } from "../simulation/system-order.ts";
 
 /** Committed state が次 tick へ持ち越してよい deterministic event。 */
@@ -27,6 +28,8 @@ export type CommittedStageState = Readonly<{
   prngState: SerializedPrngState;
   score: number;
   timelineCursor: number;
+  /** 直前の tick の終わりに決めた stage の状態。`playing` 以外の state からは tick を進めない。 */
+  stageStatus: StageStatus;
 }>;
 
 /** restore や fault injection 直後の、PRNG / pending event 検証前 committed snapshot。 */
@@ -56,6 +59,7 @@ export function createCommittedStageState(state: {
   prngState: SerializedPrngState;
   score: number;
   timelineCursor: number;
+  stageStatus: StageStatus;
 }): CommittedStageState {
   const orderedEntities = freezeEntitiesInIdOrder(state.activeEntities);
   return Object.freeze({
@@ -67,6 +71,7 @@ export function createCommittedStageState(state: {
     prngState: deepFreezeClone(state.prngState),
     score: state.score,
     timelineCursor: state.timelineCursor,
+    stageStatus: state.stageStatus,
   });
 }
 

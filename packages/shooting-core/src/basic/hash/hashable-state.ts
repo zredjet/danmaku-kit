@@ -17,6 +17,7 @@ import type {
 } from "../serialization/types.ts";
 import { defineFieldOrder } from "../shared/field-order.ts";
 import type { SerializedPrngState } from "../simulation/prng.ts";
+import type { StageStatus } from "../simulation/stage-status.ts";
 
 /** Hash 対象の PRNG snapshot。 */
 export type HashablePrngState = Readonly<{ state: number }>;
@@ -35,6 +36,7 @@ export type HashableGameState = Readonly<{
   expectedTick: number;
   nextEntityId: number;
   timelineCursor: number;
+  stageStatus: StageStatus;
   prngState: HashablePrngState;
   score: number;
   runtimeEntities: ReadonlyArray<HashableRuntimeEntityState>;
@@ -130,6 +132,7 @@ export const HASHABLE_GAME_STATE_FIELD_ORDER = defineFieldOrder<HashableGameStat
   "expectedTick",
   "nextEntityId",
   "timelineCursor",
+  "stageStatus",
   "prngState",
   "score",
   "runtimeEntities",

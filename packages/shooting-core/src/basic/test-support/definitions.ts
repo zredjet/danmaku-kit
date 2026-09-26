@@ -1,5 +1,22 @@
 import { createMinimumDefinition } from "../../../../../tests/fixtures/minimum-game-definition.ts";
-import type { GameDefinition } from "../content/types.ts";
+import type { GameDefinition, StageTimelineStep } from "../content/types.ts";
+
+/**
+ * stage を終わらせないための遠い tick の spawn。
+ *
+ * spawn tick に enemy を撃破する definition は、timeline を消化して enemy がいなくなると stageCleared で終わる。後続 tick を
+ * 検査する test のため、tick 36,000（10 分）に 2 体目を置く。
+ */
+const KEEP_STAGE_RUNNING_STEP: StageTimelineStep = Object.freeze({
+  tick: 36_000,
+  action: Object.freeze({
+    type: "spawnEnemy",
+    enemy: "enemy.scout",
+    path: "path.none",
+    pattern: "pattern.none",
+    position: Object.freeze({ x: 192, y: -16 }),
+  }),
+});
 
 export function createCollisionScoreDefinition(): GameDefinition {
   const definition = createMinimumDefinition();
@@ -18,7 +35,7 @@ export function createCollisionScoreDefinition(): GameDefinition {
             pattern: "pattern.none",
             position: { x: 192, y: 380 },
           },
-        }],
+        }, KEEP_STAGE_RUNNING_STEP],
       }],
       playerShots: [{
         ...definition.content.playerShots[0]!,
@@ -315,7 +332,7 @@ export function createDestroyedPatternEnemyDefinition(): GameDefinition {
       ...definition.content,
       stages: [{
         ...definition.content.stages[0]!,
-        timeline: [spawnScoutAt(0, "pattern.down_stream", { x: 192, y: 380 })],
+        timeline: [spawnScoutAt(0, "pattern.down_stream", { x: 192, y: 380 }), KEEP_STAGE_RUNNING_STEP],
       }],
       patterns: [...definition.content.patterns, { id: "pattern.down_stream", version: 1, steps: DOWNWARD_STREAM_STEPS }],
     },
@@ -338,13 +355,40 @@ export function createExitingPatternEnemyDefinition(): GameDefinition {
         timeline: [{
           tick: 0,
           action: { type: "spawnEnemy", enemy: "enemy.scout", path: "path.rise", pattern: "pattern.down_stream", position: { x: 40, y: 24 } },
-        }],
+        }, KEEP_STAGE_RUNNING_STEP],
       }],
       paths: [
         ...definition.content.paths,
         { id: "path.rise", version: 1, segments: [{ type: "velocity", duration: 6, velocity: { x: 0, y: -16 } }] },
       ],
       patterns: [...definition.content.patterns, { id: "pattern.down_stream", version: 1, steps: DOWNWARD_STREAM_STEPS }],
+    },
+  };
+}
+
+/** 残機 1 の自機が spawn tick の敵弾（`createEnemyBulletHitDefinition`）に撃たれ、tick 0 に gameOver で終わる definition。 */
+export function createLastLifeHitDefinition(): GameDefinition {
+  const definition = createEnemyBulletHitDefinition();
+  return {
+    ...definition,
+    content: {
+      ...definition.content,
+      players: [{ ...definition.content.players[0]!, life: { initialLives: 1, invincibleTicksAfterHit: 120 } }],
+    },
+  };
+}
+
+/** 上へ抜ける enemy（`createExitingPatternEnemyDefinition`）だけの timeline で、enemy が cleanup される tick 5 に stageCleared で終わる definition。 */
+export function createClearedByExitDefinition(): GameDefinition {
+  const definition = createExitingPatternEnemyDefinition();
+  return {
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        timeline: definition.content.stages[0]!.timeline.filter((step) => step !== KEEP_STAGE_RUNNING_STEP),
+      }],
     },
   };
 }

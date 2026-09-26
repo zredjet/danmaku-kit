@@ -51,6 +51,7 @@ export function serializeCommittedStageState(
     pendingEvents: deterministicPendingEvents,
     score: committedState.score,
     timelineCursor: committedState.timelineCursor,
+    stageStatus: committedState.stageStatus,
     patternRunnerStates: committedState.patternRunners
       .map((runner) => projectPatternRunnerForSerializedState(runner))
       .sort((left, right) => compareUtf8Lexicographic(left.runnerId, right.runnerId)),

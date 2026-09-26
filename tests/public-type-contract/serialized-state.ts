@@ -80,6 +80,7 @@ const serializedInitialDeterministicState: SerializedDeterministicState = {
   pendingEvents: [serializedPendingEvent],
   score: 0,
   timelineCursor: 0,
+  stageStatus: "playing",
   patternRunnerStates: [],
   enabledFeatureStates: [],
 };
@@ -93,8 +94,19 @@ const serializedDeterministicState: SerializedDeterministicState = {
   pendingEvents: [],
   score: 100,
   timelineCursor: 1,
+  stageStatus: "playing",
   patternRunnerStates: [],
   enabledFeatureStates: [],
+};
+const serializedClearedDeterministicState: SerializedDeterministicState = {
+  ...serializedDeterministicState,
+  runtimeEntities: [serializedPlayerEntity],
+  stageStatus: "stageCleared",
+};
+const invalidSerializedStageStatus: SerializedDeterministicState = {
+  ...serializedDeterministicState,
+  // @ts-expect-error stageStatus is playing, stageCleared or gameOver.
+  stageStatus: "paused",
 };
 const serializedGameState: SerializedGameState = {
   coreVersion: "0.0.0",
@@ -474,3 +486,5 @@ void runtimeInvalidPatternRunnerIdWithEmptySuffix;
 void invalidSerializedFeatureStateName;
 void invalidSerializedFeatureStateVersion;
 void serializedInitialGameState;
+void serializedClearedDeterministicState;
+void invalidSerializedStageStatus;

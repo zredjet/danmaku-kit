@@ -7,12 +7,13 @@ import { adaptHashableGameStateToCanonicalValue } from "./hashable-game-state-ad
 
 test("adapts hashable game state through the fixed schema tables", () => {
   const state: HashableGameState = {
-    stateHashVersion: 3,
+    stateHashVersion: 4,
     coreVersion: "core.test",
     schemaVersion: "1",
     expectedTick: 4,
     nextEntityId: 5,
     timelineCursor: 2,
+    stageStatus: "playing",
     prngState: { state: 123 },
     score: 100,
     runtimeEntities: [
@@ -87,12 +88,13 @@ test("adapts hashable game state through the fixed schema tables", () => {
 
   const canonical = adaptHashableGameStateToCanonicalValue(state);
   const expected = fixedStruct("hashableGameState", [
-    3,
+    4,
     "core.test",
     "1",
     4,
     5,
     2,
+    "playing",
     fixedStruct("prngState", [123]),
     100,
     [

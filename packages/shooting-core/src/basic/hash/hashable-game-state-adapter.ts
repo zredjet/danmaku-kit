@@ -42,6 +42,7 @@ export function adaptHashableGameStateToCanonicalValue(state: HashableGameState)
     expectedTick: state.expectedTick,
     nextEntityId: state.nextEntityId,
     timelineCursor: state.timelineCursor,
+    stageStatus: state.stageStatus,
     prngState: adaptHashablePrngStateToCanonicalValue(state.prngState),
     score: state.score,
     runtimeEntities: [...state.runtimeEntities]

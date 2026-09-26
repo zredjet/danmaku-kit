@@ -37,12 +37,13 @@ test("records hashable state from committed state without public-only metadata",
   const serialized = assertSerializeOk(started.serialize(), "initial serialize with hashable state");
   assert.equal(hashableStates.length, 1);
   assert.deepEqual(hashableStates[0], {
-    stateHashVersion: 3,
+    stateHashVersion: 4,
     coreVersion: "core.test",
     schemaVersion: "1",
     expectedTick: 0,
     nextEntityId: 2,
     timelineCursor: 0,
+    stageStatus: "playing",
     prngState: { state: 3597787782 },
     score: 0,
     runtimeEntities: [{
@@ -94,12 +95,13 @@ test("records identical hashable state after restore roundtrip", () => {
   const serialized = assertSerializeOk(started.serialize(), "source serialize with hashable state");
   assert.equal(hashableStates.length, 1);
   const expectedHashableState: HashableGameState = {
-    stateHashVersion: 3,
+    stateHashVersion: 4,
     coreVersion: "core.test",
     schemaVersion: "1",
     expectedTick: 1,
     nextEntityId: 5,
     timelineCursor: 1,
+    stageStatus: "playing",
     prngState: { state: 2919998806 },
     score: 0,
     runtimeEntities: [
@@ -184,12 +186,12 @@ test("fixes gameplay state-hash digest goldens for score and player-hit transiti
   assert.deepEqual(
     collectStateHashSamples(createCollisionScoreDefinition(), [createShotInputFrame(0), createShotInputFrame(1)])
       .map((sample) => sample.hash),
-    ["934333d411df7351", "520109f7b5797c8b"],
+    ["67079b554a1dc76f", "629ec7cbaac5b20b"],
   );
   assert.deepEqual(
     collectStateHashSamples(createEnemyBulletHitDefinition(), [createEmptyInputFrame(0), createEmptyInputFrame(1)])
       .map((sample) => sample.hash),
-    ["72e9b531eb4ba4ee", "3dd62d4031963a5d"],
+    ["1150022044995a73", "c6d06e328e122efe"],
   );
 });
 
@@ -198,12 +200,12 @@ test("fixes pattern runner and pattern bullet state-hash digest goldens", () => 
     collectStateHashSamples(createEnemyPatternDefinition(), [0, 1, 2, 3, 4, 5].map((tick) => createEmptyInputFrame(tick)))
       .map((sample) => sample.hash),
     [
-      "5742c98faac01056",
-      "159d79797ed05402",
-      "3983cf9e6a1a75f6",
-      "3a6190210ab36c8f",
-      "fba490b88021befc",
-      "42b02771b9a92295",
+      "c9d29c029869999f",
+      "4b98599b2a19ee34",
+      "4a726378fb3226e5",
+      "29ca867cf68dfcfb",
+      "294230955ba5c412",
+      "725a08c3c0bc562a",
     ],
   );
 });

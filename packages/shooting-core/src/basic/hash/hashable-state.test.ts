@@ -67,6 +67,7 @@ test("fixes and freezes hashable canonical schema tables", () => {
       "expectedTick",
       "nextEntityId",
       "timelineCursor",
+      "stageStatus",
       "prngState",
       "score",
       "runtimeEntities",

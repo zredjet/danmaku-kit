@@ -49,6 +49,7 @@ export function createHashableGameState(
     expectedTick: committedState.expectedTick,
     nextEntityId: committedState.nextEntityId,
     timelineCursor: committedState.timelineCursor,
+    stageStatus: committedState.stageStatus,
     prngState: prng.value.snapshot(),
     score: committedState.score,
     runtimeEntities: committedState.activeEntities.map((entity) => projectRuntimeEntityForHashableState(entity)),

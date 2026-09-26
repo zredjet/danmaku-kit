@@ -60,6 +60,7 @@ test("resolves player shot enemy collision and score in the core tick", () => {
     "entityDestroyed",
     "entityDestroyed",
     "scoreChanged",
+    "stageCleared",
     "tickAdvanced",
   ]);
   assert.deepEqual(frame.value.events[3], {
@@ -85,6 +86,9 @@ test("resolves player shot enemy collision and score in the core tick", () => {
     enemyId: "enemy.scout",
     entityId: 2,
   });
+  // timeline の唯一の enemy を倒したので、この tick で stage が終わる。
+  assert.deepEqual(frame.value.events[6], { type: "stageCleared", tick: 0, stageId: "stage.stage_01" });
+  assert.equal(frame.value.state.status, "stageCleared");
   assert.equal(frame.value.state.score, 100);
   assert.deepEqual(frame.value.state.entities, [
     {

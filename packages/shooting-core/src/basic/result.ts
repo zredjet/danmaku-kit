@@ -40,6 +40,7 @@ export type CoreErrorCode =
   | "state.registryInvalid"
   | "state.schemaVersionMismatch"
   | "state.stateHashVersionMismatch"
+  | "stageSession.ended"
   | "stageSession.fatal"
   | "stage.notFound"
   | "startStage.invalidShape"

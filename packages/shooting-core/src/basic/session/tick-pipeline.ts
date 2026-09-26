@@ -18,6 +18,7 @@ import { advanceEnemyPatterns } from "../simulation/enemy-pattern-system.ts";
 import { advancePlayerMovement } from "../simulation/player-movement-system.ts";
 import { advancePlayerShotLifecycle } from "../simulation/player-shot-lifecycle-system.ts";
 import { spawnPlayerShotFromInput } from "../simulation/player-shot-system.ts";
+import { resolveStageStatusAfterTick } from "../simulation/stage-status.ts";
 import { advanceStageTimeline } from "../simulation/stage-timeline-system.ts";
 import { freezeEntitiesInIdOrder } from "../simulation/system-order.ts";
 import { createCommittedStageState } from "../state/committed-state.ts";
@@ -188,20 +189,32 @@ export function runStageTick(
   // system order の cleanupDestroyedEntities。撃破や cleanup でいなくなった enemy の runner を破棄する。
   const resolvedRunners = retainRunnersOfActiveEnemies(working.patternRunners, resolvedEntities);
 
-  // PRNG はまだ event payload に出していないが、tick ごとの消費順を先に固定しておく。
-  working.prng.nextUint32();
-  working.eventLog.push({ type: "tickAdvanced", tick: working.expectedTick });
-
-  // frame に載せる state は renderer が保持しても安全な immutable snapshot にする。
   const orderedEntities = freezeEntitiesInIdOrder(resolvedEntities);
   const resolvedPlayer = findPlayerEntity(orderedEntities, content.player.id);
   if (!resolvedPlayer) {
     return fatalTickOutcome([{ code: "player.notFound", message: `Player entity not found: ${content.player.id}` }]);
   }
+  // cleanup の後に stage の終了を判定する。終わった tick は collision / scoring の event の後、tickAdvanced の前に通知する。
+  const stageStatus = resolveStageStatusAfterTick({
+    playerLives: resolvedPlayer.lives,
+    timelineCursor: working.timelineCursor,
+    timelineLength: content.stage.timeline.length,
+    entities: orderedEntities,
+  });
+  if (stageStatus !== "playing") {
+    working.eventLog.push({ type: stageStatus, tick: working.expectedTick, stageId: content.stage.id });
+  }
+
+  // PRNG はまだ event payload に出していないが、tick ごとの消費順を先に固定しておく。
+  working.prng.nextUint32();
+  working.eventLog.push({ type: "tickAdvanced", tick: working.expectedTick });
+
+  // frame に載せる state は renderer が保持しても安全な immutable snapshot にする。
   const state: ReadonlyGameState = Object.freeze({
     tick: working.expectedTick,
     stageId: content.stage.id,
     playerId: content.player.id,
+    status: stageStatus,
     player: toReadonlyPlayerState(resolvedPlayer),
     score: resolvedScore,
     entities: Object.freeze(orderedEntities.map((entity) => toReadonlyEntityState(entity))),
@@ -222,6 +235,7 @@ export function runStageTick(
     prngState: working.prng.snapshot(),
     score: resolvedScore,
     timelineCursor: working.timelineCursor,
+    stageStatus,
   });
   return Object.freeze({
     kind: "committed",

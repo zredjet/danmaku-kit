@@ -38,6 +38,7 @@ test("restore rejects malformed PRNG snapshots and deterministic state container
     "pendingEvents",
     "score",
     "timelineCursor",
+    "stageStatus",
     "patternRunnerStates",
     "enabledFeatureStates",
   ] as const) {

@@ -98,6 +98,7 @@ test("stops ticking and keeps returning the error once a tick fails", () => {
             tick: input.tick,
             stageId: "stage.fake",
             playerId: "player.fake",
+            status: "playing",
             player: { lives: 1, invincibleTicksRemaining: 0 },
             score: 0,
             entities: [],

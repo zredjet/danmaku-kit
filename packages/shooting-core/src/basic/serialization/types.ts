@@ -3,6 +3,7 @@ import type { SerializedEnemyBulletRuntimeEntityState } from "../entities/enemy-
 import type { SerializedEnemyRuntimeEntityState } from "../entities/enemy/snapshot.ts";
 import type { SerializedPlayerShotRuntimeEntityState } from "../entities/player-shot/snapshot.ts";
 import type { SerializedPlayerRuntimeEntityState } from "../entities/player/snapshot.ts";
+import type { StageStatus } from "../simulation/stage-status.ts";
 
 /**
  * Pattern runner の serialized state に使う namespace 付き ID。
@@ -124,6 +125,8 @@ export type SerializedDeterministicState = Readonly<{
   pendingEvents: ReadonlyArray<SerializedPendingEvent>;
   score: number;
   timelineCursor: number;
+  /** 直前の tick の終わりの stage の状態。player の残機、timeline と active enemy から決まる値と一致する。 */
+  stageStatus: StageStatus;
   patternRunnerStates: ReadonlyArray<SerializedPatternRunnerState>;
   enabledFeatureStates: ReadonlyArray<SerializedEnabledFeatureState>;
 }>;

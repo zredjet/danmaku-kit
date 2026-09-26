@@ -89,6 +89,18 @@ export type GameEvent =
     bullets: readonly [EnemyBulletSpawnedEventItem, ...EnemyBulletSpawnedEventItem[]];
   }>
   | Readonly<{
+    /** timeline をすべて処理し、active な enemy がいなくなった tick に出る。以後の tick は受け付けない。 */
+    type: "stageCleared";
+    tick: number;
+    stageId: StageId;
+  }>
+  | Readonly<{
+    /** 自機の残機が 0 になった tick に出る。以後の tick は受け付けない。 */
+    type: "gameOver";
+    tick: number;
+    stageId: StageId;
+  }>
+  | Readonly<{
     type: "scoreChanged";
     tick: number;
     delta: number;

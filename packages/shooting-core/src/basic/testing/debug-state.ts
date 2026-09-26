@@ -83,7 +83,7 @@ function hashHeadlessDebugCheckpoint(checkpoint: HeadlessDebugCheckpoint): Headl
     return createHeadlessDebugStateHashError();
   }
   return okResult(Object.freeze({
-    schemaVersion: "1",
+    schemaVersion: "2",
     kind: "headless",
     tick: checkpoint.hashableState.expectedTick,
     seed: checkpoint.seed,
@@ -152,6 +152,8 @@ export function projectHeadlessDebugStateForStableJson(dump: HeadlessDebugStateD
       playerShotsSpawnedBatch: dump.eventCounts.playerShotsSpawnedBatch,
       enemyBulletsSpawnedBatch: dump.eventCounts.enemyBulletsSpawnedBatch,
       scoreChanged: dump.eventCounts.scoreChanged,
+      stageCleared: dump.eventCounts.stageCleared,
+      gameOver: dump.eventCounts.gameOver,
     },
   };
 }

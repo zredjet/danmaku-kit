@@ -76,6 +76,8 @@ test("serializes immutable headless debug checkpoints without advancing the sess
     playerShotsSpawnedBatch: 0,
     enemyBulletsSpawnedBatch: 0,
     scoreChanged: 0,
+    stageCleared: 0,
+    gameOver: 0,
   });
   assert.equal(Object.isFrozen(afterTick.eventCounts), true);
 
@@ -145,6 +147,8 @@ test("marks tick metrics unavailable after restoring a tick zero snapshot", () =
     playerShotsSpawnedBatch: 0,
     enemyBulletsSpawnedBatch: 0,
     scoreChanged: 0,
+    stageCleared: 0,
+    gameOver: 0,
   });
 
   assert.equal(restored.value.tick(createEmptyInputFrame(1)).ok, true);
@@ -159,6 +163,8 @@ test("marks tick metrics unavailable after restoring a tick zero snapshot", () =
     playerShotsSpawnedBatch: 0,
     enemyBulletsSpawnedBatch: 0,
     scoreChanged: 0,
+    stageCleared: 0,
+    gameOver: 0,
   });
 });
 
@@ -239,6 +245,8 @@ test("records collision candidates only after a successful core tick commit", ()
     playerShotsSpawnedBatch: 0,
     enemyBulletsSpawnedBatch: 0,
     scoreChanged: 0,
+    stageCleared: 0,
+    gameOver: 0,
   });
 });
 
@@ -360,6 +368,8 @@ test("formats portable debug artifact paths and stable JSON", () => {
   const json = formatHeadlessDebugStateJsonForTest(dump);
   const reorderedDump: HeadlessDebugStateDump = {
     eventCounts: dump.eventCounts === null ? null : {
+      gameOver: dump.eventCounts.gameOver,
+      stageCleared: dump.eventCounts.stageCleared,
       scoreChanged: dump.eventCounts.scoreChanged,
       enemyBulletsSpawnedBatch: dump.eventCounts.enemyBulletsSpawnedBatch,
       playerShotsSpawnedBatch: dump.eventCounts.playerShotsSpawnedBatch,
@@ -386,7 +396,7 @@ test("formats portable debug artifact paths and stable JSON", () => {
   assert.equal(json.endsWith("\n"), true);
   assert.deepEqual(JSON.parse(json), dump);
   assert.equal(formatHeadlessDebugStateJsonForTest(reorderedDump), json);
-  assert.match(json, /^\{\n  "schemaVersion": "1",\n  "kind": "headless",/);
+  assert.match(json, /^\{\n  "schemaVersion": "2",\n  "kind": "headless",/);
 });
 
 /** CoreResultをtestで扱いやすい成功値へ絞り、失敗時はdiagnosticを表示する。 */
@@ -400,7 +410,7 @@ function assertDebugDumpOk(result: HeadlessDebugStateResult): HeadlessDebugState
 /** artifact helper単体test用の最小headless dumpを作る。 */
 function createSampleDump(): HeadlessDebugStateDump {
   return {
-    schemaVersion: "1",
+    schemaVersion: "2",
     kind: "headless",
     tick: 12,
     seed: null,
@@ -417,6 +427,8 @@ function createSampleDump(): HeadlessDebugStateDump {
       playerShotsSpawnedBatch: 1,
       enemyBulletsSpawnedBatch: 2,
       scoreChanged: 3,
+      stageCleared: 0,
+      gameOver: 1,
     },
   };
 }

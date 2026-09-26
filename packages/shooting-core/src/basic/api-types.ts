@@ -4,6 +4,7 @@ import type { GameEvent } from "./events/game-event.ts";
 import type { InputFrame } from "./input/input-frame.ts";
 import type { CoreResult } from "./result.ts";
 import type { SerializedGameState } from "./serialization/types.ts";
+import type { StageStatus } from "./simulation/stage-status.ts";
 
 /**
  * ステージ開始時に runtime adapter から渡すオプション。
@@ -28,6 +29,8 @@ export type ReadonlyGameState = Readonly<{
   tick: number;
   stageId: StageId;
   playerId: PlayerId;
+  /** tick の終わりの stage の状態。`stageCleared` / `gameOver` の frame が stage の最後の frame になる。 */
+  status: StageStatus;
   player: ReadonlyPlayerState;
   score: number;
   entities: ReadonlyArray<ReadonlyEntityState>;

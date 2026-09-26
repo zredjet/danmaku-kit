@@ -11,6 +11,8 @@ import { isNonNegativeSafeInteger, isPositiveSafeInteger } from "../../shared/gu
 import { compareUtf8Lexicographic } from "../../shared/utf8-order.ts";
 import { XorShift32 } from "../../simulation/prng.ts";
 import type { SerializedPrngState } from "../../simulation/prng.ts";
+import { STAGE_STATUSES, resolveStageStatusAfterTick } from "../../simulation/stage-status.ts";
+import type { StageStatus } from "../../simulation/stage-status.ts";
 import type { CommittedPendingEvent } from "../../state/committed-state.ts";
 import { cloneRestoreArray, cloneRestorePlainRecord } from "../restore-plain-data.ts";
 import type { SerializedEnabledFeatureState, SerializedPatternRunnerState } from "../types.ts";
@@ -57,6 +59,7 @@ export type ValidatedRestoreDeterministicPayload = Readonly<{
   patternRunners: readonly EnemyPatternRunner[];
   score: number;
   timelineCursor: number;
+  stageStatus: StageStatus;
 }>;
 
 /** PRNG の復元失敗を LoadedGame.restore 用の public error に包み、committed snapshot 用に正規化する。 */
@@ -83,6 +86,7 @@ export function parseRestoreDeterministicPayload(
     "pendingEvents",
     "score",
     "timelineCursor",
+    "stageStatus",
     "patternRunnerStates",
     "enabledFeatureStates",
   ]);
@@ -149,6 +153,10 @@ export function parseRestoreDeterministicPayload(
   if (record.value.timelineCursor !== expectedTimelineCursor) {
     return coreError("state.invalidShape", "state.timelineCursor must match expectedTick");
   }
+  const stageStatus = record.value.stageStatus;
+  if (!isStageStatus(stageStatus)) {
+    return coreError("state.invalidShape", "state.stageStatus must be playing, stageCleared or gameOver");
+  }
   const pendingEventsContract = validateRestorePendingEvents(state, pendingEvents.value);
   if (!pendingEventsContract.ok) {
     return pendingEventsContract;
@@ -168,6 +176,16 @@ export function parseRestoreDeterministicPayload(
   if (!runtimeEntitiesContract.ok) {
     return runtimeEntitiesContract;
   }
+  const stageStatusContract = validateRestoreStageStatus(
+    stageStatus,
+    state.expectedTick,
+    stage,
+    record.value.timelineCursor,
+    runtimeEntitiesContract.value.activeEntities,
+  );
+  if (!stageStatusContract.ok) {
+    return stageStatusContract;
+  }
   const enabledFeatureStateContract = validateRestoreEnabledFeatureStates(
     enabledFeatureStates.value,
     createRestoreJsonBudget(),
@@ -186,7 +204,39 @@ export function parseRestoreDeterministicPayload(
     patternRunners: runtimeEntitiesContract.value.patternRunners,
     score: record.value.score,
     timelineCursor: record.value.timelineCursor,
+    stageStatus,
   }));
+}
+
+function isStageStatus(value: unknown): value is StageStatus {
+  return (STAGE_STATUSES as readonly unknown[]).includes(value);
+}
+
+/**
+ * stageStatus が、restore した player の残機、timeline と active enemy から tick の終わりに決まる状態と一致することを検証する。
+ *
+ * startStage 直後（`expectedTick === 0`）はまだ tick の終わりを迎えていないため `playing` に限る。
+ */
+function validateRestoreStageStatus(
+  stageStatus: StageStatus,
+  expectedTick: number,
+  stage: StageDefinition,
+  timelineCursor: number,
+  activeEntities: readonly RuntimeEntityState[],
+): CoreResult<null> {
+  const player = activeEntities.find((entity) => entity.kind === "player");
+  const expected = expectedTick === 0 || !player || player.kind !== "player"
+    ? "playing"
+    : resolveStageStatusAfterTick({
+      playerLives: player.lives,
+      timelineCursor,
+      timelineLength: stage.timeline.length,
+      entities: activeEntities,
+    });
+  if (stageStatus !== expected) {
+    return coreError("state.invalidShape", "state.stageStatus must match the player lives, timeline and enemies of the snapshot");
+  }
+  return okResult(null);
 }
 
 /** startStage 直後の snapshot だけが持つ entity 数と nextEntityId の不変条件を検証する。 */

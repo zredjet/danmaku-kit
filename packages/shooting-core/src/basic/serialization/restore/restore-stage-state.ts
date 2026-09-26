@@ -184,5 +184,6 @@ function toRestoreCommittedStageState(
     prngState,
     score: payload.score,
     timelineCursor: payload.timelineCursor,
+    stageStatus: payload.stageStatus,
   });
 }

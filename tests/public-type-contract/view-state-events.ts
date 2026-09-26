@@ -42,7 +42,22 @@ const playerShotEntity: ReadonlyEntityState = {
   position: { x: 192, y: 360 },
 };
 const playerState: ReadonlyPlayerState = { lives: 3, invincibleTicksRemaining: 0 };
-const state: ReadonlyGameState = { tick: 0, stageId, playerId, player: playerState, score: 0, entities: [playerEntity, entity] };
+const state: ReadonlyGameState = {
+  tick: 0,
+  stageId,
+  playerId,
+  status: "playing",
+  player: playerState,
+  score: 0,
+  entities: [playerEntity, entity],
+};
+const endedState: ReadonlyGameState = { ...state, status: "gameOver" };
+// @ts-expect-error frame status is playing, stageCleared or gameOver.
+const invalidStatusState: ReadonlyGameState = { ...state, status: "paused" };
+const stageClearedEvent: GameEvent = { type: "stageCleared", tick: 600, stageId };
+const gameOverEvent: GameEvent = { type: "gameOver", tick: 240, stageId };
+// @ts-expect-error stage end events carry the stage id.
+const invalidGameOverEvent: GameEvent = { type: "gameOver", tick: 240 };
 const event: GameEvent = { type: "stageStarted", tick: 0, stageId };
 const tickedEvent: GameEvent = { type: "tickAdvanced", tick: 0 };
 const spawnedEvent: GameEvent = {
@@ -274,6 +289,9 @@ function assertEventExhaustive(value: GameEvent): number {
       return value.bullets.length;
     case "scoreChanged":
       return value.total;
+    case "stageCleared":
+    case "gameOver":
+      return value.tick;
     default: {
       const neverEvent: never = value;
       return neverEvent;
@@ -283,6 +301,11 @@ function assertEventExhaustive(value: GameEvent): number {
 
 void playerState;
 void state;
+void endedState;
+void invalidStatusState;
+void stageClearedEvent;
+void gameOverEvent;
+void invalidGameOverEvent;
 void playerEntity;
 void enemyBulletEntity;
 void playerShotEntity;

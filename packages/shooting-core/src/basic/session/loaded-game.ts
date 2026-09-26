@@ -90,6 +90,7 @@ export function createLoadedGame(
         prngState: new XorShift32(options.value.seed).snapshot(),
         score: 0,
         timelineCursor: 0,
+        stageStatus: "playing",
       });
       return okResult(createStageSessionFromContent(content, stage, player, testingHooks, {
         debugSeed: options.value.seed,
