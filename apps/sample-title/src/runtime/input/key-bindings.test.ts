@@ -16,6 +16,8 @@ test("resolves the default bindings with one action per physical key", () => {
     ShiftRight: "focus",
     Escape: "pause",
     KeyP: "pause",
+    Enter: "confirm",
+    Space: "confirm",
   });
 });
 

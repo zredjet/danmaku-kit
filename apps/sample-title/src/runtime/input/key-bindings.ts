@@ -4,7 +4,7 @@ import type { GameplayActionId } from "@shooting-sample/shooting-core";
 export type MoveDirection = "moveLeft" | "moveRight" | "moveUp" | "moveDown";
 
 /** Runtime / UI が消費する action。`InputFrame` と replay には入れない（design 11）。 */
-export type UiActionId = "pause";
+export type UiActionId = "pause" | "confirm";
 
 /** physical key を割り当てられる action。 */
 export type KeyBindingAction = MoveDirection | GameplayActionId | UiActionId;
@@ -22,7 +22,10 @@ export const GAMEPLAY_ACTIONS = Object.freeze(["shot", "focus"] as const satisfi
 true satisfies [Exclude<GameplayActionId, (typeof GAMEPLAY_ACTIONS)[number]>] extends [never] ? true : false;
 
 /** UI / lifecycle action の一覧。 */
-export const UI_ACTIONS = Object.freeze(["pause"] as const satisfies readonly UiActionId[]);
+export const UI_ACTIONS = Object.freeze(["pause", "confirm"] as const satisfies readonly UiActionId[]);
+
+// UI action が増えたとき、一覧への追加漏れを型エラーにする。
+true satisfies [Exclude<UiActionId, (typeof UI_ACTIONS)[number]>] extends [never] ? true : false;
 
 /** Runtime settings の key config を導入するまで使う既定の割り当て。 */
 export const DEFAULT_KEY_BINDINGS: readonly KeyBinding[] = Object.freeze([
@@ -33,6 +36,7 @@ export const DEFAULT_KEY_BINDINGS: readonly KeyBinding[] = Object.freeze([
   Object.freeze({ action: "shot", keys: Object.freeze(["KeyZ"]) }),
   Object.freeze({ action: "focus", keys: Object.freeze(["ShiftLeft", "ShiftRight"]) }),
   Object.freeze({ action: "pause", keys: Object.freeze(["Escape", "KeyP"]) }),
+  Object.freeze({ action: "confirm", keys: Object.freeze(["Enter", "Space"]) }),
 ] satisfies readonly KeyBinding[]);
 
 /**
