@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump foundation も完了した。次の実装スライスは振る舞いを変えない module 分割リファクタリング Phase 1C-R とし、その完了後に state / ordered event / side別input / side statusを比較する first divergent checkpoint の field-level diff artifact へ戻る。
+Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump foundation、Phase 1C-R の振る舞いを変えない module 分割リファクタリングも完了した。次の実装スライスは state / ordered event / side別input / side statusを比較する first divergent checkpoint の field-level diff artifact とする。
 
 Done:
 
@@ -84,12 +84,9 @@ Done:
 - validate-content 1C-2 で strict YAML parser、source span、CLI / filesystem boundary、Core validation adapter を追加する
 - validate-content 1C-3 で静的な最小 content fixture と、valid / content parse / content・game-definition schema / reference / budget / CLI argument の実プロセス CLI golden test を追加する
 - debug state 1C-4 foundation で test-only headless schema、state / PRNG hash、entity count、test sessionだけで収集するnullable event / collision metrics、portable artifact path / schema-order JSON formatter、public `CoreErrorCode` を拡張しない内部 hash failure result 境界を追加する
+- module 分割 1C-R で `core.ts`（3327行）、`core.test.ts`（5350行）、`tests/public-type-contract.ts`（1449行）、`content/validation.ts`、validate-content loader を責務単位の module へ振る舞いを変えずに分割し、runtime import cycle を解消して、依存方向と cycle を `tests/module-graph.test.mjs` で固定する
 
 Next:
-
-- Phase 1C-R として `core.ts`、`core.test.ts`、`tests/public-type-contract.ts`、`content/validation.ts` などの巨大ファイルを責務単位の module へ振る舞いを変えずに分割し、runtime import cycle を解消する。詳細は「Phase 1C-R タスク分割」に置く
-
-Queued: Phase 1C-4（1C-R 完了後）
 
 - 検証済み replay compatibility metadata と expected / actual の `ok | missing | error` sideを比較し、state hashが同じevent-only差分、side別input差分、早期終了、tick失敗を含む first divergent checkpoint の entity / component / event / PRNG artifactを構築する。`ok` sideにはsummary dumpを添付する
 
@@ -132,6 +129,7 @@ Status legend:
 | `docs/design.md` Content validation CLI | parser / filesystem boundary | Done | `tools/validate-content/src/yaml-source.ts`, `tools/validate-content/src/content-loader.ts`, `tools/validate-content/src/core-diagnostic-adapter.ts`, `tools/validate-content/src/cli.ts`, `tools/validate-content/src/cli-entry.ts` | strict YAML、source span、Core diagnostic mapping、実 filesystem を検証 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Content validation CLI | minimum fixture / process golden | Done | `fixtures/game-definition.minimum.yaml`, `fixtures/content-minimum/`, `fixtures/validate-content-golden/`, `tools/validate-content/src/cli-golden.test.ts` | valid / content parse / content・game-definition schema / reference / budget / CLI argument を JSON / human の両形式で固定 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Debug state dump | headless dump foundation | Done | `packages/shooting-core/src/basic/internal/debug-state.ts`, `packages/shooting-core/src/basic/testing/debug-state.ts`, `packages/shooting-core/src/basic/session/stage-session.ts`, `packages/shooting-core/src/basic/simulation/collision-system.ts` | immutable checkpoint、失敗 tick 不変、restore seed / nullable metrics、collision count、schema-order JSON、hash error、root export 非公開を固定 | `packages/shooting-core/src/basic/testing/debug-state.test.ts`, `packages/shooting-core/src/basic/simulation/collision-system.test.ts`, `tests/public-type-contract/root-export-exclusions.ts`, `tests/public-type-contract/core-api.ts`; `npm test`, `npm run typecheck` |
+| `docs/design.md` 4 ディレクトリ構成 | module 分割と依存方向 | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/session/`, `packages/shooting-core/src/basic/state/`, `packages/shooting-core/src/basic/serialization/restore/`, `AGENTS.md` | `tests/module-graph.test.mjs` | `npm test` |
 
 ## 次の作業順
 
@@ -329,8 +327,8 @@ Done:
    - Done: root package へ公開しない test helper から取得する `HeadlessDebugStateDump` schema を実装する。`tick` は次の input tick、start session の `seed` は文字列、restore session は `null`、entity count は current committed state、event / collision metrics は直前の成功 tick とし、start / restore 直後は未計測の `null`、非fatalな失敗 tickでは直前値を保持し、fatal後はdumpを拒否する
    - Done: collision / event metrics は test serializer 登録sessionでだけ収集し、通常runtimeのtick hot pathではcounter更新とcount object生成を省略する
    - Done: state hash、PRNG hash、固定 key の entity / event count、narrow-phase collision candidate count、portable artifact slug / path、schema 固定順 + 2-space indent + LF の JSON formatter、public `CoreErrorCode` を拡張しない hash encoding failure result を実装する
-   - Queued: Phase 1C-R 完了後に、raw replay metadataを検証して比較可能性を固定し、expected / actualの`ok | missing | error` sideごとにparse後inputを保持する。`ok` sideの`HashableGameState`、順序付き`GameFrame.events`、summaryを比較し、state hashが同じevent-only差分もfirst divergenceとして検出する
-   - Queued: Phase 1C-R 完了後に、`frameTick: null` / `checkpointTick: 0`の初期比較と、tick後の`checkpointTick === frameTick + 1`を検証し、artifact pathのtickをcheckpoint tickに固定する
+   - Next: raw replay metadataを検証して比較可能性を固定し、expected / actualの`ok | missing | error` sideごとにparse後inputを保持する。`ok` sideの`HashableGameState`、順序付き`GameFrame.events`、summaryを比較し、state hashが同じevent-only差分もfirst divergenceとして検出する
+   - Next: `frameTick: null` / `checkpointTick: 0`の初期比較と、tick後の`checkpointTick === frameTick + 1`を検証し、artifact pathのtickをcheckpoint tickに固定する
    - Queued: browser runtime dump は`apps/sample-title`がpublic `GameFrame`とruntime adapter stateから作る別schemaとしてPhase 2Aへ分離し、Core内部hash/metricsやdeep importへ依存させない
 
 ## Phase 1C-R タスク分割（module 分割リファクタリング）
@@ -395,8 +393,11 @@ Done:
    - Done: Phase 1C-R8: validate-content の collection directory map を `content-collections.ts`、filesystem port / Node adapter / file error を `content-file-system.ts`、schema path から source を引く index を `content-source-index.ts` へ移す。loader / YAML parser / Core adapter に同一内容で重複していた root parse diagnostic、schema diagnostic 生成、default span は `diagnostic-factory.ts` の1実装へ寄せた
    - Done: Phase 1C-R8: `output.test.ts` を result 構築・正規化・順序・tool error の10 test と、JSON / human formatter の6 test（`output-format.test.ts`）へ本文そのままで分ける
    - Later: `canonical-encoder.ts`、`runtime-entity.ts`、`collision-system.ts`、`restore-json.ts`、`yaml-source.ts` は単一責務のため分割しない
+   - Later: validate-content の `output.ts`（537行）は目安を超えるため、diagnostic 正規化・比較（約260行）と human formatter（約90行）の抽出候補として残す。`normalizeOutputForFormatting()` は公開 factory を呼ぶため `output.ts` に残す
 9. Phase 1C-R9: guardrail と docs
-   - Next: Phase 1C-R9: module graph test に依存方向ルールを追加し、`AGENTS.md` にファイル規模と依存方向の方針、`docs/design.md` の directory 構成と対応表の path を実装へ合わせる
+   - Done: Phase 1C-R9: `tests/module-graph.test.mjs` に、型 import も含めて `core.ts`、`session/`、`serialization/restore/`、`state/` を import してよい module を固定する layer rule test を追加する。`hash/` から `state/` への型 import を注入した copy で違反を検出することを確認した
+   - Done: Phase 1C-R9: `AGENTS.md` にファイル規模の目安、shooting-core の依存方向、分割時の注意（re-export shim を作らない、同一 helper だけ統合、`test-support/`、`@ts-expect-error` の diagnostic 確認）を追加する
+   - Done: Phase 1C-R9: `docs/design.md` の directory 構成と Core module 構成を実装へ合わせ、対応表の path は各 slice で実 module へ更新済みとした
 
 ## Phase 2A へ進む条件
 

@@ -41,3 +41,26 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 - Markdown、YAML、JSON、設定ファイルの調査は原則 `rg` を使う。
 - `ast-grep` の結果で一括修正する前に、対象件数と差分を必ず確認する。
 - 既存の未コミット変更を巻き戻さない。検索・調査で見つけた無関係な変更は触らない。
+
+## モジュール構成の方針
+
+### ファイル規模
+
+- 非 test source は約400行、test file は約600行を目安にする。超える場合は責務が混在していないか確認し、責務単位の module へ分割する。
+- 単一責務で分割すると読みにくくなる file（例: `hash/canonical-encoder.ts`）は例外として残してよい。
+- 分割・移動は振る舞いを変えない commit に分け、`npm run check` と state hash / validate-content の golden が変わらないことを確認する。移動部分は `git diff --color-moved=zebra` で本文不変を確認する。
+
+### 依存方向（`packages/shooting-core/src/basic/`）
+
+- `core.ts` は `createShootingCore()` / `load()` の facade とし、import してよいのは `index.ts` と `internal/testing-hooks.ts` だけにする。公開型は `api-types.ts` に置く。
+- `session/`（stage session、tick pipeline、loaded game）を import してよいのは `core.ts` だけ。
+- `serialization/restore/` を import してよいのは `session/` だけ。
+- `state/`（committed state と serialize / hash projection）を import してよいのは `session/`、`serialization/restore/`、`internal/` だけ。`hash/` は DTO、encoder、digest だけを持ち、上位 layer を import しない。
+- runtime import cycle を作らない。上記の layer rule と cycle は `tests/module-graph.test.mjs` が型 import も含めて検査する。
+
+### 分割時の注意
+
+- 移動した内部 API を元 file から re-export せず、import 元を新しい path へ更新する。
+- 統合するのは完全に同一の helper だけにする。似ているが契約が異なる helper（例: boolean を返す `hasOnlyKeys` と error を積む `validateAllowedKeys`、lone surrogate の扱いが異なる UTF-8 encoder）は統合しない。
+- 複数 test file で使う test helper は `src/basic/test-support/` に置く。Core 内部 test hook を使う test file は `enableInternalTestHooksForTestFile()` で環境変数を設定する。
+- `@ts-expect-error` を含む型契約 file を分割・移動するときは、directive を無効化した状態の diagnostic が変わらないことを確認し、import 漏れなど別の error を握りつぶさないようにする。

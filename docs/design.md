@@ -74,10 +74,18 @@ packages/
   shooting-core/
     src/
       basic/
-        simulation/
         content/
-        input/
         events/
+        hash/
+        input/
+        internal/
+        replay/
+        serialization/
+        session/
+        simulation/
+        state/
+        testing/
+        test-support/
         patterns/
       features/
         pickup/
@@ -86,7 +94,6 @@ packages/
         affinity/
         rank/
         advanced-scoring/
-      testing/
     package.json
 tools/
   validate-content/
@@ -120,45 +127,58 @@ docs/
 
 実装初期は単一リポジトリ内で進めるが、Core は `packages/shooting-core` として切り出せる境界を維持する。Sample title は `apps/sample-title` に置き、Core から title 固有の asset、UI、シナリオ、テーマを参照しない。
 
-Core package の公開対象:
+Core package の module 構成（公開 surface は `src/basic/index.ts` の export だけで、value export は `createShootingCore` のみ）:
 
 ```text
 packages/shooting-core/src/
   basic/
-    simulation/
-      world.ts
-      tick.ts
-      entity.ts
-      systems/
-        movementSystem.ts
-        collisionSystem.ts
-        bulletSystem.ts
-        enemySystem.ts
-        stageSystem.ts
-        scoringSystem.ts
+    index.ts                   root public export
+    core.ts                    createShootingCore() / load() facade
+    api-types.ts               ShootingCore、LoadedGame、StageSession、GameFrame などの公開型
+    result.ts                  CoreResult / CoreError
     content/
-      schemas/
-      registry.ts
+      types.ts                 GameDefinition / ContentRegistry
+      validation.ts            validateGameDefinition() 入口
+      validation/              shape、references、schema-path、fields
+      content-index.ts         load 済み content の id lookup
+      identifier.ts            namespace id / asset key
+      runtime-budgets.ts       playfield と runtime budget
     input/
-      actions.ts
-      inputFrame.ts
+      input-frame.ts           InputFrame と canonical action order
+      parse-input-frame.ts     public API 境界の InputFrame parse
     events/
-      gameEvent.ts
-      eventLog.ts
-    patterns/
-      patternRunner.ts
-      commands.ts
+      game-event.ts            GameEvent と EventLog
+    simulation/                runtime entity、entity id、PRNG、player / shot / enemy bullet / collision system、system order
+    session/
+      loaded-game.ts           startStage() / restore()
+      start-stage-options.ts   StartStageOptions parse
+      stage-session.ts         input 照合、fatal latch、commit、serialize、debug 登録
+      tick-pipeline.ts         7.1 の system order に沿った 1 tick
+    state/
+      committed-state.ts       committed / working state と invariant
+      serialize-projection.ts  committed state から SerializedGameState
+      hashable-projection.ts   committed state から HashableGameState
+    serialization/
+      types.ts                 SerializedGameState DTO
+      metadata.ts              version 定数と serialization metadata
+      restore-json.ts          restore JSON payload guard
+      restore/                 top-level metadata、deterministic payload、runtime entity、allocation order の restore validation
+    hash/                      HashableGameState DTO / field order、canonical encoder、xxHash64、state hash
     replay/
-      serializer.ts
-  features/
+      metadata.ts              ReplayMetadata
+    internal/                  共通 guard、immutable、test hook、headless debug serializer
+    testing/                   test-only helper（headless debug dump、state hash comparison）
+    test-support/              test file 共通 helper（package runtime source から除外）
+    patterns/                  Phase 2A 以降: PatternProgram runner / commands
+  features/                    Phase 2B / 3 以降
     <feature>/
       schemaFragment.ts
       validation.ts
       systems.ts
       register.ts
-  testing/
-    headlessDebugDump.ts
 ```
+
+依存方向は `core.ts` → `session/` → `serialization/restore/` / `state/` → 下位 module（`content/`、`simulation/`、`hash/` など）とし、下位 module から上位 layer を import しない。`core.ts`、`session/`、`serialization/restore/`、`state/` を import してよい module と runtime import cycle の禁止は `tests/module-graph.test.mjs` が型 import も含めて検査する。
 
 ## 5. レイヤー責務
 
@@ -1979,6 +1999,6 @@ MVP では対象外だが、再利用基盤として以下を追跡する。
 
 Phase 1A の Core minimum contract は、TypeScript package、最小 content schema、registry validation、fixed tick、InputFrame、immutable event log、Entity/Component、seed/PRNG、Player / Enemy / EnemyBullet / PlayerShot、minimum Pattern `fireOnSpawn`、MVP collision resolution pair、fixed `scoreOnKill`、package boundary test まで実装済みである。collision broad phase は Phase 1A 完了条件ではなく、playable runtime へ向けた後続性能タスクとして残す。
 
-Phase 1B-5D として、`LoadedGame.restore(state): CoreResult<StageSession>` の public API、top-level error boundary、PRNG snapshot の public restore error 変換、deterministic payload の shape、pending event、runtime entity の kind 別 shape / registry / runtime budget validation、accepted committed state 変換、非空 extension state の shape / JSON guard / feature mismatch 分類、transactional restore、roundtrip determinism は実装済みである。`nextEntityId` は EntityAllocator と共有する上限まで含めて `state.invalidShape` として正規化する。続く Phase 1B-6 の state hash minimum も canonical encoder、fixed seed xxHash64、gameplay digest golden、restore 後の複数 tick 一致まで実装済みである。Phase 1B-7 では metadata-only の `ReplayMetadata` を root type export し、未検証 `enabledFeatures` を replay 互換性 field として含め、snapshot 専用 `stateHashVersion` と replay playback API は公開しない境界を型契約で固定した。Phase 1C-1 では `tools/validate-content` package と immutable diagnostic / JSON / human / exit code contract、Phase 1C-2 では YAML parser、source span、CLI / filesystem boundary、Core validation adapter、Phase 1C-3 では静的な最小 content fixture と実プロセス CLI golden test、Phase 1C-4 の最初の slice では test-only headless debug dump、state / PRNG hash、count metrics、portable artifact path / JSON formatter を追加した。次の作業は振る舞いを変えない module 分割リファクタリング（`docs/implementation-plan.md` の Phase 1C-R）とし、その後に first divergent tick の field-level diff artifact へ戻る。
+Phase 1B-5D として、`LoadedGame.restore(state): CoreResult<StageSession>` の public API、top-level error boundary、PRNG snapshot の public restore error 変換、deterministic payload の shape、pending event、runtime entity の kind 別 shape / registry / runtime budget validation、accepted committed state 変換、非空 extension state の shape / JSON guard / feature mismatch 分類、transactional restore、roundtrip determinism は実装済みである。`nextEntityId` は EntityAllocator と共有する上限まで含めて `state.invalidShape` として正規化する。続く Phase 1B-6 の state hash minimum も canonical encoder、fixed seed xxHash64、gameplay digest golden、restore 後の複数 tick 一致まで実装済みである。Phase 1B-7 では metadata-only の `ReplayMetadata` を root type export し、未検証 `enabledFeatures` を replay 互換性 field として含め、snapshot 専用 `stateHashVersion` と replay playback API は公開しない境界を型契約で固定した。Phase 1C-1 では `tools/validate-content` package と immutable diagnostic / JSON / human / exit code contract、Phase 1C-2 では YAML parser、source span、CLI / filesystem boundary、Core validation adapter、Phase 1C-3 では静的な最小 content fixture と実プロセス CLI golden test、Phase 1C-4 の最初の slice では test-only headless debug dump、state / PRNG hash、count metrics、portable artifact path / JSON formatter を追加した。続く Phase 1C-R で振る舞いを変えない module 分割リファクタリング（`docs/implementation-plan.md` の Phase 1C-R）を完了した。次の作業は first divergent tick の field-level diff artifact とする。
 
 state hash は `docs/implementation-plan.md` の Phase 1B-6、replay metadata minimum は同計画の Phase 1B-7 で実装済みである。
