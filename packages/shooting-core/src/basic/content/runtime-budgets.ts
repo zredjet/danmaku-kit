@@ -38,3 +38,17 @@ export const MAX_PATH_SPEED_PER_AXIS = 16;
  * 外れたときだけ行う。
  */
 export const ENEMY_CLEANUP_PLAYFIELD_MARGIN = 64;
+
+/**
+ * enemy bullet velocity の axis ごとの絶対値上限（px / tick）。
+ *
+ * swept collision を入れるまでは、1 tick の移動量が自機と敵弾の判定半径の合計（約 7 px）を大きく超えて弾が自機をすり抜けない
+ * ように、この上限で速度を制限する。
+ */
+export const MAX_ENEMY_BULLET_SPEED_PER_AXIS = 8;
+
+/** 同時に存在できる enemy bullet 数の上限（design 14）。超える生成は entity を落とさず fatal にする。 */
+export const MAX_ACTIVE_ENEMY_BULLETS = 2_000;
+
+/** enemy bullet を cleanup する playfield 外の余白（px）。中心がこの余白より外れた敵弾は update lifetime で取り除く。 */
+export const ENEMY_BULLET_CLEANUP_PLAYFIELD_MARGIN = 32;

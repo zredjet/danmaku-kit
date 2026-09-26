@@ -160,6 +160,11 @@ export type PatternDefinition = {
       x: number;
       y: number;
     };
+    /** 敵弾の速度（px / tick）。省略した敵弾は動かない。 */
+    velocity?: {
+      x: number;
+      y: number;
+    };
   };
 };
 

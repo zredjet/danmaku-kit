@@ -124,6 +124,28 @@ const fireOnSpawnPatternDefinition: PatternDefinition = {
     offset: { x: 0, y: 8 },
   },
 };
+const movingFireOnSpawnPatternDefinition: PatternDefinition = {
+  id: "pattern.spawn_bullet",
+  version: 1,
+  fireOnSpawn: {
+    bullet: "bullet.red_small",
+    offset: { x: 0, y: 8 },
+    velocity: { x: 0, y: 3 },
+  },
+};
+const invalidFireOnSpawnPatternVelocity: PatternDefinition = {
+  id: "pattern.spawn_bullet",
+  version: 1,
+  fireOnSpawn: {
+    bullet: "bullet.red_small",
+    offset: { x: 0, y: 8 },
+    velocity: {
+      x: 0,
+      // @ts-expect-error fireOnSpawn velocity.y must be numeric.
+      y: "3",
+    },
+  },
+};
 const invalidFireOnSpawnPatternDefinition: PatternDefinition = {
   id: "pattern.spawn_bullet",
   version: 1,
@@ -216,6 +238,8 @@ void invalidFireOnSpawnPatternDefinition;
 void invalidFireOnSpawnPatternWithoutOffset;
 void invalidFireOnSpawnPatternOffsetX;
 void invalidFireOnSpawnPatternOffsetY;
+void movingFireOnSpawnPatternDefinition;
+void invalidFireOnSpawnPatternVelocity;
 void pathDefinition;
 void velocityPathDefinition;
 void invalidPathSegmentType;

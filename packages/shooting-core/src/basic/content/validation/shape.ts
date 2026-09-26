@@ -1,6 +1,7 @@
 import type { CoreError } from "../../result.ts";
 import { asRecord } from "../../shared/guards.ts";
 import {
+  MAX_ENEMY_BULLET_SPEED_PER_AXIS,
   MAX_PLAYER_MOVEMENT_SPEED,
   MAX_PLAYER_SHOT_FIRE_INTERVAL_TICKS,
   MAX_PLAYER_SHOT_LIFETIME_TICKS,
@@ -258,17 +259,29 @@ function validatePatternFireOnSpawnShape(value: unknown, errors: CoreError[]): v
     errors.push({ code: "definition.invalidShape", message: "pattern.fireOnSpawn must be an object" });
     return;
   }
-  validateAllowedKeys("pattern.fireOnSpawn", fireOnSpawn, ["bullet", "offset"], errors);
+  validateAllowedKeys("pattern.fireOnSpawn", fireOnSpawn, ["bullet", "offset", "velocity"], errors);
   validateNonEmptyString("pattern.fireOnSpawn.bullet", fireOnSpawn.bullet, errors);
 
   const offset = asRecord(fireOnSpawn.offset);
   if (!offset) {
     errors.push({ code: "definition.invalidShape", message: "pattern.fireOnSpawn.offset must be an object" });
+  } else {
+    validateAllowedKeys("pattern.fireOnSpawn.offset", offset, ["x", "y"], errors);
+    validateFiniteNumber("pattern.fireOnSpawn.offset.x", offset.x, errors);
+    validateFiniteNumber("pattern.fireOnSpawn.offset.y", offset.y, errors);
+  }
+
+  if (fireOnSpawn.velocity === undefined) {
     return;
   }
-  validateAllowedKeys("pattern.fireOnSpawn.offset", offset, ["x", "y"], errors);
-  validateFiniteNumber("pattern.fireOnSpawn.offset.x", offset.x, errors);
-  validateFiniteNumber("pattern.fireOnSpawn.offset.y", offset.y, errors);
+  const velocity = asRecord(fireOnSpawn.velocity);
+  if (!velocity) {
+    errors.push({ code: "definition.invalidShape", message: "pattern.fireOnSpawn.velocity must be an object" });
+    return;
+  }
+  validateAllowedKeys("pattern.fireOnSpawn.velocity", velocity, ["x", "y"], errors);
+  validateFiniteNumberWithinAbs("pattern.fireOnSpawn.velocity.x", velocity.x, MAX_ENEMY_BULLET_SPEED_PER_AXIS, errors);
+  validateFiniteNumberWithinAbs("pattern.fireOnSpawn.velocity.y", velocity.y, MAX_ENEMY_BULLET_SPEED_PER_AXIS, errors);
 }
 
 /** PlayerDefinition の shape validation。 */
