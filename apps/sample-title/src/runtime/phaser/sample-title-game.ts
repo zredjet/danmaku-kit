@@ -1,46 +1,28 @@
-import { AUTO, Game, Scale, Scene } from "phaser";
+import { AUTO, Game, Scale } from "phaser";
 
-/** MVP の内部解像度（design 12）。integer scale と letterbox は Phase 2A-10 で扱う。 */
-const LOGICAL_WIDTH = 384;
-const LOGICAL_HEIGHT = 448;
+import { PLAYFIELD_HEIGHT, PLAYFIELD_WIDTH } from "../view/playfield.ts";
+import { StageScene, type StageSceneOptions } from "./stage-scene.ts";
 
-export type SampleTitleGameOptions = Readonly<{
+export type SampleTitleGameOptions = StageSceneOptions & Readonly<{
   parent: HTMLElement;
-  coreVersion: string;
-  contentVersion: string;
 }>;
 
 /**
- * playfield を表示する Phaser game を起動する。
+ * 内部解像度の canvas で stage scene を起動する。
  *
- * Core の stage session と固定 tick loop の接続は Phase 2A-1d で行い、ここでは Core が load した content の
- * version と、Phaser が内部解像度の canvas を描けることだけを表示する。
+ * keyboard 入力は scene が window から受けるため、Phaser の keyboard plugin は無効にする。integer scale と letterbox は
+ * Phase 2A-10 で扱う。
  */
 export function startSampleTitleGame(options: SampleTitleGameOptions): Game {
+  const { parent, ...sceneOptions } = options;
   return new Game({
     type: AUTO,
-    parent: options.parent,
-    width: LOGICAL_WIDTH,
-    height: LOGICAL_HEIGHT,
+    parent,
+    width: PLAYFIELD_WIDTH,
+    height: PLAYFIELD_HEIGHT,
     backgroundColor: "#0b0d1a",
     scale: { mode: Scale.NONE },
-    scene: new PlayfieldScene(`shooting-core ${options.coreVersion} / content ${options.contentVersion}`),
+    input: { keyboard: false },
+    scene: new StageScene(sceneOptions),
   });
-}
-
-class PlayfieldScene extends Scene {
-  readonly #versionLabel: string;
-
-  constructor(versionLabel: string) {
-    super("playfield");
-    this.#versionLabel = versionLabel;
-  }
-
-  create(): void {
-    this.add.text(8, 8, this.#versionLabel, {
-      color: "#9aa4c7",
-      fontFamily: "monospace",
-      fontSize: "12px",
-    });
-  }
 }

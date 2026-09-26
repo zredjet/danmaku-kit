@@ -249,7 +249,7 @@ Phaser adapter の view lifecycle:
 
 - Simulation entity id と view id の mapping を持つ。
 - Sprite、bullet view、effect view は object pool を使う。Pickup feature 有効時は pickup view も feature module 側で pool する。
-- `GameFrame.events` を直接 Sprite 生成破棄に同期させず、destroy queue / spawn queue に積んで batch update する。
+- `GameFrame.events` を直接 Sprite 生成破棄に同期させず、destroy queue / spawn queue に積んで batch update する。gameplay entity の view の生成・破棄は `GameFrame.state.entities` の entity id 差分を正本にし、event は演出にだけ使う。これにより lifetime 切れのように event を伴わない消滅でも view を残さない。
 - 1 render frame の view create/destroy に上限を持ち、超過時は低優先度 effect を落として gameplay view を優先する。
 - gameplay entity の view は欠落させない。Runtime は content validation と performance budget から stage start 前に pool sizing を見積もり、足りない場合は load error として開始を止める。mid-stage で pool が枯渇した場合、Runtime は `RuntimeEvent.viewPoolExhausted` を出し、dev では hard error、本番では safe pause / fatal overlay に遷移する。
 - destroyed gameplay entity の view は destroy queue が遅延しても即時 hide / unmap する。pool への return だけを destroy queue で遅延できる。

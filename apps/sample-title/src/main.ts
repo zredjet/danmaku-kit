@@ -2,6 +2,7 @@ import { createShootingCore } from "@shooting-sample/shooting-core";
 import gameDefinition from "virtual:sample-title/game-definition";
 
 import { startSampleTitleGame } from "./runtime/phaser/sample-title-game.ts";
+import { collectCollisionRadii } from "./runtime/view/collision-radii.ts";
 
 const parent = document.getElementById("game");
 if (!parent) {
@@ -15,8 +16,26 @@ if (!loaded.ok) {
   throw new Error(`Core rejected the validated game definition: ${loaded.errors.map((error) => error.code).join(", ")}`);
 }
 
+// title / stage select を置くまでは、最初の stage を最初の difficulty で始める。
+const stage = gameDefinition.content.stages[0];
+const difficulty = stage?.difficulties[0];
+if (!stage || !difficulty) {
+  throw new Error("sample title content must define a stage with at least one difficulty");
+}
+
 startSampleTitleGame({
   parent,
-  coreVersion: core.coreVersion,
-  contentVersion: gameDefinition.content.version,
+  loadedGame: loaded.value,
+  stage: { stageId: stage.id, difficulty, seed: readSeed() },
+  collisionRadii: collectCollisionRadii(gameDefinition),
+  versionLabel: `shooting-core ${core.coreVersion} / content ${gameDefinition.content.version}`,
 });
+
+/** `?seed=` があればその seed で、なければ起動ごとの乱数で stage を始める。seed は画面に出し、同じ入力の再現に使う。 */
+function readSeed(): string {
+  const requested = new URLSearchParams(window.location.search).get("seed");
+  if (requested !== null && requested.trim().length > 0) {
+    return requested;
+  }
+  return crypto.getRandomValues(new Uint32Array(1))[0]!.toString(16).padStart(8, "0");
+}
