@@ -78,10 +78,11 @@ packages/
         events/
         hash/
         input/
-        internal/
+        instrumentation/
         replay/
         serialization/
         session/
+        shared/
         simulation/
         state/
         testing/
@@ -161,13 +162,13 @@ packages/shooting-core/src/
     serialization/
       types.ts                 SerializedGameState DTO
       metadata.ts              version 定数と serialization metadata
-      restore-json.ts          restore JSON payload guard
-      restore/                 top-level metadata、deterministic payload、runtime entity、allocation order の restore validation
+      restore/                 top-level metadata、deterministic payload、JSON payload guard、runtime entity、allocation order の restore validation
     hash/                      HashableGameState DTO / field order、canonical encoder、xxHash64、state hash
     replay/
       metadata.ts              ReplayMetadata
-    internal/                  共通 guard、immutable、test hook、headless debug serializer
-    testing/                   test-only helper（headless debug dump、state hash comparison）
+    shared/                    共通 guard、immutable、UTF-8 byte order 比較（basic 内の他 module を import しない最下層）
+    instrumentation/           test hook 有効化 guard、stage session testing hook、headless debug checkpoint
+    testing/                   test-only helper（hook 付き Core factory、headless debug dump、replay trace / divergence artifact、state hash comparison）
     test-support/              test file 共通 helper（package runtime source から除外）
     patterns/                  Phase 2A 以降: PatternProgram runner / commands
   features/                    Phase 2B / 3 以降
@@ -178,7 +179,7 @@ packages/shooting-core/src/
       register.ts
 ```
 
-依存方向は `core.ts` → `session/` → `serialization/restore/` / `state/` → 下位 module（`content/`、`simulation/`、`hash/` など）とし、下位 module から上位 layer を import しない。非 test source について、`core.ts`、`session/`、`serialization/restore/`、`state/` を import してよい module は型 import も含めて、runtime import cycle と `index.ts` から `hash/` / `testing/` へ実行時に到達しないことは実行時 import で、`tests/module-graph.test.mjs` が検査する。state hash と headless debug dump の digest は test helper 側で計算する。
+依存方向は `core.ts` → `session/` → `serialization/restore/` / `state/` → 下位 module（`content/`、`simulation/`、`hash/` など）→ `shared/` とし、下位 module から上位 layer を import しない。`instrumentation/` は `core.ts`、`session/`、`testing/` だけが使う session の差し込み口で、通常 runtime から到達してよい。非 test source について、`core.ts`、`session/`、`serialization/restore/`、`state/`、`instrumentation/`、`hash/` を import してよい module と、`shared/` が他 module を import しないことは型 import も含めて、runtime import cycle と `index.ts` から `hash/` / `testing/` へ実行時に到達しないことは実行時 import で、`tests/module-graph.test.mjs` が検査する。state hash と headless debug dump の digest は test helper 側で計算する。
 
 ## 5. レイヤー責務
 

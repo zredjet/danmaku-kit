@@ -53,10 +53,13 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 ### 依存方向（`packages/shooting-core/src/basic/`）
 
 - 以下の import 制約は非 test source（`*.test.ts` と `test-support/` 以外）に適用する。
-- `core.ts` は `createShootingCore()` / `load()` の facade とし、import してよいのは `index.ts` と `internal/testing-hooks.ts` だけにする。公開型は `api-types.ts` に置く。
+- `core.ts` は `createShootingCore()` / `load()` の facade とし、import してよいのは `index.ts` と `testing/testing-hooks.ts` だけにする。公開型は `api-types.ts` に置く。
 - `session/`（stage session、tick pipeline、loaded game）を import してよいのは `core.ts` だけ。
 - `serialization/restore/` を import してよいのは `session/` だけ。
-- `state/`（committed state と serialize / hash projection）を import してよいのは `session/`、`serialization/restore/`、`internal/` だけ。`hash/` は DTO、encoder、digest だけを持ち、上位 layer を import しない。
+- `state/`（committed state と serialize / hash projection）を import してよいのは `session/`、`serialization/restore/`、`instrumentation/` だけ。
+- `instrumentation/`（test hook 有効化 guard、stage session testing hook、headless debug checkpoint）は通常 runtime から到達してよい session の差し込み口で、import してよいのは `core.ts`、`session/`、`testing/` だけ。
+- `hash/` は DTO、encoder、digest だけを持ち、上位 layer を import しない。`hash/` を import してよいのは `state/hashable-projection.ts`、`instrumentation/`、`testing/` だけ。
+- `shared/`（guard、immutable、UTF-8 順序比較）は最下層とし、`src/basic/` 内の他 module を import しない。
 - `index.ts` から実行時 import で到達する範囲に test / tooling 専用の `hash/` と `testing/` を含めない。state hash と headless debug dump の digest は test helper 側で計算する。
 - runtime import cycle を作らない。`tests/module-graph.test.mjs` が layer rule は型 import も含めて、cycle と到達範囲は実行時 import（`import type` を除く）で検査する。
 
