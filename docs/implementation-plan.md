@@ -427,7 +427,8 @@ Phase 1C-R で巨大ファイルは責務単位に分割したが、ディレク
 1. Phase 1C-S1: 配置の修正（本文は変えない）
    - Done: Phase 1C-S1: `internal/guards.ts` / `internal/immutable.ts` を `shared/` へ移し、`shared/` が basic 内の他 module を型 import も含めて import しない leaf rule を `tests/module-graph.test.mjs` に追加する。import 元22 file は path だけを更新し、specifier 順に並んでいた import はその順序を保つ
    - Done: Phase 1C-S1: 残りの `internal/` を、session へ差し込む `instrumentation/`（`test-hooks-guard.ts`、`stage-session-testing-hooks.ts` と test、`debug-state.ts`）と test-only の `testing/testing-hooks.ts` へ分けて `internal/` を廃止する。`core.ts` を import してよい module を `testing/testing-hooks.ts`、`state/` を import してよい module を `instrumentation/` に更新し、`instrumentation/` を import してよい module を `core.ts` / `session/` / `testing/` に固定する
-   - Next: `compareUtf8Lexicographic` を `shared/utf8-order.ts` へ抽出し、`hash/` から restore 用 module への依存をなくしてから `restore-json.ts` を `serialization/restore/` へ移す。lone surrogate の扱いが異なる `hash/canonical-encoder.ts` の UTF-8 比較とは統合しない
+   - Done: Phase 1C-S1: `serialization/restore-json.ts` の `compareUtf8Lexicographic` と private の `encodeUtf8Bytes` を本文そのままで `shared/utf8-order.ts` へ抽出し、`hash/hashable-game-state-adapter.ts` が restore 用 module を import しないようにする。lone surrogate を throw する `hash/canonical-encoder.ts` の UTF-8 比較とは契約が異なるため統合しない
+   - Next: `restore-json.ts` を利用者と同じ `serialization/restore/` へ移す
    - Next: `CommittedPendingEvent` を `state/committed-state.ts` で明示定義し、`hash/` を import してよい module を layer rule で固定する
    - Next: difficulty の error message を test で固定してから、`content/types.ts` の `KNOWN_DIFFICULTIES` / `isKnownDifficulty()` へ4箇所の列挙を寄せる。各 error message は literal のまま残す
    - Next: validate-content の `output.ts` を、diagnostic 正規化・比較（`diagnostic-normalization.ts`）、result 構築（`output.ts`）、JSON / human formatter（`output-format.ts`）へ一方向の依存で分ける

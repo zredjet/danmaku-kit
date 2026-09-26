@@ -5,12 +5,12 @@ import type { StageDefinition } from "../../content/types.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
 import { isPositiveSafeInteger } from "../../shared/guards.ts";
+import { compareUtf8Lexicographic } from "../../shared/utf8-order.ts";
 import { XorShift32 } from "../../simulation/prng.ts";
 import type { SerializedPrngState } from "../../simulation/prng.ts";
 import type { RuntimeEntityState } from "../../simulation/runtime-entity.ts";
 import type { CommittedPendingEvent } from "../../state/committed-state.ts";
 import {
-  compareUtf8Lexicographic,
   createRestoreJsonBudget,
   isRestoreJsonStringWithinSingleValueBudget,
   validateRestoreJsonPayload,

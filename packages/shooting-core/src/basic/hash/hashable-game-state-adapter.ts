@@ -22,7 +22,7 @@ import type {
   HashableRuntimeEntityState,
   HashableVector2,
 } from "./hashable-state.ts";
-import { compareUtf8Lexicographic } from "../serialization/restore-json.ts";
+import { compareUtf8Lexicographic } from "../shared/utf8-order.ts";
 import { fixedStruct } from "./canonical-encoder.ts";
 import type { CanonicalFixedStruct, CanonicalValue } from "./canonical-encoder.ts";
 
