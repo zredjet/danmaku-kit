@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump foundation、Phase 1C-R の振る舞いを変えない module 分割リファクタリングも完了した。次の実装スライスは state / ordered event / side別input / side statusを比較する first divergent checkpoint の field-level diff artifact とする。
+Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump と first divergent checkpoint の field-level replay divergence artifact、Phase 1C-R の振る舞いを変えない module 分割リファクタリングも完了し、Phase 1C の tooling minimum を完了した。次は「Phase 2A へ進む条件」を確認し、Vite sample app と Phaser adapter の最初の slice を計画する。
 
 Done:
 
@@ -85,12 +85,13 @@ Done:
 - validate-content 1C-3 で静的な最小 content fixture と、valid / content parse / content・game-definition schema / reference / budget / CLI argument の実プロセス CLI golden test を追加する
 - debug state 1C-4 foundation で test-only headless schema、state / PRNG hash、entity count、test sessionだけで収集するnullable event / collision metrics、portable artifact path / schema-order JSON formatter、public `CoreErrorCode` を拡張しない内部 hash failure result 境界を追加する
 - module 分割 1C-R で `core.ts`（3327行）、`core.test.ts`（5350行）、`tests/public-type-contract.ts`（1449行）、`content/validation.ts`、validate-content loader を責務単位の module へ振る舞いを変えずに分割し、runtime import cycle を解消して、依存方向と cycle を `tests/module-graph.test.mjs` で固定する
+- replay divergence 1C-4 で test-only の replay trace recorder / comparator、raw `ReplayMetadata` の検証と互換性分類、first divergent checkpoint の input / entity / component / event / PRNG diff、schema 順 JSON artifact と artifact path を追加する
 
 Next:
 
-- 検証済み replay compatibility metadata と expected / actual の `ok | missing | error` sideを比較し、state hashが同じevent-only差分、side別input差分、早期終了、tick失敗を含む first divergent checkpoint の entity / component / event / PRNG artifactを構築する。`ok` sideにはsummary dumpを添付する
+- 「Phase 2A へ進む条件」を確認し、Vite sample app、Phaser adapter、keyboard input adapter の最初の slice を計画する
 
-Phase 1C-1 は診断と出力の安定した契約、Phase 1C-2 は実績ある YAML parser と source span 付き診断の CLI 接続、Phase 1C-3 は静的 fixture と実プロセスの JSON / human golden contract を固定した。Phase 1C-4 foundation は renderer / browser field を含まない headless debug state summary を固定した。次の slice は summary から値を復元しようとせず、deterministic snapshot、順序付きframe event、side別input、side statusを比較し、`frameTick`とpost-tick `checkpointTick`を分けてfield-level divergenceを組み立てる。
+Phase 1C-1 は診断と出力の安定した契約、Phase 1C-2 は実績ある YAML parser と source span 付き診断の CLI 接続、Phase 1C-3 は静的 fixture と実プロセスの JSON / human golden contract を固定した。Phase 1C-4 は renderer / browser field を含まない headless debug state summary と、summary から値を復元せず deterministic snapshot、順序付き frame event、side 別 input、side status を比較する field-level replay divergence artifact を固定した。
 
 ## 設計から実装への対応表
 
@@ -129,6 +130,7 @@ Status legend:
 | `docs/design.md` Content validation CLI | parser / filesystem boundary | Done | `tools/validate-content/src/yaml-source.ts`, `tools/validate-content/src/content-loader.ts`, `tools/validate-content/src/core-diagnostic-adapter.ts`, `tools/validate-content/src/cli.ts`, `tools/validate-content/src/cli-entry.ts` | strict YAML、source span、Core diagnostic mapping、実 filesystem を検証 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Content validation CLI | minimum fixture / process golden | Done | `fixtures/game-definition.minimum.yaml`, `fixtures/content-minimum/`, `fixtures/validate-content-golden/`, `tools/validate-content/src/cli-golden.test.ts` | valid / content parse / content・game-definition schema / reference / budget / CLI argument を JSON / human の両形式で固定 | `npm test`, `npm run typecheck` |
 | `docs/design.md` Debug state dump | headless dump foundation | Done | `packages/shooting-core/src/basic/internal/debug-state.ts`, `packages/shooting-core/src/basic/testing/debug-state.ts`, `packages/shooting-core/src/basic/session/stage-session.ts`, `packages/shooting-core/src/basic/simulation/collision-system.ts` | immutable checkpoint、失敗 tick 不変、restore seed / nullable metrics、collision count、schema-order JSON、hash error、root export 非公開を固定 | `packages/shooting-core/src/basic/testing/debug-state.test.ts`, `packages/shooting-core/src/basic/simulation/collision-system.test.ts`, `tests/public-type-contract/root-export-exclusions.ts`, `tests/public-type-contract/core-api.ts`; `npm test`, `npm run typecheck` |
+| `docs/design.md` 21.4 Golden Test | first divergent checkpoint の replay divergence artifact | Done | `packages/shooting-core/src/basic/testing/replay-trace.ts`, `packages/shooting-core/src/basic/testing/replay-metadata.ts`, `packages/shooting-core/src/basic/testing/replay-diff.ts`, `packages/shooting-core/src/basic/testing/replay-divergence.ts` | `packages/shooting-core/src/basic/testing/replay-divergence.test.ts`, `packages/shooting-core/src/basic/testing/replay-metadata.test.ts`, `tests/public-type-contract/root-export-exclusions.ts` | `npm test`, `npm run typecheck` |
 | `docs/design.md` 4 ディレクトリ構成 | module 分割と依存方向 | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/session/`, `packages/shooting-core/src/basic/state/`, `packages/shooting-core/src/basic/serialization/restore/`, `AGENTS.md` | `tests/module-graph.test.mjs` | `npm test` |
 
 ## 次の作業順
@@ -327,8 +329,9 @@ Done:
    - Done: root package へ公開しない test helper から取得する `HeadlessDebugStateDump` schema を実装する。`tick` は次の input tick、start session の `seed` は文字列、restore session は `null`、entity count は current committed state、event / collision metrics は直前の成功 tick とし、start / restore 直後は未計測の `null`、非fatalな失敗 tickでは直前値を保持し、fatal後はdumpを拒否する
    - Done: collision / event metrics は test serializer 登録sessionでだけ収集し、通常runtimeのtick hot pathではcounter更新とcount object生成を省略する
    - Done: state hash、PRNG hash、固定 key の entity / event count、narrow-phase collision candidate count、portable artifact slug / path、schema 固定順 + 2-space indent + LF の JSON formatter、public `CoreErrorCode` を拡張しない hash encoding failure result を実装する
-   - Next: raw replay metadataを検証して比較可能性を固定し、expected / actualの`ok | missing | error` sideごとにparse後inputを保持する。`ok` sideの`HashableGameState`、順序付き`GameFrame.events`、summaryを比較し、state hashが同じevent-only差分もfirst divergenceとして検出する
-   - Next: `frameTick: null` / `checkpointTick: 0`の初期比較と、tick後の`checkpointTick === frameTick + 1`を検証し、artifact pathのtickをcheckpoint tickに固定する
+   - Done: test-only の `recordReplayTraceForTest()` で hook-enabled session の初期 checkpoint と各 tick 後の checkpoint（parse 後 input、`HashableGameState`、state hash、summary dump、順序付き frame event、または error）を記録し、`compareReplayTracesForTest()` で expected / actual の `ok | missing | error` side を checkpoint 順に比較する。state hash が同じ event-only 差分、side 別 input 差分、早期終了、tick 失敗も first divergence として検出する
+   - Done: 比較前に raw `ReplayMetadata` を SemVer `coreVersion`、namespace、canonical `enabledFeatures` などで検証し、`coreVersion` の同一 major 不一致は warning、他の version / stage / difficulty / player / feature / seed の不一致は `incompatible` として report を作らない
+   - Done: 初期 checkpoint を `frameTick: null` / `checkpointTick: 0`、tick 後を `checkpointTick === frameTick + 1` として trace 構造を検証し、report の field-level diff（input / entity / component / event / PRNG）、schema 順 JSON formatter、`artifacts/replay-divergence/<replayId>-tick-<checkpointTick>.json` の artifact path を実装する
    - Queued: browser runtime dump は`apps/sample-title`がpublic `GameFrame`とruntime adapter stateから作る別schemaとしてPhase 2Aへ分離し、Core内部hash/metricsやdeep importへ依存させない
 
 ## Phase 1C-R タスク分割（module 分割リファクタリング）

@@ -198,6 +198,18 @@ import type { CommittedStageState as DeepCommittedStageState } from "@shooting-s
 // @ts-expect-error restore 検証 orchestration は deep package subpath からも公開しない。
 import { restoreStageState as DeepRestoreStageState } from "@shooting-sample/shooting-core/src/basic/serialization/restore/restore-stage-state.ts";
 
+// @ts-expect-error replay divergence report は test-only で root public contract に含めない。
+import type { ReplayDivergenceReport } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error replay trace recorder は test-only で root public contract に含めない。
+import { recordReplayTraceForTest } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error replay trace comparator は test-only で root public contract に含めない。
+import { compareReplayTracesForTest } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error replay trace comparator は deep package subpath からも公開しない。
+import { compareReplayTracesForTest as DeepCompareReplayTraces } from "@shooting-sample/shooting-core/src/basic/testing/replay-divergence.ts";
+
 void KNOWN_ENABLED_FEATURES;
 void (undefined as unknown as HashableGameState);
 void (undefined as unknown as HashablePrngState);
@@ -247,3 +259,7 @@ void (undefined as unknown as RestoredStageState);
 void DeepCreateStageSession;
 void (undefined as unknown as DeepCommittedStageState);
 void DeepRestoreStageState;
+void (undefined as unknown as ReplayDivergenceReport);
+void recordReplayTraceForTest;
+void compareReplayTracesForTest;
+void DeepCompareReplayTraces;

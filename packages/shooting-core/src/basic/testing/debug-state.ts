@@ -1,15 +1,36 @@
 import type { StageSession } from "../api-types.ts";
+import type { HashableGameState } from "../hash/hashable-state.ts";
 import { hashHashableGameState, hashHashablePrngState } from "../hash/state-hash.ts";
 import type {
   HeadlessDebugCheckpoint,
   HeadlessDebugStateDump,
+  HeadlessDebugStateError,
   HeadlessDebugStateResult,
   HeadlessDebugStateSerializer,
 } from "../internal/debug-state.ts";
 import { assertInternalTestHooksEnabled } from "../internal/test-hooks-guard.ts";
 import { okResult } from "../result.ts";
-const MAX_ARTIFACT_TEST_NAME_LENGTH = 128;
-const ARTIFACT_TEST_NAME_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
+import type { CoreWarning } from "../result.ts";
+import { createTickArtifactPath } from "./artifact-path.ts";
+
+/** committed checkpoint の hash DTO と、同じ checkpoint の headless summary dump。 */
+export type HeadlessDebugCapture = Readonly<{
+  state: HashableGameState;
+  dump: HeadlessDebugStateDump;
+}>;
+
+/** `HeadlessDebugStateResult` と同じ error 分類で capture を返す結果型。 */
+export type HeadlessDebugCaptureResult =
+  | Readonly<{
+    ok: true;
+    value: HeadlessDebugCapture;
+    warnings: readonly CoreWarning[];
+  }>
+  | Readonly<{
+    ok: false;
+    errors: readonly HeadlessDebugStateError[];
+  }>;
+
 const debugStateSerializers = new WeakMap<StageSession, HeadlessDebugStateSerializer>();
 
 /** hook-enabled session と内部 dump serializer を test process 内だけで対応付ける。 */
@@ -22,6 +43,16 @@ export function registerHeadlessDebugStateSerializerForTest(
 
 /** hook-enabled session の committed state を進めずに headless dump を返す。 */
 export function serializeDebugStateForTest(session: StageSession): HeadlessDebugStateResult {
+  const captured = captureHeadlessDebugStateForTest(session);
+  return captured.ok ? okResult(captured.value.dump) : captured;
+}
+
+/**
+ * hook-enabled session の committed hash DTO と headless dump を、session を進めずに同時に取得する。
+ *
+ * replay divergence 調査が state hash と field-level diff を同じ checkpoint から作れるようにする。
+ */
+export function captureHeadlessDebugStateForTest(session: StageSession): HeadlessDebugCaptureResult {
   assertInternalTestHooksEnabled("serialize debug state");
   const serializer = debugStateSerializers.get(session);
   if (!serializer) {
@@ -31,7 +62,11 @@ export function serializeDebugStateForTest(session: StageSession): HeadlessDebug
   if (!checkpoint.ok) {
     return checkpoint;
   }
-  return hashHeadlessDebugCheckpoint(checkpoint.value);
+  const dump = hashHeadlessDebugCheckpoint(checkpoint.value);
+  if (!dump.ok) {
+    return dump;
+  }
+  return okResult(Object.freeze({ state: checkpoint.value.hashableState, dump: dump.value }));
 }
 
 /** checkpoint の hash DTO から state / PRNG digest を計算し、schema 固定の headless dump にする。 */
@@ -78,19 +113,13 @@ export function createHeadlessDebugStateArtifactPathForTest(
   testName: string,
   dump: HeadlessDebugStateDump,
 ): string {
-  if (
-    testName.length === 0
-    || testName.length > MAX_ARTIFACT_TEST_NAME_LENGTH
-    || !ARTIFACT_TEST_NAME_PATTERN.test(testName)
-  ) {
-    throw new RangeError(
-      `testName must be a lower-case artifact slug up to ${MAX_ARTIFACT_TEST_NAME_LENGTH} characters`,
-    );
-  }
-  if (!Number.isSafeInteger(dump.tick) || dump.tick < 0) {
-    throw new RangeError("debug state tick must be a non-negative safe integer");
-  }
-  return `artifacts/debug-state/${testName}-tick-${dump.tick}.json`;
+  return createTickArtifactPath({
+    directory: "artifacts/debug-state",
+    name: testName,
+    nameLabel: "testName",
+    tick: dump.tick,
+    tickLabel: "debug state tick",
+  });
 }
 
 /** headless dump を2-space indentと末尾LFを持つ安定したJSON artifactへ変換する。 */
@@ -99,7 +128,7 @@ export function formatHeadlessDebugStateJsonForTest(dump: HeadlessDebugStateDump
 }
 
 /** caller 側の property 挿入順に依存しない schema 固定順の JSON DTO へ投影する。 */
-function projectHeadlessDebugStateForStableJson(dump: HeadlessDebugStateDump): HeadlessDebugStateDump {
+export function projectHeadlessDebugStateForStableJson(dump: HeadlessDebugStateDump): HeadlessDebugStateDump {
   return {
     schemaVersion: dump.schemaVersion,
     kind: dump.kind,
