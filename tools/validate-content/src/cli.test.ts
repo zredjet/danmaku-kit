@@ -177,6 +177,7 @@ function loadedSource(definition: ReturnType<typeof createMinimumDefinition>): L
   return Object.freeze({
     ok: true,
     definition,
+    assetManifest: Object.freeze({ version: 1, assets: Object.freeze({}) }),
     diagnostics: Object.freeze([]),
     sourceIndex: sourceIndexStub(),
   });

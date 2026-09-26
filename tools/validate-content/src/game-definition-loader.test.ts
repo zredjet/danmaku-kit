@@ -37,6 +37,14 @@ test("returns a freshly assembled game definition that Core loads when validatio
   assert.equal(createShootingCore().load(first.definition).ok, true);
   assert.deepEqual(second.definition, first.definition);
   assert.notEqual(second.definition, first.definition);
+  // Core には key の一覧だけを渡し、path は runtime 用の asset manifest にだけ残る。
+  assert.deepEqual(Object.keys(first.assetManifest.assets).sort(), first.definition.content.assetKeys.keys);
+  assert.deepEqual(first.assetManifest.assets["player.default"], {
+    type: "sprite",
+    path: "player.png",
+    required: true,
+    usage: "gameplay",
+  });
 });
 
 test("returns validation errors without a definition when content does not pass", async (context) => {

@@ -1,5 +1,6 @@
 import type { GameDefinition } from "@shooting-sample/shooting-core";
 
+import type { AssetManifest } from "./asset-manifest.ts";
 import { createNodeContentFileSystem, type ContentFileSystem } from "./content-file-system.ts";
 import { loadContentSource, type LoadContentSourceResult } from "./content-loader.ts";
 import { validateContentDefinition } from "./core-diagnostic-adapter.ts";
@@ -13,13 +14,14 @@ export type ValidateContentSourcePaths = Readonly<{
 }>;
 
 /**
- * content の検証結果と、検証に通った `GameDefinition`。
+ * content の検証結果と、検証に通った `GameDefinition` と asset manifest。
  *
  * `ok: true` になるのは `runResult.exitCode` が 0 のときだけで、`definition` は Core の `load()` を通った
- * plain data を呼び出しごとに新しく組み立てたものとする。warning / info は `runResult` の diagnostics に残る。
+ * plain data を呼び出しごとに新しく組み立てたものとする。`assetManifest` は runtime が asset を読み込むための検証済み manifest で、
+ * Core の `definition` には key の一覧だけが入る。warning / info は `runResult` の diagnostics に残る。
  */
 export type LoadValidatedGameDefinitionResult =
-  | Readonly<{ ok: true; definition: GameDefinition; runResult: ValidateContentRunResult }>
+  | Readonly<{ ok: true; definition: GameDefinition; assetManifest: AssetManifest; runResult: ValidateContentRunResult }>
   | Readonly<{ ok: false; runResult: ValidateContentRunResult }>;
 
 /** filesystem と content loader の差し替え口。CLI test が使い、public export には含めない。 */
@@ -68,7 +70,12 @@ export async function loadValidatedGameDefinitionWith(
       : loaded.diagnostics;
     const runResult = createValidationRunResult(sourcePaths.contentRoot, diagnostics);
     if (loaded.ok && runResult.exitCode === 0) {
-      return Object.freeze({ ok: true, definition: loaded.definition as GameDefinition, runResult });
+      return Object.freeze({
+        ok: true,
+        definition: loaded.definition as GameDefinition,
+        assetManifest: loaded.assetManifest,
+        runResult,
+      });
     }
     return Object.freeze({ ok: false, runResult });
   } catch (cause) {

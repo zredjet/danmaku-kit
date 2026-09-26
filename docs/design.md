@@ -1069,6 +1069,8 @@ Core は `AssetManifest` の path、decode、fallback を知らない。Core に
 
 Manifest entry は `type`、`path`、`required`、`usage` を必須とし、`fallback`、`license`、`author`、`source` を任意 field として予約する。`usage` は `gameplay`、`ui`、`decorative`、`audio` のいずれかとする。`fallback` は同じ asset type の既存 key、または `runtime.` prefix の Runtime built-in asset だけを参照できる。fallback chain の cycle は validation error にする。`runtime.audio.silence` は manifest file を持たない built-in silent audio とし、Runtime adapter が提供する。
 
+validate-content は Phase 2A-8 から manifest entry を検証する（`tools/validate-content/src/asset-manifest.ts`）。manifest の root は `version: 1` と `assets` だけを持ち、`type` は `sprite`、`atlas`、`tilemap`、`audio`、`particle`、`effect`、`required` は boolean とする。`usage: audio` は `type: audio` の entry にだけ使う。`path` は scheme、先頭の `/`、`\`、空・`.`・`..` の segment を持たない base-relative path に限る。`fallback` は `required: false` の entry だけが持て、同じ type の manifest key か `runtime.` の built-in asset を参照し、fallback chain の cycle は `assetManifest.fallbackCycle` にする。`runtime.` で始まる key は built-in 用に予約し、manifest には書けない。`loadValidatedGameDefinition()` は検証済みの `AssetManifest`（path を含む）を `GameDefinition` と別に返し、Core へは従来どおり key の一覧だけを渡す。
+
 Asset load failure は lifecycle の `loading` で処理する。missing、decode error、timeout は `RuntimeEvent.assetLoadFailed` または `LoadResult` として記録し、`required: true` の asset では stage start を止める。`required: false` かつ valid fallback がある場合のみ fallback asset を使える。fallback 使用は debug HUD と log に表示し、schema validation では fallback 前提の未定義 key を許可しない。
 
 `required: false` で fallback がない asset の失敗時挙動:

@@ -30,6 +30,10 @@ test("keeps the validate-content root type export surface explicit", async () =>
   const sourceText = await readFile(indexPath, "utf8");
 
   assert.deepEqual(collectTypeOnlyExportNames(indexPath, sourceText), [
+    "AssetManifest",
+    "AssetManifestEntry",
+    "AssetType",
+    "AssetUsage",
     "ContentDiagnostic",
     "ContentDiagnosticKind",
     "ContentDiagnosticSeverity",

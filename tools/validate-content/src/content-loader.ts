@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { toAssetManifest, validateAssetManifestSource, type AssetManifest } from "./asset-manifest.ts";
 import {
   COLLECTION_DIRECTORIES,
   type CollectionSource,
@@ -27,6 +28,8 @@ export type LoadContentSourceResult =
   | Readonly<{
       ok: true;
       definition: unknown;
+      /** 検証済みの asset manifest。Core へは key の一覧だけを渡し、runtime はこちらの path で asset を読み込む。 */
+      assetManifest: AssetManifest;
       sourceIndex: ContentSourceIndex;
       diagnostics: readonly ParseOrSchemaContentDiagnostic[];
     }>
@@ -130,6 +133,7 @@ export async function loadContentSource(
   return Object.freeze({
     ok: true,
     definition,
+    assetManifest: toAssetManifest(assetManifest.source.value),
     sourceIndex,
     diagnostics: Object.freeze(diagnostics),
   });
@@ -190,6 +194,7 @@ function validateCliSourceShapes(
       "assetManifest",
     ));
   }
+  diagnostics.push(...validateAssetManifestSource(assetManifest));
   for (const source of collectionSources) {
     if (!asPlainRecord(source.source.value)) {
       diagnostics.push(createSchemaDiagnostic(

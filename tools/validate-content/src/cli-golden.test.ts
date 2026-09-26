@@ -13,6 +13,7 @@ type GoldenCaseName =
   | "reference-error"
   | "budget-error"
   | "pattern-error"
+  | "asset-manifest-error"
   | "game-definition-error"
   | "argument-error";
 type GoldenFormat = "json" | "human";
@@ -37,6 +38,7 @@ const GOLDEN_CASES: readonly Readonly<{
   Object.freeze({ name: "reference-error", exitCode: 1 }),
   Object.freeze({ name: "budget-error", exitCode: 1 }),
   Object.freeze({ name: "pattern-error", exitCode: 1 }),
+  Object.freeze({ name: "asset-manifest-error", exitCode: 1 }),
   Object.freeze({ name: "game-definition-error", exitCode: 1 }),
   Object.freeze({ name: "argument-error", exitCode: 2 }),
 ]);
@@ -105,6 +107,8 @@ async function prepareCaseFixture(
     await replaceFixtureText(contentRoot, "players/default.yaml", "  speed: 4", "  speed: 17");
   } else if (name === "pattern-error") {
     await replaceFixtureText(contentRoot, "patterns/scout_three_way.yaml", "        spreadDeg: 24\n", "        spreadDeg: 24.1\n");
+  } else if (name === "asset-manifest-error") {
+    await replaceFixtureText(contentRoot, "assets/manifest.yaml", "    path: shot.png\n", "    path: /shot.png\n");
   } else if (name === "game-definition-error") {
     await replaceFileText(
       gameDefinitionPath,
@@ -215,6 +219,9 @@ function expectedDiagnosticPath(
   }
   if (name === "pattern-error") {
     return path.join(fixture.contentRoot, "patterns", "scout_three_way.yaml");
+  }
+  if (name === "asset-manifest-error") {
+    return path.join(fixture.contentRoot, "assets", "manifest.yaml");
   }
   if (name === "game-definition-error") {
     return fixture.gameDefinitionPath;

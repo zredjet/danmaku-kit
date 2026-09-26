@@ -7,6 +7,10 @@ import {
   loadValidatedGameDefinition,
 } from "@shooting-sample/validate-content";
 import type {
+  AssetManifest,
+  AssetManifestEntry,
+  AssetType,
+  AssetUsage,
   ContentDiagnostic,
   ContentDiagnosticKind,
   ContentDiagnosticSeverity,
@@ -82,8 +86,24 @@ type ExpectedRunResult =
   | Readonly<{ exitCode: 1; output: ExpectedOutput & Readonly<{ ok: false }> }>
   | Readonly<{ exitCode: 2; output: ExpectedOutput & Readonly<{ ok: false }> }>;
 type ExpectedSourcePaths = Readonly<{ gameDefinitionPath: string; contentRoot: string }>;
+type ExpectedAssetType = "sprite" | "atlas" | "tilemap" | "audio" | "particle" | "effect";
+type ExpectedAssetUsage = "gameplay" | "ui" | "decorative" | "audio";
+type ExpectedAssetManifestEntry = Readonly<{
+  type: ExpectedAssetType;
+  path: string;
+  required: boolean;
+  usage: ExpectedAssetUsage;
+  fallback?: string;
+  license?: string;
+  author?: string;
+  source?: string;
+}>;
+type ExpectedAssetManifest = Readonly<{
+  version: 1;
+  assets: Readonly<Record<string, ExpectedAssetManifestEntry>>;
+}>;
 type ExpectedLoadResult =
-  | Readonly<{ ok: true; definition: GameDefinition; runResult: ExpectedRunResult }>
+  | Readonly<{ ok: true; definition: GameDefinition; assetManifest: ExpectedAssetManifest; runResult: ExpectedRunResult }>
   | Readonly<{ ok: false; runResult: ExpectedRunResult }>;
 
 type ValidateContentContractAssertions = readonly [
@@ -114,6 +134,10 @@ type ValidateContentContractAssertions = readonly [
   AssertTrue<IsExactly<typeof formatValidateContentJson, (output: ValidateContentJsonOutput) => string>>,
   AssertTrue<IsExactly<typeof formatValidateContentHuman, (output: ValidateContentJsonOutput) => string>>,
   AssertTrue<IsExactly<ValidateContentSourcePaths, ExpectedSourcePaths>>,
+  AssertTrue<IsExactly<AssetType, ExpectedAssetType>>,
+  AssertTrue<IsExactly<AssetUsage, ExpectedAssetUsage>>,
+  AssertTrue<IsExactly<AssetManifestEntry, ExpectedAssetManifestEntry>>,
+  AssertTrue<IsExactly<AssetManifest, ExpectedAssetManifest>>,
   AssertTrue<IsExactly<LoadValidatedGameDefinitionResult, ExpectedLoadResult>>,
   AssertTrue<
     IsExactly<

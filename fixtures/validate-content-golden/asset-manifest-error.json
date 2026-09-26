@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1",
+  "contentRoot": "<content-root>",
+  "ok": false,
+  "diagnostics": [
+    {
+      "kind": "schema",
+      "code": "assetManifest.invalidShape",
+      "severity": "error",
+      "message": "asset path must be a base-relative path without a scheme, leading slash, backslash or . / .. segment",
+      "path": "<content-root>/assets/manifest.yaml",
+      "line": 20,
+      "column": 11,
+      "endLine": 20,
+      "endColumn": 20,
+      "schemaPath": "assetManifest.assets[\"shot.player_basic\"].path",
+      "sourceId": "shot.player_basic"
+    }
+  ],
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "infos": 0
+  }
+}
