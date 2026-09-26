@@ -3,9 +3,11 @@ import { isNamespacedId } from "../../content/identifier.ts";
 import { MAX_PLAYER_SHOT_LIFETIME_TICKS, MAX_STAGE_TIMELINE_STEPS } from "../../content/runtime-budgets.ts";
 import type { StageDefinition } from "../../content/types.ts";
 import type { RuntimeEntityState } from "../../entities/runtime-entity.ts";
+import { PATTERN_RUNNER_STATE_VERSION } from "../../patterns/pattern-runner.ts";
+import type { EnemyPatternRunner } from "../../patterns/pattern-runner.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
-import { isPositiveSafeInteger } from "../../shared/guards.ts";
+import { isNonNegativeSafeInteger, isPositiveSafeInteger } from "../../shared/guards.ts";
 import { compareUtf8Lexicographic } from "../../shared/utf8-order.ts";
 import { XorShift32 } from "../../simulation/prng.ts";
 import type { SerializedPrngState } from "../../simulation/prng.ts";
@@ -18,6 +20,7 @@ import {
   validateRestoreJsonPayload,
 } from "./restore-json.ts";
 import type { RestoreJsonBudget } from "./restore-json.ts";
+import type { RestorePatternRunnerStateInput } from "./pattern-fires.ts";
 import { validateRestoreRuntimeEntities } from "./runtime-entities.ts";
 import type { RestoreTopLevelState } from "./top-level-state.ts";
 
@@ -26,6 +29,11 @@ const MAX_RESTORE_RUNTIME_ENTITIES_LENGTH = 1
   + MAX_PLAYER_SHOT_LIFETIME_TICKS;
 
 const MAX_RESTORE_EXTENSION_STATES_LENGTH = 128;
+
+/** pattern runner は処理済み timeline から spawn した active enemy ごとに 1 つなので、timeline step 数を超えない。 */
+const MAX_RESTORE_PATTERN_RUNNER_STATES_LENGTH = MAX_STAGE_TIMELINE_STEPS;
+
+const RESTORE_PATTERN_RUNNER_PAYLOAD_KEYS = Object.freeze(["cursor", "waitRemaining"] as const);
 
 const RESTORE_PATTERN_RUNNER_STATE_KEYS = Object.freeze([
   "runnerId",
@@ -40,15 +48,13 @@ const RESTORE_ENABLED_FEATURE_STATE_KEYS = Object.freeze([
   "payload",
 ] as const satisfies ReadonlyArray<keyof SerializedEnabledFeatureState>);
 
-type ValidatedRestorePatternRunnerState = SerializedPatternRunnerState;
-
 type ValidatedRestoreEnabledFeatureState = SerializedEnabledFeatureState;
 
 export type ValidatedRestoreDeterministicPayload = Readonly<{
   activeEntities: readonly RuntimeEntityState[];
   enabledFeatureStates: readonly ValidatedRestoreEnabledFeatureState[];
   pendingEvents: readonly CommittedPendingEvent[];
-  patternRunnerStates: readonly ValidatedRestorePatternRunnerState[];
+  patternRunners: readonly EnemyPatternRunner[];
   score: number;
   timelineCursor: number;
 }>;
@@ -103,7 +109,7 @@ export function parseRestoreDeterministicPayload(
   const patternRunnerStates = cloneRestoreArray(
     record.value.patternRunnerStates,
     "state.patternRunnerStates",
-    MAX_RESTORE_EXTENSION_STATES_LENGTH,
+    MAX_RESTORE_PATTERN_RUNNER_STATES_LENGTH,
   );
   if (!patternRunnerStates.ok) {
     return patternRunnerStates;
@@ -147,9 +153,14 @@ export function parseRestoreDeterministicPayload(
   if (!pendingEventsContract.ok) {
     return pendingEventsContract;
   }
+  const patternRunnerStateContract = validateRestorePatternRunnerStates(patternRunnerStates.value);
+  if (!patternRunnerStateContract.ok) {
+    return patternRunnerStateContract;
+  }
   const runtimeEntitiesContract = validateRestoreRuntimeEntities(
     state,
     runtimeEntities.value,
+    patternRunnerStateContract.value,
     content,
     stage,
     record.value.timelineCursor,
@@ -157,33 +168,22 @@ export function parseRestoreDeterministicPayload(
   if (!runtimeEntitiesContract.ok) {
     return runtimeEntitiesContract;
   }
-  const extensionPayloadBudget = createRestoreJsonBudget();
-  const patternRunnerStateContract = validateRestorePatternRunnerStates(
-    patternRunnerStates.value,
-    extensionPayloadBudget,
-  );
-  if (!patternRunnerStateContract.ok) {
-    return patternRunnerStateContract;
-  }
   const enabledFeatureStateContract = validateRestoreEnabledFeatureStates(
     enabledFeatureStates.value,
-    extensionPayloadBudget,
+    createRestoreJsonBudget(),
   );
   if (!enabledFeatureStateContract.ok) {
     return enabledFeatureStateContract;
-  }
-  if (patternRunnerStates.value.length > 0) {
-    return coreError("state.featureMismatch", "state.patternRunnerStates require a compatible pattern runner module");
   }
   if (enabledFeatureStates.value.length > 0) {
     return coreError("state.featureMismatch", "state.enabledFeatureStates require enabled feature modules");
   }
 
   return okResult(Object.freeze({
-    activeEntities: runtimeEntitiesContract.value,
+    activeEntities: runtimeEntitiesContract.value.activeEntities,
     enabledFeatureStates: enabledFeatureStateContract.value,
     pendingEvents: pendingEventsContract.value,
-    patternRunnerStates: patternRunnerStateContract.value,
+    patternRunners: runtimeEntitiesContract.value.patternRunners,
     score: record.value.score,
     timelineCursor: record.value.timelineCursor,
   }));
@@ -232,13 +232,17 @@ function validateRestorePendingEvents(
   return okResult(Object.freeze([{ type: "stageStarted", tick: 0, stageId: state.stageId }]));
 }
 
-/** pattern runner extension state の shape、順序、payload JSON 互換性を検証する。 */
+/**
+ * pattern runner state の shape、順序、version と payload を検証する。
+ *
+ * payload は basic core の runner が持つ `cursor` と `waitRemaining` だけの plain object で、どちらも 0 以上の safe integer に
+ * 限る。enemy との対応と値の到達可能性は runtime entity の検証で確かめる。
+ */
 function validateRestorePatternRunnerStates(
   states: readonly unknown[],
-  budget: RestoreJsonBudget,
-): CoreResult<readonly ValidatedRestorePatternRunnerState[]> {
+): CoreResult<readonly RestorePatternRunnerStateInput[]> {
   let previousRunnerId: string | null = null;
-  const validatedStates: ValidatedRestorePatternRunnerState[] = [];
+  const validatedStates: RestorePatternRunnerStateInput[] = [];
   for (let index = 0; index < states.length; index += 1) {
     const state = cloneRestorePlainRecord(
       states[index],
@@ -261,19 +265,22 @@ function validateRestorePatternRunnerStates(
     if (!isPositiveSafeInteger(state.value.stateVersion)) {
       return coreError("state.invalidShape", "pattern runner stateVersion must be a positive safe integer");
     }
-    const payload = validateRestoreJsonPayload(
-      state.value.payload,
-      `state.patternRunnerStates[${index}].payload`,
-      budget,
-    );
+    if (state.value.stateVersion !== PATTERN_RUNNER_STATE_VERSION) {
+      return coreError("state.featureMismatch", "pattern runner stateVersion is not supported by the basic pattern runner");
+    }
+    const payloadPath = `state.patternRunnerStates[${index}].payload`;
+    const payload = cloneRestorePlainRecord(state.value.payload, payloadPath, RESTORE_PATTERN_RUNNER_PAYLOAD_KEYS);
     if (!payload.ok) {
       return payload;
     }
+    const { cursor, waitRemaining } = payload.value;
+    if (!isNonNegativeSafeInteger(cursor) || !isNonNegativeSafeInteger(waitRemaining)) {
+      return coreError("state.invalidShape", `${payloadPath} must have non-negative safe integer cursor and waitRemaining`);
+    }
     validatedStates.push(Object.freeze({
-      runnerId: state.value.runnerId as SerializedPatternRunnerState["runnerId"],
-      patternId: state.value.patternId as SerializedPatternRunnerState["patternId"],
-      stateVersion: state.value.stateVersion,
-      payload: payload.value,
+      runnerId: state.value.runnerId,
+      patternId: state.value.patternId,
+      state: Object.freeze({ cursor, waitRemaining }),
     }));
   }
 

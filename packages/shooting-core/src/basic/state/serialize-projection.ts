@@ -3,17 +3,25 @@ import { projectEnemyRuntimeEntityForSerializedState } from "../entities/enemy/s
 import { projectPlayerShotRuntimeEntityForSerializedState } from "../entities/player-shot/snapshot.ts";
 import { projectPlayerRuntimeEntityForSerializedState } from "../entities/player/snapshot.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
+import {
+  PATTERN_RUNNER_STATE_VERSION,
+  patternRunnerIdOfEnemy,
+  projectPatternRunnerPayload,
+} from "../patterns/pattern-runner.ts";
+import type { EnemyPatternRunner } from "../patterns/pattern-runner.ts";
 import { okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
 import type { StageSessionSerializationMetadata } from "../serialization/metadata.ts";
 import type {
   SerializedDeterministicState,
   SerializedGameState,
+  SerializedPatternRunnerState,
   SerializedPendingEvent,
   SerializedRuntimeEntityState,
 } from "../serialization/types.ts";
 import { assertNever } from "../shared/guards.ts";
 import { deepFreezeClone } from "../shared/immutable.ts";
+import { compareUtf8Lexicographic } from "../shared/utf8-order.ts";
 import { XorShift32 } from "../simulation/prng.ts";
 import { validateCommittedEntityInvariants, validateCommittedPendingEventInvariants } from "./committed-state.ts";
 import type { CommittedPendingEvent, UntrustedCommittedStageState } from "./committed-state.ts";
@@ -43,7 +51,9 @@ export function serializeCommittedStageState(
     pendingEvents: deterministicPendingEvents,
     score: committedState.score,
     timelineCursor: committedState.timelineCursor,
-    patternRunnerStates: [],
+    patternRunnerStates: committedState.patternRunners
+      .map((runner) => projectPatternRunnerForSerializedState(runner))
+      .sort((left, right) => compareUtf8Lexicographic(left.runnerId, right.runnerId)),
     enabledFeatureStates: [],
   };
 
@@ -76,6 +86,16 @@ function projectRuntimeEntityForSerializedState(entity: RuntimeEntityState): Ser
     case "playerShot":
       return projectPlayerShotRuntimeEntityForSerializedState(entity);
   }
+}
+
+/** enemy の pattern runner を public serialize 用 DTO に写す。 */
+function projectPatternRunnerForSerializedState(runner: EnemyPatternRunner): SerializedPatternRunnerState {
+  return {
+    runnerId: patternRunnerIdOfEnemy(runner.enemyId),
+    patternId: runner.patternId,
+    stateVersion: PATTERN_RUNNER_STATE_VERSION,
+    payload: projectPatternRunnerPayload(runner.state),
+  };
 }
 
 /**

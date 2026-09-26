@@ -7,11 +7,14 @@ import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import type { InputFrame } from "../input/input-frame.ts";
 import { consumeWorkingMutationFailureForTesting } from "../instrumentation/stage-session-testing-hooks.ts";
 import type { ActiveStageSessionTestingHooks } from "../instrumentation/stage-session-testing-hooks.ts";
+import { createEnemyPatternRunner } from "../patterns/pattern-runner.ts";
+import type { EnemyPatternRunner } from "../patterns/pattern-runner.ts";
 import type { CoreError, CoreResult } from "../result.ts";
 import { resolveCollisionAndScoring } from "../simulation/collision-system.ts";
 import { advanceEnemyBullets } from "../simulation/enemy-bullet-movement-system.ts";
-import { spawnEnemyBulletsOnSpawn } from "../simulation/enemy-bullet-system.ts";
+import { spawnEnemyBullets } from "../simulation/enemy-bullet-system.ts";
 import { advanceEnemyPaths } from "../simulation/enemy-path-system.ts";
+import { advanceEnemyPatterns } from "../simulation/enemy-pattern-system.ts";
 import { advancePlayerMovement } from "../simulation/player-movement-system.ts";
 import { advancePlayerShotLifecycle } from "../simulation/player-shot-lifecycle-system.ts";
 import { spawnPlayerShotFromInput } from "../simulation/player-shot-system.ts";
@@ -23,7 +26,7 @@ import type { CommittedStageState, WorkingStageState } from "../state/committed-
 /** tick pipeline が参照する load 済み content と、session の stage / player。 */
 export type StageTickContent = Pick<
   LoadedContentIndex,
-  "bulletsById" | "enemiesById" | "pathsById" | "patternsById" | "playerShotsById"
+  "bulletsById" | "enemiesById" | "pathsById" | "patternProgramsById" | "patternsById" | "playerShotsById"
 > & Readonly<{
   stage: StageDefinition;
   player: PlayerDefinition;
@@ -84,12 +87,35 @@ export function runStageTick(
     working.eventLog.push(event);
   }
   working.timelineCursor = timelineSpawn.value.timelineCursor;
+  for (const enemy of timelineSpawn.value.entities) {
+    if (content.patternProgramsById.has(enemy.patternId)) {
+      working.patternRunners.push(createEnemyPatternRunner(enemy.id, enemy.patternId));
+    }
+  }
+  const playerEntity = findPlayerEntity(working.activeEntities, content.player.id);
+  if (!playerEntity) {
+    return fatalTickOutcome([{ code: "player.notFound", message: `Player entity not found: ${content.player.id}` }]);
+  }
 
-  // system order の spawnBulletsPlayerShots。enemy pattern の弾生成を player shot より先に確定する。
-  const enemyBulletSpawn = spawnEnemyBulletsOnSpawn(
+  // system order の updateEnemyBehaviorPattern。spawn した tick の enemy も含め、runner を enemy id 順に進める。
+  const patternAdvance = advanceEnemyPatterns(
+    working.patternRunners,
+    working.activeEntities,
+    content.patternProgramsById,
+    content.bulletsById,
+    playerEntity.position,
+  );
+  if (!patternAdvance.ok) {
+    return fatalTickOutcome(patternAdvance.errors);
+  }
+  working.patternRunners = [...patternAdvance.value.runners];
+
+  // system order の spawnBulletsPlayerShots。fireOnSpawn と pattern の弾生成を player shot より先に確定する。
+  const enemyBulletSpawn = spawnEnemyBullets(
     working.entityAllocator,
     working.expectedTick,
     timelineSpawn.value.entities,
+    patternAdvance.value.bullets,
     content.patternsById,
     content.bulletsById,
     countActiveEnemyBullets(working.activeEntities),
@@ -104,10 +130,6 @@ export function runStageTick(
 
   // system order の spawnBulletsPlayerShots。pressed / held の shot intent を fire interval で間引く。
   const spawnedPlayerShotEntityIds = new Set<number>();
-  const playerEntity = findPlayerEntity(working.activeEntities, content.player.id);
-  if (!playerEntity) {
-    return fatalTickOutcome([{ code: "player.notFound", message: `Player entity not found: ${content.player.id}` }]);
-  }
   const playerShotDefinition = content.playerShotsById.get(playerEntity.shotDefinitionId);
   if (!playerShotDefinition) {
     return fatalTickOutcome([
@@ -163,6 +185,8 @@ export function runStageTick(
   }
   const resolvedEntities = collision.entities;
   const resolvedScore = collision.score;
+  // system order の cleanupDestroyedEntities。撃破や cleanup でいなくなった enemy の runner を破棄する。
+  const resolvedRunners = retainRunnersOfActiveEnemies(working.patternRunners, resolvedEntities);
 
   // PRNG はまだ event payload に出していないが、tick ごとの消費順を先に固定しておく。
   working.prng.nextUint32();
@@ -191,6 +215,7 @@ export function runStageTick(
 
   const committedState = createCommittedStageState({
     activeEntities: orderedEntities,
+    patternRunners: resolvedRunners,
     expectedTick: working.expectedTick + 1,
     nextEntityId: working.entityAllocator.snapshot(),
     pendingEvents: [],
@@ -237,6 +262,20 @@ function countActiveEnemyBullets(entities: readonly RuntimeEntityState[]): numbe
     }
   }
   return count;
+}
+
+/** active な enemy の runner だけを残す。 */
+function retainRunnersOfActiveEnemies(
+  runners: readonly EnemyPatternRunner[],
+  entities: readonly RuntimeEntityState[],
+): readonly EnemyPatternRunner[] {
+  const activeEnemyIds = new Set<number>();
+  for (const entity of entities) {
+    if (entity.kind === "enemy") {
+      activeEnemyIds.add(entity.id);
+    }
+  }
+  return runners.filter((runner) => activeEnemyIds.has(runner.enemyId));
 }
 
 /** working entity list 内の同一 ID entity を、更新済み immutable entity へ差し替える。 */

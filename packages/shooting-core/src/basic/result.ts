@@ -24,6 +24,7 @@ export type CoreErrorCode =
   | "input.invalidShape"
   | "input.tickMismatch"
   | "path.notFound"
+  | "pattern.budgetExceeded"
   | "pattern.notFound"
   | "player.defaultNotFound"
   | "player.notFound"

@@ -12,11 +12,21 @@ import {
 import { resolveEnemyBulletSpawnPosition, resolveEnemyBulletSpawnVelocity } from "../../simulation/enemy-bullet-system.ts";
 import { isOutsideEnemyCleanupBounds } from "../../simulation/enemy-path-system.ts";
 import { resolvePathRunnerAt } from "../../simulation/path-runner.ts";
+import {
+  countRestorePatternBullets,
+  createRestorePatternFireSource,
+  takeRestorePatternBullet,
+} from "./pattern-fires.ts";
+import type { RestorePatternFireSource } from "./pattern-fires.ts";
 import type { RestoreTopLevelState } from "./top-level-state.ts";
 
 export type RestoreSpawnBudget = Readonly<{
   enemySpawnCandidates: RestoreEnemySpawnCandidate[];
   enemyBulletCandidates: RestoreEnemyBulletCandidate[];
+  /** `steps` を持つ pattern で spawn した step の発射 source。spawn index の昇順。 */
+  patternFireSources: readonly RestorePatternFireSource[];
+  /** 消費済みの pattern 発射弾（spawn index、経過 tick、命令順、fan 順）。 */
+  consumedPatternBullets: Set<string>;
 }>;
 
 type RestoreEnemySpawnCandidate = Readonly<{
@@ -36,10 +46,19 @@ type RestoreEnemyBulletCandidate = Readonly<{
   velocity: Readonly<{ x: number; y: number }>;
 }>;
 
+/**
+ * active entity と一致した生成元。`allocationOrder` は同じ tick・同じ kind の中の採番順を辞書順で比べる数列で、enemy は
+ * spawn index、fireOnSpawn の敵弾は `[0, 候補 index]`、pattern の敵弾は `[1, spawn index, 命令順, fan 順]` になる。
+ */
 export type RestoreMatchedSpawn = Readonly<{
   id: number;
   tick: number;
-  allocationOrder: number;
+  allocationOrder: readonly number[];
+}>;
+
+/** 処理済み timeline step と一致した enemy。`spawnIndex` は timeline の spawnEnemy step の順番。 */
+export type RestoreMatchedEnemySpawn = RestoreMatchedSpawn & Readonly<{
+  spawnIndex: number;
 }>;
 
 export type RestoreMatchedPlayerShot = Readonly<{
@@ -52,9 +71,11 @@ export function createRestoreSpawnBudget(
   stage: StageDefinition,
   timelineCursor: number,
   content: LoadedContentIndex,
+  expectedTick: number,
 ): CoreResult<RestoreSpawnBudget> {
   const enemySpawnCandidates: RestoreEnemySpawnCandidate[] = [];
   const enemyBulletCandidates: RestoreEnemyBulletCandidate[] = [];
+  const patternFireSources: RestorePatternFireSource[] = [];
   for (let index = 0; index < timelineCursor; index += 1) {
     const step = stage.timeline[index];
     if (!step || step.action.type !== "spawnEnemy") {
@@ -72,6 +93,15 @@ export function createRestoreSpawnBudget(
     const pattern = content.patternsById.get(step.action.pattern);
     if (!pattern) {
       return coreError("state.registryInvalid", "stage timeline references an unknown pattern");
+    }
+    const program = content.patternProgramsById.get(pattern.id);
+    if (program) {
+      patternFireSources.push(createRestorePatternFireSource(
+        { spawnIndex: enemySpawnCandidates.length - 1, spawnTick: step.tick, spawnPosition: step.action.position },
+        program,
+        content.pathsById.get(step.action.path)?.segments ?? [],
+        expectedTick,
+      ));
     }
     if (pattern.fireOnSpawn) {
       const position = resolveEnemyBulletSpawnPosition(
@@ -93,18 +123,32 @@ export function createRestoreSpawnBudget(
     }
   }
 
-  return okResult(Object.freeze({ enemySpawnCandidates, enemyBulletCandidates }));
+  return okResult(Object.freeze({
+    enemySpawnCandidates,
+    enemyBulletCandidates,
+    patternFireSources: Object.freeze(patternFireSources),
+    consumedPatternBullets: new Set<string>(),
+  }));
 }
 
-/** nextEntityId が processed timeline と入力由来 shot の最大生成数から到達可能な範囲か検証する。 */
+/**
+ * nextEntityId が processed timeline、pattern の発射と入力由来 shot の最大生成数から到達可能な範囲か検証する。
+ *
+ * pattern の発射数は、enemy が撃破されずに path を終えるまで（または `expectedTick` まで）撃ち続けた場合の上限を使う。
+ */
 export function validateRestoreAllocationEnvelope(
   state: RestoreTopLevelState,
   spawnBudget: RestoreSpawnBudget,
 ): CoreResult<null> {
   const maxPlayerShotAllocations = state.expectedTick;
+  const maxPatternBulletAllocations = spawnBudget.patternFireSources.reduce(
+    (total, source) => total + countRestorePatternBullets(source),
+    0,
+  );
   const maxReachableNextEntityId = 2
     + spawnBudget.enemySpawnCandidates.length
     + spawnBudget.enemyBulletCandidates.length
+    + maxPatternBulletAllocations
     + maxPlayerShotAllocations;
   if (state.nextEntityId > maxReachableNextEntityId) {
     return coreError("state.invalidShape", "nextEntityId exceeds the deterministic allocation envelope");
@@ -124,7 +168,7 @@ export function consumeRestoreEnemySpawnBudget(
   enemy: EnemyRuntimeEntity,
   segments: readonly PathSegmentDefinition[],
   expectedTick: number,
-): CoreResult<RestoreMatchedSpawn> {
+): CoreResult<RestoreMatchedEnemySpawn> {
   const index = candidates.findIndex((candidate) => (
     candidate.definitionId === enemy.definitionId
     && candidate.pathId === enemy.pathId
@@ -142,7 +186,8 @@ export function consumeRestoreEnemySpawnBudget(
   return okResult(Object.freeze({
     id: enemy.id,
     tick: candidate.tick,
-    allocationOrder: candidate.allocationOrder,
+    allocationOrder: Object.freeze([candidate.allocationOrder]),
+    spawnIndex: candidate.allocationOrder,
   }));
 }
 
@@ -164,37 +209,62 @@ function isEnemyAtPathProgress(
 }
 
 /**
- * active enemyBullet が処理済み fireOnSpawn と同じ弾・速度から生成され、その生成 tick から動いた状態にあることを検証する。
+ * active enemyBullet が処理済み fireOnSpawn か pattern の発射と同じ弾・速度から生成され、その生成 tick から動いた状態にあることを
+ * 検証する。
  *
- * 生成位置と速度が spawn と一致し、`ageTicks` が生成 tick から `expectedTick` までの tick 数と、`position` が
- * `spawnPosition + velocity * ageTicks` と完全一致する spawn を選ぶ。等速直線運動の各座標は tick に対して単調なので、1 tick 目と
+ * 生成位置と速度が生成元と一致し、`ageTicks` が生成 tick から `expectedTick` までの tick 数と、`position` が
+ * `spawnPosition + velocity * ageTicks` と完全一致する生成元を選ぶ。等速直線運動の各座標は tick に対して単調なので、1 tick 目と
  * 現在の位置がどちらも cleanup 境界の内側なら途中でも内側にあり、cleanup されずに残る敵弾だけを受け付けられる。
  */
 export function consumeRestoreEnemyBulletBudget(
-  candidates: RestoreEnemyBulletCandidate[],
+  budget: RestoreSpawnBudget,
   bullet: EnemyBulletRuntimeEntity,
   expectedTick: number,
 ): CoreResult<RestoreMatchedSpawn> {
+  const match = isEnemyBulletAtAge(bullet)
+    ? takeFireOnSpawnBullet(budget.enemyBulletCandidates, bullet, expectedTick)
+      ?? takePatternBullet(budget, bullet, expectedTick)
+    : null;
+  if (!match) {
+    return coreError(
+      "state.invalidShape",
+      "enemy bullet runtime entity must move from a processed timeline spawn or pattern fire",
+    );
+  }
+  return okResult(match);
+}
+
+/** 処理済み spawn の pattern が撃った弾から一致する敵弾を 1 つ取り出す。 */
+function takePatternBullet(
+  budget: RestoreSpawnBudget,
+  bullet: EnemyBulletRuntimeEntity,
+  expectedTick: number,
+): RestoreMatchedSpawn | null {
+  const match = takeRestorePatternBullet(budget.patternFireSources, budget.consumedPatternBullets, bullet, expectedTick);
+  return match ? Object.freeze({ id: bullet.id, tick: match.fireTick, allocationOrder: match.allocationOrder }) : null;
+}
+
+/** 処理済み fireOnSpawn の候補から一致する敵弾を 1 つ取り出す。 */
+function takeFireOnSpawnBullet(
+  candidates: RestoreEnemyBulletCandidate[],
+  bullet: EnemyBulletRuntimeEntity,
+  expectedTick: number,
+): RestoreMatchedSpawn | null {
   const index = candidates.findIndex((candidate) => (
     candidate.definitionId === bullet.definitionId
     && isSameRestorePosition(candidate.position, bullet.spawnPosition)
     && isSameRestorePosition(candidate.velocity, bullet.velocity)
     && bullet.ageTicks === expectedTick - candidate.tick
-    && isEnemyBulletAtAge(bullet)
   ));
-  if (index === -1) {
-    return coreError("state.invalidShape", "enemy bullet runtime entity must move from a processed timeline spawn");
-  }
-  const [candidate] = candidates.splice(index, 1);
+  const [candidate] = index === -1 ? [] : candidates.splice(index, 1);
   if (!candidate) {
-    return coreError("state.invalidShape", "enemy bullet runtime entity must move from a processed timeline spawn");
+    return null;
   }
-
-  return okResult(Object.freeze({
+  return Object.freeze({
     id: bullet.id,
     tick: candidate.tick,
-    allocationOrder: candidate.allocationOrder,
-  }));
+    allocationOrder: Object.freeze([0, candidate.allocationOrder]),
+  });
 }
 
 /** 敵弾の位置が生成位置から `ageTicks` 動いた位置と一致し、1 tick 目から現在まで cleanup 境界の内側にあるかを返す。 */
@@ -253,10 +323,10 @@ function validateRestoreSameKindAllocationOrder(
   matches: readonly RestoreMatchedSpawn[],
   label: "enemy" | "enemy bullet",
 ): CoreResult<null> {
-  const latestOrderByTick = new Map<number, number>();
+  const latestOrderByTick = new Map<number, readonly number[]>();
   for (const match of matches) {
     const latestOrder = latestOrderByTick.get(match.tick);
-    if (latestOrder !== undefined && match.allocationOrder <= latestOrder) {
+    if (latestOrder !== undefined && compareAllocationOrderSequence(match.allocationOrder, latestOrder) <= 0) {
       return coreError("state.invalidShape", `${label} runtime entity ids must follow same-tick allocation order`);
     }
     latestOrderByTick.set(match.tick, match.allocationOrder);
@@ -288,7 +358,7 @@ function validateRestoreCrossTickAllocationOrder(
       id: shot.id,
       tick: shot.spawnTick,
       phase: 2,
-      allocationOrder: 0,
+      allocationOrder: Object.freeze([0]),
     })),
   ].sort((left, right) => left.id - right.id);
 
@@ -305,10 +375,21 @@ function validateRestoreCrossTickAllocationOrder(
 
 /** tick、system phase、同 phase 内 order の順で allocator 順序を比較する。 */
 function compareRestoreAllocationOrder(
-  left: Readonly<{ tick: number; phase: number; allocationOrder: number }>,
-  right: Readonly<{ tick: number; phase: number; allocationOrder: number }>,
+  left: Readonly<{ tick: number; phase: number; allocationOrder: readonly number[] }>,
+  right: Readonly<{ tick: number; phase: number; allocationOrder: readonly number[] }>,
 ): number {
   return left.tick - right.tick
     || left.phase - right.phase
-    || left.allocationOrder - right.allocationOrder;
+    || compareAllocationOrderSequence(left.allocationOrder, right.allocationOrder);
+}
+
+/** 同 phase 内の採番順の数列を辞書順で比べる。 */
+function compareAllocationOrderSequence(left: readonly number[], right: readonly number[]): number {
+  for (let index = 0; index < Math.min(left.length, right.length); index += 1) {
+    const difference = left[index]! - right[index]!;
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+  return left.length - right.length;
 }

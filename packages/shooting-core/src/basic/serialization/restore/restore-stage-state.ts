@@ -177,6 +177,7 @@ function toRestoreCommittedStageState(
 ): CommittedStageState {
   return createCommittedStageState({
     activeEntities: payload.activeEntities,
+    patternRunners: payload.patternRunners,
     expectedTick: state.expectedTick,
     nextEntityId: state.nextEntityId,
     pendingEvents: payload.pendingEvents,

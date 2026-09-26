@@ -11,8 +11,10 @@ import {
   validateRestoreInitialPlayerEntity,
   validateRestorePlayerRuntimeEntity,
 } from "../../entities/player/restore.ts";
+import type { EnemyRuntimeEntity } from "../../entities/enemy/model.ts";
 import { validateRestoreRuntimeEntityCommon } from "../../entities/restore-common.ts";
 import type { RuntimeEntityState } from "../../entities/runtime-entity.ts";
+import type { EnemyPatternRunner } from "../../patterns/pattern-runner.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
 import { assertNever } from "../../shared/guards.ts";
@@ -24,7 +26,9 @@ import {
   validateRestoreAllocationEnvelope,
   validateRestoreSameTickAllocationOrder,
 } from "./allocation-order.ts";
-import type { RestoreMatchedPlayerShot, RestoreMatchedSpawn } from "./allocation-order.ts";
+import type { RestoreMatchedEnemySpawn, RestoreMatchedPlayerShot, RestoreMatchedSpawn } from "./allocation-order.ts";
+import { validateRestorePatternRunners } from "./pattern-fires.ts";
+import type { RestorePatternRunnerStateInput } from "./pattern-fires.ts";
 import type { RestoreTopLevelState } from "./top-level-state.ts";
 
 /** kind 別の restore key 一覧。kind を追加したら型検査がここへの登録を要求する。 */
@@ -40,15 +44,22 @@ const RESTORE_RUNTIME_ENTITY_ALL_KEYS = Object.freeze([
   ...new Set(RUNTIME_ENTITY_KINDS.flatMap((kind) => RESTORE_RUNTIME_ENTITY_KEYS_BY_KIND[kind])),
 ]);
 
-/** runtimeEntities の ID order、kind 別 shape、registry reference を検証する。 */
+/** 検証済みの active entity と、active enemy の pattern runner。 */
+export type ValidatedRestoreRuntimeEntities = Readonly<{
+  activeEntities: readonly RuntimeEntityState[];
+  patternRunners: readonly EnemyPatternRunner[];
+}>;
+
+/** runtimeEntities の ID order、kind 別 shape、registry reference と、enemy ごとの pattern runner state を検証する。 */
 export function validateRestoreRuntimeEntities(
   state: RestoreTopLevelState,
   entities: readonly unknown[],
+  patternRunnerStates: readonly RestorePatternRunnerStateInput[],
   content: LoadedContentIndex,
   stage: StageDefinition,
   timelineCursor: number,
-): CoreResult<readonly RuntimeEntityState[]> {
-  const spawnBudget = createRestoreSpawnBudget(stage, timelineCursor, content);
+): CoreResult<ValidatedRestoreRuntimeEntities> {
+  const spawnBudget = createRestoreSpawnBudget(stage, timelineCursor, content, state.expectedTick);
   if (!spawnBudget.ok) {
     return spawnBudget;
   }
@@ -59,7 +70,8 @@ export function validateRestoreRuntimeEntities(
   let previousEntityId = 0;
   let playerEntityCount = 0;
   let matchingPlayerEntityCount = 0;
-  const activeEnemyMatches: RestoreMatchedSpawn[] = [];
+  const activeEnemyMatches: RestoreMatchedEnemySpawn[] = [];
+  const activeEnemies: EnemyRuntimeEntity[] = [];
   const activeEnemyBulletMatches: RestoreMatchedSpawn[] = [];
   const activePlayerShotMatches: RestoreMatchedPlayerShot[] = [];
   const activeEntities: RuntimeEntityState[] = [];
@@ -112,6 +124,7 @@ export function validateRestoreRuntimeEntities(
           return budget;
         }
         activeEnemyMatches.push(budget.value);
+        activeEnemies.push(enemy.value);
         activeEntities.push(enemy.value);
         break;
       }
@@ -120,11 +133,7 @@ export function validateRestoreRuntimeEntities(
         if (!bullet.ok) {
           return bullet;
         }
-        const budget = consumeRestoreEnemyBulletBudget(
-          spawnBudget.value.enemyBulletCandidates,
-          bullet.value,
-          state.expectedTick,
-        );
+        const budget = consumeRestoreEnemyBulletBudget(spawnBudget.value, bullet.value, state.expectedTick);
         if (!budget.ok) {
           return budget;
         }
@@ -159,6 +168,22 @@ export function validateRestoreRuntimeEntities(
   if (!sameTickOrder.ok) {
     return sameTickOrder;
   }
+  const patternRunners = validateRestorePatternRunners(
+    patternRunnerStates,
+    activeEnemies.map((enemy, index) => ({
+      enemy,
+      spawnIndex: activeEnemyMatches[index]!.spawnIndex,
+      spawnTick: activeEnemyMatches[index]!.tick,
+    })),
+    new Map(spawnBudget.value.patternFireSources.map((source) => [source.spawnIndex, source])),
+    state.expectedTick,
+  );
+  if (!patternRunners.ok) {
+    return patternRunners;
+  }
 
-  return okResult(Object.freeze(activeEntities));
+  return okResult(Object.freeze({
+    activeEntities: Object.freeze(activeEntities),
+    patternRunners: patternRunners.value,
+  }));
 }

@@ -3,7 +3,18 @@ import { projectEnemyRuntimeEntityForHashableState } from "../entities/enemy/sna
 import { projectPlayerShotRuntimeEntityForHashableState } from "../entities/player-shot/snapshot.ts";
 import { projectPlayerRuntimeEntityForHashableState } from "../entities/player/snapshot.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
-import type { HashableGameState, HashablePendingEvent, HashableRuntimeEntityState } from "../hash/hashable-state.ts";
+import type {
+  HashableGameState,
+  HashablePatternRunnerState,
+  HashablePendingEvent,
+  HashableRuntimeEntityState,
+} from "../hash/hashable-state.ts";
+import {
+  PATTERN_RUNNER_STATE_VERSION,
+  patternRunnerIdOfEnemy,
+  projectPatternRunnerPayload,
+} from "../patterns/pattern-runner.ts";
+import type { EnemyPatternRunner } from "../patterns/pattern-runner.ts";
 import { okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
 import type { StageSessionSerializationMetadata } from "../serialization/metadata.ts";
@@ -42,7 +53,7 @@ export function createHashableGameState(
     score: committedState.score,
     runtimeEntities: committedState.activeEntities.map((entity) => projectRuntimeEntityForHashableState(entity)),
     pendingEvents: pendingEvents.value.map((event) => projectPendingEventForHashableState(event)),
-    patternRunnerStates: [],
+    patternRunnerStates: committedState.patternRunners.map((runner) => projectPatternRunnerForHashableState(runner)),
     enabledFeatureStates: [],
   }));
 }
@@ -59,6 +70,16 @@ function projectRuntimeEntityForHashableState(entity: RuntimeEntityState): Hasha
     case "playerShot":
       return projectPlayerShotRuntimeEntityForHashableState(entity);
   }
+}
+
+/** enemy の pattern runner から hash 専用 DTO へ写す。canonical order への並べ替えは hash adapter が行う。 */
+function projectPatternRunnerForHashableState(runner: EnemyPatternRunner): HashablePatternRunnerState {
+  return {
+    runnerId: patternRunnerIdOfEnemy(runner.enemyId),
+    patternId: runner.patternId,
+    stateVersion: PATTERN_RUNNER_STATE_VERSION,
+    payload: projectPatternRunnerPayload(runner.state),
+  };
 }
 
 /**

@@ -14,7 +14,8 @@ type EnemyBulletSpawnEventItem = Readonly<{
   position: EnemyBulletRuntimeEntity["position"];
 }>;
 
-type EnemyBulletSpawnPlan = Readonly<{
+/** 生成する敵弾 1 発の定義、生成位置、速度。 */
+export type EnemyBulletSpawnPlan = Readonly<{
   bullet: BulletDefinition;
   position: EnemyBulletRuntimeEntity["position"];
   velocity: EnemyBulletRuntimeEntity["velocity"];
@@ -30,15 +31,17 @@ export type EnemyBulletSpawnResult = Readonly<{
 }>;
 
 /**
- * spawn 直後の enemy pattern から敵弾を 1 batch 生成する。
+ * その tick の敵弾を 1 batch 生成する（design 7.1 の spawn substep）。
  *
- * pattern DSL 全体はまだ実行せず、`fireOnSpawn` だけを deterministic な enemy bullet 生成経路として扱う。生成すると active な
- * enemy bullet が `MAX_ACTIVE_ENEMY_BULLETS` を超える場合は、entity を落とさず error を返し、呼び出し側で fatal として扱う。
+ * spawn した enemy の `fireOnSpawn` を timeline order で先に並べ、その後に pattern runner が撃つ `patternBullets`（runner の enemy id
+ * 順）を続けて採番する。生成すると active な enemy bullet が `MAX_ACTIVE_ENEMY_BULLETS` を超える場合は、entity を落とさず error を返し、
+ * 呼び出し側で fatal として扱う。
  */
-export function spawnEnemyBulletsOnSpawn(
+export function spawnEnemyBullets(
   allocator: EntityAllocator,
   tick: number,
   spawnedEnemies: readonly EnemyRuntimeEntity[],
+  patternBullets: readonly EnemyBulletSpawnPlan[],
   patternsById: ReadonlyMap<string, PatternDefinition>,
   bulletsById: ReadonlyMap<string, BulletDefinition>,
   activeEnemyBulletCount: number,
@@ -71,6 +74,7 @@ export function spawnEnemyBulletsOnSpawn(
     }));
   }
 
+  plans.push(...patternBullets);
   if (plans.length === 0) {
     return okResult(null);
   }

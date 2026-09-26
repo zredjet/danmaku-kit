@@ -362,11 +362,13 @@ system order は replay determinism の一部として扱い、Core の major ve
 
 `spawn bullets / player shots` の内訳は以下に固定する。
 
-1. Stage timeline で同 tick に生成された enemy の `fireOnSpawn` を timeline order に従って解決し、`enemyBulletsSpawnedBatch` を生成する。
+1. Stage timeline で同 tick に生成された enemy の `fireOnSpawn` を timeline order に従って解決し、続けて `update enemy behavior / pattern` で pattern runner が撃つと決めた弾を runner の enemy id 昇順（同じ enemy の中は命令順、fan 順）に並べ、1 つの `enemyBulletsSpawnedBatch` として生成する。
 2. player の `pressed` / `held` shot intent を `fire.intervalTicks` で間引き、`playerShotsSpawnedBatch` を生成する。
 
 したがって同 tick に enemy spawn、enemy bullet、player shot が重なる場合の spawn substep 内 event order は `entitySpawned`、`enemyBulletsSpawnedBatch`、`playerShotsSpawnedBatch` とする。collision / scoring が発生する場合は、その後に `playerHit`、`entityDestroyed`、`scoreChanged` を collision resolution order で追加し、最後に `tickAdvanced` を出す。
 tick 0 の `stageStarted` は system order 外の pending lifecycle event として frame 先頭に drain される。
+
+`update enemy behavior / pattern` では、`steps` を持つ pattern の enemy ごとの pattern runner を enemy id 昇順に 1 tick 進める（Phase 2A-5）。runner は enemy を spawn した tick の timeline 処理で作り、その tick から進める。発射元はその tick の移動前の enemy 位置、`aim: player` はその tick の移動前の自機位置へ向ける。runner は enemy が撃破か cleanup でいなくなった tick の `cleanup destroyed entities` で破棄し、撃った弾は残す。
 
 `update movement` では player を入力で、enemy を path で、enemy bullet を velocity で、player shot を projectile 定義で進める。敵弾の生成位置は spawn substep で決まるため、spawn tick に path で動いた enemy でも `fireOnSpawn` は spawn 位置を基準にし、生成した敵弾はその tick から動く。`update lifetime` では寿命の切れた player shot、path を終えて cleanup 境界の外にいる enemy、cleanup 境界の外に出た enemy bullet を event なしで取り除く。
 
@@ -604,9 +606,7 @@ fireOnSpawn:
   velocity: { x: 0, y: 3 }
 ```
 
-`fireOnSpawn` は Stage timeline で enemy が生成された tick の `spawn bullets / player shots` step 内で player shot より先に解決し、`enemyBulletsSpawnedBatch` event と `EnemyBulletRuntimeEntity` を生成する。`offset` は enemy の spawn position からの相対座標である。`velocity` は敵弾の速度（px / tick）で、省略した敵弾は動かない。敵弾は生成した tick の update movement から動き、位置は毎 tick `spawnPosition + velocity * ageTicks`（`ageTicks` は生成から動いた tick 数）として求め直して加算誤差を積まない。swept collision を導入するまでは、1 tick の移動量が自機と敵弾の判定半径の合計を大きく超えてすり抜けないよう、content validation で `velocity` を axis ごとに ±8 px/tick に制限する。敵弾は中心が playfield を 32 px の余白より外れた tick の update lifetime で event を出さずに取り除く。`wait`、`loop`、`aim`、`fan`、speed を含む本来の Pattern DSL は Phase 2A 以降で `PatternProgram` として追加する。
-
-将来の DSL 例:
+`fireOnSpawn` は Stage timeline で enemy が生成された tick の `spawn bullets / player shots` step 内で player shot より先に解決し、`enemyBulletsSpawnedBatch` event と `EnemyBulletRuntimeEntity` を生成する。`offset` は enemy の spawn position からの相対座標である。`velocity` は敵弾の速度（px / tick）で、省略した敵弾は動かない。敵弾は生成した tick の update movement から動き、位置は毎 tick `spawnPosition + velocity * ageTicks`（`ageTicks` は生成から動いた tick 数）として求め直して加算誤差を積まない。swept collision を導入するまでは、1 tick の移動量が自機と敵弾の判定半径の合計を大きく超えてすり抜けないよう、content validation で `velocity` を axis ごとに ±8 px/tick に制限する。敵弾は中心が playfield を 32 px の余白より外れた tick の update lifetime で event を出さずに取り除く。Phase 2A-5 で `wait`、`fire`、`loop` の命令列 `steps` を追加した（design 10 の PatternProgram）。`steps` と `fireOnSpawn` は 1 つの pattern で同時に指定できず、既存 content の `fireOnSpawn` はそのまま使える。
 
 ```yaml
 id: pattern.scout_three_way
@@ -624,6 +624,8 @@ steps:
   - wait: 50
   - loop: 0
 ```
+
+各 step は `wait`、`fire`、`loop` のどれか 1 つの key だけを持つ。`fire` は `bullet`、`speed`（px / tick、0 より大きく 8 以下）と、向きとして `aim: player` か `angleDeg`（+x を 0°、+y へ回る向きを正とする -360〜360 の 0.25° の倍数）のどちらか一方を持ち、省略できる `origin` は発射する enemy 自身を表す `self` だけを受け付ける。`fan` は `count` 発（1〜64）を基準の向きを中心に並べ、`spreadDeg`（0〜360）は最初と最後の弾の間の角度とする。各弾は基準から `-spread / 2 + i * spread / (count - 1)` だけずれるため、すべての弾が 0.25° 刻みに載るよう、広がりの step 数が 2 と `count - 1` で割り切れることを validation で要求する（`count` が 1 なら `spreadDeg` は 0）。`loop` は前の step の index へ戻り、戻り先から loop までの間に `wait` を含む必要がある。1 pattern の step は 1〜64 個、`wait` は 1〜3,600 tick に制限する。`repeat`、`parallel`、`if`、`randomSpread` は Phase 2B の DSL で扱う。
 
 ### 9.7 Enemy Bullet 定義例
 
@@ -786,6 +788,14 @@ Affinity feature を有効にする Player は、`initialAffinity` と `availabl
 - tick 中の sine / cosine は `simulation/sine-table.ts` の表だけから引き、host の `Math.sin` / `Math.cos` / `Math.atan2` を使わない。表は `packages/shooting-core/scripts/generate-sine-table.mjs`（`npm run generate-sine-table`）が 0〜90° の 361 entry を `round(sin(step * π / 720) * 2^30)` の整数として生成し、生成した整数 literal を正本として commit する。host の `Math.sin` は生成時にだけ使い、丸めは生成時の `Math.round` だけとする。tick は表を補間せずに引き、90° より先は対称性で広げる（sin 0° / 30° / 90° は 0 / 1/2 / 1 に一致し、180° は -0 にしない）。表の golden entry と checksum、対称性は test で固定する。
 - `aim: player` の向きは、発射元から自機への差分 vector に最も近い角度 step へそろえる（`angleStepsOfVector()`）。`Math.atan2` は使わず、0〜90° の表の方向との外積の符号で二分探索し、隣り合う 2 step のうち内積が大きい方を選ぶ（四則演算と比較だけ）。差分が零なら真下を向く。狙いも固定角度も整数 step で表すので、敵弾の速度は常に表の `(cos, sin) * speed` になり、各成分は `speed` を超えない。fan は基準 step に各弾の step 差を足して作る。ECMAScript は `Math.sqrt` を正確な平方根の丸め（𝔽）と定めているので Core で使ってよいが、`Math.hypot` と三角関数・指数関数は implementation-approximated なので使わない。
 - `tests/deterministic-math.test.mjs` が Core の非 test source に implementation-approximated な `Math` function と `**` 演算子（`Number::exponentiate` も implementation-approximated）が現れないことを検査する。
+
+PatternProgram の最小 command subset（Phase 2A-5）:
+
+- load 時に `steps` を `PatternProgram`（`patterns/pattern-program.ts`）へ正規化する。角度と fan は整数 step にし、runner が止まる位置（cursor）ごとに、次の `wait` か末尾まで実行する命令のまとまり（run）の発射命令、弾数、実行命令数、次の cursor と待ち tick 数を 1 度だけ求める。命令列に分岐や乱数はないため、tick と restore は同じ run を引く。
+- runner state は cursor と `waitRemaining`（次の run までに進める tick 数）だけを持つ。runner は enemy を spawn した tick から毎 tick、待ちが 2 tick 以上残っていれば 1 減らし、それ以外は cursor から run を実行する。`wait: N` で止まった run の次の run は N tick 後に実行する。末尾まで実行した runner は cursor を命令数にして止まる。
+- `loop` の戻り先から loop までの間に `wait` があることを validation で保証するため、戻るたびに次に当たる loop の位置が前へ進み、1 回の run は必ず `wait` か末尾で止まる（静的に検出できる無限ループの拒否、design 21.3）。
+- 発射命令は、基準の向き（`angleDeg` の step か、自機への向きに最も近い step）に fan の step 差を足した向きの表の単位 vector に `speed` を掛けて敵弾の速度にする。発射元は enemy の移動前の位置で、敵弾は生成した tick から動く。
+- 1 tick に全 runner が実行した命令数が 2,000（design 14 の pattern commands / tick）を超えたら `pattern.budgetExceeded` を `stageSession.fatal` に latch する。敵弾数は `enemyBullet.budgetExceeded` の上限で守る。
 
 斑鳩系の属性切替を入れる場合は、弾と敵に `affinity` を持たせる。
 
@@ -957,7 +967,7 @@ Phase 2B 追加 budget:
 | --- | --- |
 | pickup | 300 |
 
-Phase 1A では object pool はまだ実装せず、deterministic な ID 採番、batch 上限、immutable snapshot の契約を先に固定する。`fireOnSpawn` で保証する budget は同 tick の spawn 数と batch allocation の失敗時 rollback までとする。Phase 2A-3 で active enemy bullet 2,000 の上限を runtime policy として固定した。敵弾を生成すると active な敵弾が 2,000 を超える tick は、敵弾を 1 発も生成せず（entity id も消費せず）`enemyBullet.budgetExceeded` を内部 error として `stageSession.fatal` に latch する。無音で弾を落とすと replay と見た目が食い違うため、上限は content 側で守る。restore も 2,000 を超える敵弾を持つ snapshot を拒否する。Phase 2B 以降で負荷が見えた段階で、Core は bullet、shot と event builder に object pool を導入し、tick 中の一時 allocation を避ける。Pickup feature は pickup pool を feature module 側で持つ。ただし `GameFrame.events` として返す event はコピー済み immutable value とし、次 tick の pool 再利用で過去 frame が変化しないようにする。上限超過時は dev では hard error、本番では stage load error または content error として扱い、無音で entity を落とさない。
+Phase 1A では object pool はまだ実装せず、deterministic な ID 採番、batch 上限、immutable snapshot の契約を先に固定する。`fireOnSpawn` で保証する budget は同 tick の spawn 数と batch allocation の失敗時 rollback までとする。Phase 2A-3 で active enemy bullet 2,000 の上限を runtime policy として固定した。敵弾を生成すると active な敵弾が 2,000 を超える tick は、敵弾を 1 発も生成せず（entity id も消費せず）`enemyBullet.budgetExceeded` を内部 error として `stageSession.fatal` に latch する。無音で弾を落とすと replay と見た目が食い違うため、上限は content 側で守る。restore も 2,000 を超える敵弾を持つ snapshot を拒否する。Phase 2A-5 で pattern commands / tick 2,000 も runtime policy として固定した。全 pattern runner が 1 tick に実行する命令数が 2,000 を超える tick は、敵弾を生成せず `pattern.budgetExceeded` を `stageSession.fatal` に latch する。Phase 2B 以降で負荷が見えた段階で、Core は bullet、shot と event builder に object pool を導入し、tick 中の一時 allocation を避ける。Pickup feature は pickup pool を feature module 側で持つ。ただし `GameFrame.events` として返す event はコピー済み immutable value とし、次 tick の pool 再利用で過去 frame が変化しないようにする。上限超過時は dev では hard error、本番では stage load error または content error として扱い、無音で entity を落とさない。
 
 大量発生する弾生成は per-bullet の simulation event にしない。Simulation event では `enemyBulletsSpawnedBatch` のような batch event を使い、render 用には別 stream の render event を生成する。Render event は budget 超過時に集約 event へ畳めるが、Simulation event と replay/state hash は変化させない。
 
@@ -1548,6 +1558,10 @@ Runtime は `tick()` の戻り値に含まれる `GameFrame.events` を読んで
 
 `SerializedPatternRunnerState.payload` と `SerializedEnabledFeatureState.payload` は public な `SerializedJsonValue` だけを許可し、state hash では canonical encoding の対象にする。`number` は finite number のみ有効とし、`NaN` / `Infinity` は restore validation で `state.invalidShape` にする。hash では `-0` を `+0` に正規化し、finite number を IEEE-754 binary64 little-endian bytes として encode する。string は lone surrogate を含む場合に `state.invalidShape` として拒否し、payload の object key は UTF-8 byte sequence の lexicographic order で正規化する。module ごとの `stateVersion` は正の safe integer とし、未対応 version は module ごとの互換性 error で拒否する。Phase 1B-3 は型境界だけを固定し、basic core が実際に `patternRunnerStates: []` と `enabledFeatureStates: []` を出力する処理は Phase 1B-4 の serialize 実装で追加する。restore 時の top-level `enabledFeatures` と feature state の整合検証は Phase 1B-5 で扱う。
 
+Phase 2A-5 で basic core の pattern runner が `patternRunnerStates` を出力するようにした。`steps` を持つ pattern で動く active enemy ごとに 1 件で、`runnerId` は `patternRunner.enemy.<entity id>`、`patternId` は enemy の pattern、`stateVersion` は 1、`payload` は `{ cursor, waitRemaining }`（design 10 の runner state、0 以上の safe integer）とする。state hash の byte 列の定義は変わらず、`steps` を使わない content の state hash も変わらないため、`stateHashVersion` は 3 のままにした。restore は pattern runner の payload を汎用の JSON guard ではなく module の形（`cursor` と `waitRemaining` だけの plain object）で検証し、未対応の `stateVersion` を `state.featureMismatch`、それ以外の不一致を `state.invalidShape` にする。runner の件数上限は timeline step 数（4,096）とする。runner は `steps` を持つ pattern で動く active enemy ごとにちょうど 1 つ必要で、spawn tick から `expectedTick` まで進めた runner と完全一致しなければならない。restore は run を始める cursor の列が命令数 + 1 回以内に繰り返しに入ることを使い、tick を 1 つずつ進めずに run の時刻表から runner と発射を求める（`patterns/pattern-schedule.ts`）。
+
+pattern が撃った敵弾の restore は、生成 tick（`expectedTick - ageTicks`）に処理済み spawn の runner が run を実行し、生成位置がその tick の移動前の enemy 位置（spawn 位置から path を進めた位置）と一致し、弾の定義と fan の何発目かまで一致する発射を 1 度だけ消費する。固定角度の弾は速度まで完全一致を要求する。`aim: player` の向きは発射した tick の自機位置で決まり、自機の位置は入力の履歴によるため snapshot から求め直せない。そのため aim の弾は、表のどれかの向きに `speed` を掛けた速度であることだけを確かめる。撃破された tick も snapshot から分からないため、enemy がいない spawn の弾も、path を終えて cleanup される tick（cleanup されない enemy は `expectedTick - 1`）までの発射として受け付ける。同じ tick の敵弾の採番順は fireOnSpawn、pattern（enemy の spawn 順、命令順、fan 順）の順に検証し、`nextEntityId` の到達可能性の上限には enemy が撃破されずに撃ち続けた場合の pattern の発射数を加える。
+
 Core API は transactional とする。現在実装済みの `load()`、`startStage()`、`restore()` は成功時だけ新しい handle を返し、失敗時に既存の `LoadedGame` / `StageSession` を部分更新しない。Phase 1B-5A の `restore()` は top-level metadata と互換性 error boundary を固定し、Phase 1B-5B は compatible snapshot の deterministic payload を validate / convert / re-serialize して accepted committed state の前段まで確認した。Phase 1B-5D では compatible snapshot から `StageSession` を返し、restore 直後の serialize と後続 tick が元 session と一致することを固定した。post-1B replay playback で追加する `createReplayPlayback()` / `restoreReplayPlayback()` も同じ方針にする。Core version は `ShootingCore.coreVersion` が持ち、content が申告する値ではない。`StageSession.tick()` は session 内の `expectedTick` を持ち、`input.tick !== expectedTick`、重複 tick、欠番 tick を caller precondition error として返すが、session を fatal にしない。Runtime は dropped tick を replay 入力として補完せず、実際に Simulation へ渡した `InputFrame` だけを保存する。
 
 `ContentRegistry` は外部データの参照関係を検証する境界でもある。`content.version` は単なる title 内の連番ではなく、title / content pack をまたいで一意な immutable release identity とし、異なる content payload に同じ値を再利用しない。Stage の `music`、`background`、timeline 内の `enemy` と `path`、`clearCondition.bossDefeated.enemy`、Enemy の `asset`、`behavior.pattern`、Boss phase の `phases[].pattern`、Pattern の `fireOnSpawn.bullet`、Bullet/Player/PlayerShot の `asset` はすべて registry 経由で解決し、未定義 ID を schema test で検出する。Feature registry が登録された場合だけ、Pickup、Bomb、Affinity、Rank、advanced scoring の参照を追加検証する。
@@ -1726,6 +1740,8 @@ type PatternProgram = {
 - `parallel` の branch 数と同時生成弾数は上限以内である。
 - 静的に検出できる無限ループは validation error にする。
 - 静的に判定できないループは runtime budget を持ち、1 tick 内の pattern command 実行数が上限を超えたら content error として停止する。
+
+Phase 2A-5 の最小 subset（`wait` / `fire` / `loop`）では、`loop` が前の step へだけ戻り、戻り先から loop までの間に `wait` を含むことを validation で要求して静的な無限ループを拒否する。1 tick の命令数は 2,000 を runtime budget とし、超えた tick は `pattern.budgetExceeded` の fatal にする。
 
 ### 21.4 Golden Test
 

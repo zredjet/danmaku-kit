@@ -83,6 +83,7 @@ export function createLoadedGame(
       // stageStarted は最初の GameFrame で renderer/debug が初期状態を同期するための event。
       const initialState = createCommittedStageState({
         activeEntities: [playerEntity.value],
+        patternRunners: [],
         expectedTick: 0,
         nextEntityId: entityAllocator.snapshot(),
         pendingEvents: [{ type: "stageStarted", tick: 0, stageId: stage.id }],
@@ -127,6 +128,7 @@ function createStageSessionFromContent(
       enemiesById: content.enemiesById,
       pathsById: content.pathsById,
       patternsById: content.patternsById,
+      patternProgramsById: content.patternProgramsById,
       playerShotsById: content.playerShotsById,
       stage,
       player,

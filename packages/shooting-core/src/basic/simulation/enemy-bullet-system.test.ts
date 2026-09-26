@@ -3,19 +3,20 @@ import test from "node:test";
 
 import type { BulletDefinition, PatternDefinition } from "../content/types.ts";
 import { EntityAllocator } from "./entity.ts";
-import { spawnEnemyBulletsOnSpawn } from "./enemy-bullet-system.ts";
+import { spawnEnemyBullets } from "./enemy-bullet-system.ts";
 import { createPathRunnerState } from "./path-runner.ts";
 import type { EnemyRuntimeEntity } from "../entities/enemy/model.ts";
 
 test("spawns enemy bullets from fireOnSpawn patterns in enemy order", () => {
   const allocator = new EntityAllocator();
-  const result = spawnEnemyBulletsOnSpawn(
+  const result = spawnEnemyBullets(
     allocator,
     4,
     [
       createEnemy({ id: 10, patternId: "pattern.fire_a", position: { x: 100, y: 50 } }),
       createEnemy({ id: 11, patternId: "pattern.fire_b", position: { x: 200, y: 70 } }),
     ],
+    [],
     new Map([
       ["pattern.fire_a", createPattern("pattern.fire_a", "bullet.red_small", { x: 1, y: 2 })],
       ["pattern.fire_b", createPattern("pattern.fire_b", "bullet.blue_small", { x: -4, y: 8 }, { x: 1, y: 3 })],
@@ -101,10 +102,11 @@ test("spawns enemy bullets from fireOnSpawn patterns in enemy order", () => {
 
 test("returns null without consuming ids when no fireOnSpawn pattern exists", () => {
   const allocator = new EntityAllocator();
-  const result = spawnEnemyBulletsOnSpawn(
+  const result = spawnEnemyBullets(
     allocator,
     0,
     [createEnemy({ id: 10, patternId: "pattern.none", position: { x: 100, y: 50 } })],
+    [],
     new Map([["pattern.none", Object.freeze({ id: "pattern.none", version: 1 })]]),
     new Map([["bullet.red_small", createBullet("bullet.red_small")]]),
     0,
@@ -117,13 +119,14 @@ test("returns null without consuming ids when no fireOnSpawn pattern exists", ()
 
 test("skips non-firing enemies and spawns later fireOnSpawn bullets", () => {
   const allocator = new EntityAllocator();
-  const result = spawnEnemyBulletsOnSpawn(
+  const result = spawnEnemyBullets(
     allocator,
     2,
     [
       createEnemy({ id: 10, patternId: "pattern.none", position: { x: 100, y: 50 } }),
       createEnemy({ id: 11, patternId: "pattern.fire", position: { x: 200, y: 70 } }),
     ],
+    [],
     new Map([
       ["pattern.none", Object.freeze({ id: "pattern.none", version: 1 })],
       ["pattern.fire", createPattern("pattern.fire", "bullet.red_small", { x: -4, y: 8 })],
@@ -149,13 +152,14 @@ test("skips non-firing enemies and spawns later fireOnSpawn bullets", () => {
 
 test("does not consume ids when a later enemy bullet reference fails", () => {
   const allocator = new EntityAllocator();
-  const result = spawnEnemyBulletsOnSpawn(
+  const result = spawnEnemyBullets(
     allocator,
     0,
     [
       createEnemy({ id: 10, patternId: "pattern.valid", position: { x: 100, y: 50 } }),
       createEnemy({ id: 11, patternId: "pattern.missing_bullet", position: { x: 200, y: 70 } }),
     ],
+    [],
     new Map([
       ["pattern.valid", createPattern("pattern.valid", "bullet.red_small", { x: 1, y: 2 })],
       ["pattern.missing_bullet", createPattern("pattern.missing_bullet", "bullet.missing", { x: 0, y: 0 })],
@@ -171,10 +175,11 @@ test("does not consume ids when a later enemy bullet reference fails", () => {
 
 test("does not consume ids when an enemy pattern reference is missing", () => {
   const allocator = new EntityAllocator();
-  const result = spawnEnemyBulletsOnSpawn(
+  const result = spawnEnemyBullets(
     allocator,
     0,
     [createEnemy({ id: 10, patternId: "pattern.missing", position: { x: 100, y: 50 } })],
+    [],
     new Map([["pattern.other", createPattern("pattern.other", "bullet.red_small", { x: 1, y: 2 })]]),
     new Map([["bullet.red_small", createBullet("bullet.red_small")]]),
     0,
@@ -192,13 +197,14 @@ test("does not consume ids when allocator cannot allocate the full bullet batch"
     assert.fail("expected allocator near max id");
   }
 
-  const result = spawnEnemyBulletsOnSpawn(
+  const result = spawnEnemyBullets(
     allocator.value,
     0,
     [
       createEnemy({ id: 10, patternId: "pattern.fire_a", position: { x: 100, y: 50 } }),
       createEnemy({ id: 11, patternId: "pattern.fire_b", position: { x: 200, y: 70 } }),
     ],
+    [],
     new Map([
       ["pattern.fire_a", createPattern("pattern.fire_a", "bullet.red_small", { x: 1, y: 2 })],
       ["pattern.fire_b", createPattern("pattern.fire_b", "bullet.red_small", { x: -4, y: 8 })],
@@ -214,10 +220,11 @@ test("does not consume ids when allocator cannot allocate the full bullet batch"
 
 test("rejects non-finite generated bullet positions without consuming ids", () => {
   const allocator = new EntityAllocator();
-  const result = spawnEnemyBulletsOnSpawn(
+  const result = spawnEnemyBullets(
     allocator,
     0,
     [createEnemy({ id: 10, patternId: "pattern.overflow", position: { x: Number.MAX_VALUE, y: 50 } })],
+    [],
     new Map([["pattern.overflow", createPattern("pattern.overflow", "bullet.red_small", { x: Number.MAX_VALUE, y: 0 })]]),
     new Map([["bullet.red_small", createBullet("bullet.red_small")]]),
     0,
@@ -231,13 +238,14 @@ test("rejects non-finite generated bullet positions without consuming ids", () =
 test("fails without consuming ids when the batch would exceed the active enemy bullet budget", () => {
   const spawn = (activeEnemyBulletCount: number) => {
     const allocator = new EntityAllocator();
-    const result = spawnEnemyBulletsOnSpawn(
+    const result = spawnEnemyBullets(
       allocator,
       0,
       [
         createEnemy({ id: 10, patternId: "pattern.fire", position: { x: 100, y: 50 } }),
         createEnemy({ id: 11, patternId: "pattern.fire", position: { x: 200, y: 70 } }),
       ],
+      [],
       new Map([["pattern.fire", createPattern("pattern.fire", "bullet.red_small", { x: 0, y: 8 })]]),
       new Map([["bullet.red_small", createBullet("bullet.red_small")]]),
       activeEnemyBulletCount,
@@ -256,6 +264,48 @@ test("fails without consuming ids when the batch would exceed the active enemy b
     message: "Active enemy bullets would exceed 2000: 1999 + 2",
   }]);
   assert.equal(overBudget.nextEntityId, 1);
+});
+
+test("appends pattern bullets after fireOnSpawn bullets in one batch and counts them against the budget", () => {
+  const spawn = (activeEnemyBulletCount: number) => {
+    const allocator = EntityAllocator.restore(5);
+    assert.ok(allocator.ok);
+    const result = spawnEnemyBullets(
+      allocator.value,
+      7,
+      [createEnemy({ id: 5, patternId: "pattern.fire", position: { x: 100, y: 50 } })],
+      [
+        { bullet: createBullet("bullet.blue_small"), position: { x: 40, y: 60 }, velocity: { x: 0, y: 2 } },
+        { bullet: createBullet("bullet.blue_small"), position: { x: 40, y: 60 }, velocity: { x: 1, y: 0 } },
+      ],
+      new Map([["pattern.fire", createPattern("pattern.fire", "bullet.red_small", { x: 0, y: 8 })]]),
+      new Map([["bullet.red_small", createBullet("bullet.red_small")]]),
+      activeEnemyBulletCount,
+    );
+    return { result, nextEntityId: allocator.value.snapshot() };
+  };
+
+  const spawned = spawn(1_997);
+  assert.equal(spawned.result.ok, true);
+  assert.deepEqual(spawned.result.ok && spawned.result.value?.event, {
+    type: "enemyBulletsSpawnedBatch",
+    tick: 7,
+    bullets: [
+      { entityId: 5, definitionId: "bullet.red_small", position: { x: 100, y: 58 } },
+      { entityId: 6, definitionId: "bullet.blue_small", position: { x: 40, y: 60 } },
+      { entityId: 7, definitionId: "bullet.blue_small", position: { x: 40, y: 60 } },
+    ],
+  });
+  assert.deepEqual(spawned.result.ok && spawned.result.value?.entities.map((entity) => entity.velocity), [
+    { x: 0, y: 0 },
+    { x: 0, y: 2 },
+    { x: 1, y: 0 },
+  ]);
+  const overBudget = spawn(1_998);
+  assert.deepEqual(!overBudget.result.ok && overBudget.result.errors.map((error) => error.message), [
+    "Active enemy bullets would exceed 2000: 1998 + 3",
+  ]);
+  assert.equal(overBudget.nextEntityId, 5);
 });
 
 function createEnemy(options: {

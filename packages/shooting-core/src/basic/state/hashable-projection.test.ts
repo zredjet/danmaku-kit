@@ -12,6 +12,7 @@ import type { SerializedGameState } from "../serialization/types.ts";
 import {
   createCollisionScoreDefinition,
   createEnemyBulletHitDefinition,
+  createEnemyPatternDefinition,
   createFireOnSpawnAtZeroDefinition,
 } from "../test-support/definitions.ts";
 import { createShotInputFrame } from "../test-support/input-frames.ts";
@@ -189,6 +190,21 @@ test("fixes gameplay state-hash digest goldens for score and player-hit transiti
     collectStateHashSamples(createEnemyBulletHitDefinition(), [createEmptyInputFrame(0), createEmptyInputFrame(1)])
       .map((sample) => sample.hash),
     ["72e9b531eb4ba4ee", "3dd62d4031963a5d"],
+  );
+});
+
+test("fixes pattern runner and pattern bullet state-hash digest goldens", () => {
+  assert.deepEqual(
+    collectStateHashSamples(createEnemyPatternDefinition(), [0, 1, 2, 3, 4, 5].map((tick) => createEmptyInputFrame(tick)))
+      .map((sample) => sample.hash),
+    [
+      "5742c98faac01056",
+      "159d79797ed05402",
+      "3983cf9e6a1a75f6",
+      "3a6190210ab36c8f",
+      "fba490b88021befc",
+      "42b02771b9a92295",
+    ],
   );
 });
 

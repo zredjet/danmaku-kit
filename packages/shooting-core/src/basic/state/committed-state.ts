@@ -1,6 +1,7 @@
 import type { StageId } from "../content/types.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import { EventLog } from "../events/game-event.ts";
+import type { EnemyPatternRunner } from "../patterns/pattern-runner.ts";
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
 import { deepFreezeClone } from "../shared/immutable.ts";
@@ -19,6 +20,8 @@ export type CommittedPendingEvent = Readonly<{
 export type CommittedStageState = Readonly<{
   expectedTick: number;
   activeEntities: readonly RuntimeEntityState[];
+  /** active な enemy の pattern runner。enemy id の昇順に並ぶ。 */
+  patternRunners: readonly EnemyPatternRunner[];
   nextEntityId: number;
   pendingEvents: readonly CommittedPendingEvent[];
   prngState: SerializedPrngState;
@@ -35,6 +38,7 @@ export type UntrustedCommittedStageState = Omit<CommittedStageState, "pendingEve
 export type WorkingStageState = {
   expectedTick: number;
   activeEntities: RuntimeEntityState[];
+  patternRunners: EnemyPatternRunner[];
   entityAllocator: EntityAllocator;
   eventLog: EventLog;
   prng: XorShift32;
@@ -46,6 +50,7 @@ export type WorkingStageState = {
 export function createCommittedStageState(state: {
   expectedTick: number;
   activeEntities: readonly RuntimeEntityState[];
+  patternRunners: readonly EnemyPatternRunner[];
   nextEntityId: number;
   pendingEvents: readonly CommittedPendingEvent[];
   prngState: SerializedPrngState;
@@ -56,6 +61,7 @@ export function createCommittedStageState(state: {
   return Object.freeze({
     expectedTick: state.expectedTick,
     activeEntities: deepFreezeClone(orderedEntities),
+    patternRunners: deepFreezeClone([...state.patternRunners].sort((left, right) => left.enemyId - right.enemyId)),
     nextEntityId: state.nextEntityId,
     pendingEvents: deepFreezeClone(state.pendingEvents),
     prngState: deepFreezeClone(state.prngState),
@@ -90,6 +96,7 @@ export function createWorkingStageState(committedState: UntrustedCommittedStageS
 
   return okResult({
     activeEntities: [...deepFreezeClone(committedState.activeEntities)],
+    patternRunners: [...deepFreezeClone(committedState.patternRunners)],
     entityAllocator: restoredAllocator.value,
     eventLog,
     expectedTick: committedState.expectedTick,
