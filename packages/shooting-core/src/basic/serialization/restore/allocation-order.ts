@@ -1,5 +1,6 @@
 import type { LoadedContentIndex } from "../../content/content-index.ts";
 import type { StageDefinition } from "../../content/types.ts";
+import { isSameRestorePosition } from "../../entities/restore-common.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
 import { resolveEnemyBulletSpawnPosition } from "../../simulation/enemy-bullet-system.ts";
@@ -152,14 +153,6 @@ export function consumeRestoreEnemyBulletBudget(
     tick: candidate.tick,
     allocationOrder: candidate.allocationOrder,
   }));
-}
-
-/** restore entity の position が timeline 由来の位置と完全一致することを検証する。 */
-export function isSameRestorePosition(
-  expected: Readonly<{ x: number; y: number }>,
-  actual: Readonly<{ x: number; y: number }>,
-): boolean {
-  return actual.x === expected.x && actual.y === expected.y;
 }
 
 /** 同じ tick では enemy、enemyBullet、playerShot の順に採番されることを検証する。 */

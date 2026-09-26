@@ -1,7 +1,14 @@
 import type { LoadedContentIndex } from "../../content/content-index.ts";
 import type { StageDefinition } from "../../content/types.ts";
-import { DEFAULT_PLAYER_START_POSITION } from "../../entities/player/model.ts";
-import type { PlayerRuntimeEntity } from "../../entities/player/model.ts";
+import { validateRestoreEnemyBulletRuntimeEntity } from "../../entities/enemy-bullet/restore.ts";
+import { RESTORE_RUNTIME_ENEMY_KEYS, validateRestoreEnemyRuntimeEntity } from "../../entities/enemy/restore.ts";
+import { RESTORE_RUNTIME_PLAYER_SHOT_KEYS, validateRestorePlayerShotRuntimeEntity } from "../../entities/player-shot/restore.ts";
+import {
+  RESTORE_RUNTIME_PLAYER_KEYS,
+  validateRestoreInitialPlayerEntity,
+  validateRestorePlayerRuntimeEntity,
+} from "../../entities/player/restore.ts";
+import { validateRestoreRuntimeEntityCommon } from "../../entities/restore-common.ts";
 import type { RuntimeEntityState } from "../../entities/runtime-entity.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
@@ -11,20 +18,19 @@ import {
   consumeRestoreEnemyBulletBudget,
   consumeRestoreEnemySpawnBudget,
   createRestoreSpawnBudget,
-  isSameRestorePosition,
   validateRestoreAllocationEnvelope,
   validateRestoreSameTickAllocationOrder,
 } from "./allocation-order.ts";
 import type { RestoreMatchedPlayerShot, RestoreMatchedSpawn } from "./allocation-order.ts";
-import {
-  RESTORE_RUNTIME_ENTITY_ALL_KEYS,
-  validateRestoreEnemyBulletRuntimeEntity,
-  validateRestoreEnemyRuntimeEntity,
-  validateRestorePlayerRuntimeEntity,
-  validateRestorePlayerShotRuntimeEntity,
-  validateRestoreRuntimeEntityCommon,
-} from "./runtime-entity-kinds.ts";
 import type { RestoreTopLevelState } from "./top-level-state.ts";
+
+const RESTORE_RUNTIME_ENTITY_ALL_KEYS = Object.freeze([
+  ...new Set([
+    ...RESTORE_RUNTIME_PLAYER_KEYS,
+    ...RESTORE_RUNTIME_ENEMY_KEYS,
+    ...RESTORE_RUNTIME_PLAYER_SHOT_KEYS,
+  ]),
+]);
 
 /** runtimeEntities の ID order、kind 別 shape、registry reference を検証する。 */
 export function validateRestoreRuntimeEntities(
@@ -135,25 +141,4 @@ export function validateRestoreRuntimeEntities(
   }
 
   return okResult(Object.freeze(activeEntities));
-}
-
-/** startStage 直後の player snapshot が一意な初期値と一致することを検証する。 */
-function validateRestoreInitialPlayerEntity(
-  entity: PlayerRuntimeEntity,
-  content: LoadedContentIndex,
-): CoreResult<null> {
-  const player = content.playersById.get(entity.definitionId);
-  if (!player) {
-    return coreError("state.registryInvalid", "player runtime entity references an unknown player");
-  }
-  if (
-    !isSameRestorePosition(DEFAULT_PLAYER_START_POSITION, entity.position)
-    || entity.lives !== player.life.initialLives
-    || entity.invincibleTicksRemaining !== 0
-    || entity.nextShotAllowedTick !== 0
-  ) {
-    return coreError("state.invalidShape", "initial player runtime entity must match startStage defaults");
-  }
-
-  return okResult(null);
 }
