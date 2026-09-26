@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { PlayerShotDefinition } from "../content/types.ts";
+import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
 import type { InputFrame } from "../input/input-frame.ts";
 import { EntityAllocator } from "./entity.ts";
 import { spawnPlayerShotFromInput } from "./player-shot-system.ts";
-import type { PlayerRuntimeEntity } from "./runtime-entity.ts";
 
 test("skips held shot while player fire cooldown is active", () => {
   const allocator = new EntityAllocator();

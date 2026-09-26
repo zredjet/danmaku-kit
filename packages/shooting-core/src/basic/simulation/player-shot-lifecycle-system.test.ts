@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import { advancePlayerShotLifecycle } from "./player-shot-lifecycle-system.ts";
-import type { RuntimeEntityState } from "./runtime-entity.ts";
 
 test("moves player shots by velocity and decrements lifetime", () => {
   const entities: RuntimeEntityState[] = [

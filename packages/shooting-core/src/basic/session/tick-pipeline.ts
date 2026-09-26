@@ -1,6 +1,9 @@
 import type { GameFrame, ReadonlyGameState, ReadonlyPlayerState } from "../api-types.ts";
 import type { LoadedContentIndex } from "../content/content-index.ts";
 import type { PlayerDefinition, PlayerId, StageDefinition } from "../content/types.ts";
+import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
+import { toReadonlyEntityState } from "../entities/runtime-entity.ts";
+import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import type { InputFrame } from "../input/input-frame.ts";
 import { consumeWorkingMutationFailureForTesting } from "../instrumentation/stage-session-testing-hooks.ts";
 import type { ActiveStageSessionTestingHooks } from "../instrumentation/stage-session-testing-hooks.ts";
@@ -10,8 +13,6 @@ import { spawnEnemyBulletsOnSpawn } from "../simulation/enemy-bullet-system.ts";
 import { advancePlayerMovement } from "../simulation/player-movement-system.ts";
 import { advancePlayerShotLifecycle } from "../simulation/player-shot-lifecycle-system.ts";
 import { spawnPlayerShotFromInput } from "../simulation/player-shot-system.ts";
-import { toReadonlyEntityState } from "../simulation/runtime-entity.ts";
-import type { PlayerRuntimeEntity, RuntimeEntityState } from "../simulation/runtime-entity.ts";
 import { advanceStageTimeline } from "../simulation/stage-timeline-system.ts";
 import { freezeEntitiesInIdOrder } from "../simulation/system-order.ts";
 import { createCommittedStageState } from "../state/committed-state.ts";

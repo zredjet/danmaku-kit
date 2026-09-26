@@ -1,6 +1,7 @@
 import type { InputFrame } from "../input/input-frame.ts";
 import { PLAYFIELD_HEIGHT, PLAYFIELD_WIDTH } from "../content/runtime-budgets.ts";
-import type { RuntimeEntityState, Vector2 } from "./runtime-entity.ts";
+import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
+import type { Vector2 } from "../entities/model-common.ts";
 
 const DIAGONAL_NORMALIZER = Math.SQRT1_2;
 

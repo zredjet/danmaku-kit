@@ -1,10 +1,11 @@
 import type { LoadedContentIndex } from "../../content/content-index.ts";
 import type { StageDefinition } from "../../content/types.ts";
+import { DEFAULT_PLAYER_START_POSITION } from "../../entities/player/model.ts";
+import type { PlayerRuntimeEntity } from "../../entities/player/model.ts";
+import type { RuntimeEntityState } from "../../entities/runtime-entity.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
 import { assertNever } from "../../shared/guards.ts";
-import { DEFAULT_PLAYER_START_POSITION } from "../../simulation/runtime-entity.ts";
-import type { PlayerRuntimeEntity, RuntimeEntityState } from "../../simulation/runtime-entity.ts";
 import { cloneRestorePlainRecord } from "../restore-plain-data.ts";
 import {
   consumeRestoreEnemyBulletBudget,

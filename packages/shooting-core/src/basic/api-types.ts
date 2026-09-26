@@ -1,9 +1,9 @@
 import type { Difficulty, GameDefinition, PlayerId, StageId } from "./content/types.ts";
+import type { ReadonlyEntityState } from "./entities/runtime-entity.ts";
 import type { GameEvent } from "./events/game-event.ts";
 import type { InputFrame } from "./input/input-frame.ts";
 import type { CoreResult } from "./result.ts";
 import type { SerializedGameState } from "./serialization/types.ts";
-import type { ReadonlyEntityState } from "./simulation/runtime-entity.ts";
 
 /**
  * ステージ開始時に runtime adapter から渡すオプション。

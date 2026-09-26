@@ -126,6 +126,27 @@ test("keeps shooting-core modules inside their dependency layers", async () => {
   assert.deepEqual(violations, [], "shooting-core imports cross a dependency layer rule");
 });
 
+test("keeps entity kind directories independent of each other", async () => {
+  const graph = await collectImportGraph(shootingCoreBasicRoot, { includeTypeOnly: true });
+  const violations = [];
+
+  for (const [file, targets] of graph) {
+    const importer = toBasicPath(file);
+    const importerKind = entityKindDirectory(importer);
+    if (importerKind === null) {
+      continue;
+    }
+    for (const target of targets.map(toBasicPath)) {
+      const targetKind = entityKindDirectory(target);
+      if (targetKind !== null && targetKind !== importerKind) {
+        violations.push(`${importer} -> ${target}`);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, [], "entity kind directories must not import another kind");
+});
+
 test("points shooting-core dependency rules at existing modules", async () => {
   const modulePaths = (await collectTypeScriptFiles(shootingCoreBasicRoot))
     .filter((file) => !isTestCodeFile(shootingCoreBasicRoot, file))
@@ -150,6 +171,11 @@ test("keeps test-only diagnostics out of the shooting-core runtime import graph"
 
   assert.deepEqual(leaked, [], "root export loads test-only modules at runtime");
 });
+
+/** `entities/<kind>/` 配下の module なら kind directory 名を、それ以外なら null を返す。 */
+function entityKindDirectory(modulePath) {
+  return /^entities\/([^/]+)\//.exec(modulePath)?.[1] ?? null;
+}
 
 /** entry から graph の edge をたどって到達できる file を path 順に返す。 */
 function collectReachableFiles(graph, entry) {

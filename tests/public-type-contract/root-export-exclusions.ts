@@ -184,7 +184,7 @@ import type { EventLog as DeepEventLog } from "@shooting-sample/shooting-core/sr
 import type { GameplayActionId as DeepGameplayActionId } from "@shooting-sample/shooting-core/src/basic/input/input-frame.ts";
 
 // @ts-expect-error internal runtime entity module is not importable through a deep package subpath.
-import type { EnemyBulletRuntimeEntity as DeepEnemyBulletRuntimeEntity } from "@shooting-sample/shooting-core/src/basic/simulation/runtime-entity.ts";
+import type { EnemyBulletRuntimeEntity as DeepEnemyBulletRuntimeEntity } from "@shooting-sample/shooting-core/src/basic/entities/enemy-bullet/model.ts";
 
 // @ts-expect-error internal system order contract is not part of the root public contract.
 import type { StageTickSystemStep } from "@shooting-sample/shooting-core";

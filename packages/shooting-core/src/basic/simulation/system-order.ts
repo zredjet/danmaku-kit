@@ -1,4 +1,4 @@
-import type { RuntimeEntityState } from "./runtime-entity.ts";
+import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 
 /** 1 tick 内の system 実行順。 */
 export const STAGE_TICK_SYSTEM_ORDER = Object.freeze([

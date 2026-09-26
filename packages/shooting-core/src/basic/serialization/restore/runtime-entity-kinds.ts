@@ -8,22 +8,18 @@ import {
   PLAYFIELD_HEIGHT,
   PLAYFIELD_WIDTH,
 } from "../../content/runtime-budgets.ts";
+import { createRestoredEnemyBulletRuntimeEntity } from "../../entities/enemy-bullet/model.ts";
+import type { EnemyBulletRuntimeEntity } from "../../entities/enemy-bullet/model.ts";
+import { createRestoredEnemyRuntimeEntity } from "../../entities/enemy/model.ts";
+import type { EnemyRuntimeEntity } from "../../entities/enemy/model.ts";
 import { RUNTIME_ENTITY_KINDS } from "../../entities/entity-kinds.ts";
+import { createRestoredPlayerShotRuntimeEntity } from "../../entities/player-shot/model.ts";
+import type { PlayerShotRuntimeEntity } from "../../entities/player-shot/model.ts";
+import { createRestoredPlayerRuntimeEntity } from "../../entities/player/model.ts";
+import type { PlayerRuntimeEntity } from "../../entities/player/model.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
 import { hasOnlyKeys, isNonNegativeSafeInteger, isPositiveFiniteNumber } from "../../shared/guards.ts";
-import {
-  createRestoredEnemyBulletRuntimeEntity,
-  createRestoredEnemyRuntimeEntity,
-  createRestoredPlayerRuntimeEntity,
-  createRestoredPlayerShotRuntimeEntity,
-} from "../../simulation/runtime-entity.ts";
-import type {
-  EnemyBulletRuntimeEntity,
-  EnemyRuntimeEntity,
-  PlayerRuntimeEntity,
-  PlayerShotRuntimeEntity,
-} from "../../simulation/runtime-entity.ts";
 import { cloneRestorePlainRecord, isRestoreTopLevelString } from "../restore-plain-data.ts";
 import type { SerializedRuntimeEntityState } from "../types.ts";
 

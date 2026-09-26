@@ -1,4 +1,4 @@
-import type { RuntimeEntityState } from "./runtime-entity.ts";
+import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 
 type PlayerShotLifecycleOptions = Readonly<{
   /**

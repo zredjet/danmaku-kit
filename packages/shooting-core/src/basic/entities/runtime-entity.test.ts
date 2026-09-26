@@ -1,14 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  createEnemyBulletRuntimeEntity,
-  createEnemyRuntimeEntity,
-  createPlayerRuntimeEntity,
-  createPlayerShotRuntimeEntity,
-  toReadonlyEntityState,
-} from "./runtime-entity.ts";
-import { EntityAllocator } from "./entity.ts";
+import { createEnemyBulletRuntimeEntity } from "./enemy-bullet/model.ts";
+import { createEnemyRuntimeEntity } from "./enemy/model.ts";
+import { createPlayerRuntimeEntity } from "./player/model.ts";
+import { createPlayerShotRuntimeEntity } from "./player-shot/model.ts";
+import { toReadonlyEntityState } from "./runtime-entity.ts";
+import { EntityAllocator } from "../simulation/entity.ts";
 import { createMinimumDefinition } from "../../../../../tests/fixtures/minimum-game-definition.ts";
 
 test("creates player runtime components from player content", () => {

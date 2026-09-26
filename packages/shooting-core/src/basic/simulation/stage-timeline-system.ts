@@ -1,10 +1,10 @@
 import type { EnemyDefinition, StageTimelineStep } from "../content/types.ts";
+import { createEnemyRuntimeEntity } from "../entities/enemy/model.ts";
+import type { EnemyRuntimeEntity } from "../entities/enemy/model.ts";
 import type { GameEvent } from "../events/game-event.ts";
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
 import { EntityAllocator } from "./entity.ts";
-import { createEnemyRuntimeEntity } from "./runtime-entity.ts";
-import type { EnemyRuntimeEntity } from "./runtime-entity.ts";
 
 /** stage timeline system が tick へ返す差分。 */
 export type StageTimelineAdvanceResult = Readonly<{

@@ -4,9 +4,9 @@ import test from "node:test";
 import type { AssertTrue, IsExactly } from "../../../../../tests/support/type-assertions.ts";
 import type { HashableRuntimeEntityState } from "../hash/hashable-state.ts";
 import type { SerializedRuntimeEntityState } from "../serialization/types.ts";
-import type { ReadonlyEntityState, RuntimeEntityState } from "../simulation/runtime-entity.ts";
 import { RUNTIME_ENTITY_KINDS } from "./entity-kinds.ts";
 import type { RuntimeEntityKind } from "./entity-kinds.ts";
+import type { ReadonlyEntityState, RuntimeEntityState } from "./runtime-entity.ts";
 
 /** runtime / 公開 snapshot / serialize DTO / hash DTO の kind が canonical 一覧と過不足なく一致することを型で固定する。 */
 type EntityKindAssertions = readonly [

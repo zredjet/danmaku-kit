@@ -4,7 +4,7 @@ import test from "node:test";
 import type { BulletDefinition, PatternDefinition } from "../content/types.ts";
 import { EntityAllocator } from "./entity.ts";
 import { spawnEnemyBulletsOnSpawn } from "./enemy-bullet-system.ts";
-import type { EnemyRuntimeEntity } from "./runtime-entity.ts";
+import type { EnemyRuntimeEntity } from "../entities/enemy/model.ts";
 
 test("spawns enemy bullets from fireOnSpawn patterns in enemy order", () => {
   const allocator = new EntityAllocator();

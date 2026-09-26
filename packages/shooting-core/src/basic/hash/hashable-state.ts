@@ -8,6 +8,11 @@ import type {
   PlayerShotDefinition,
   StageId,
 } from "../content/types.ts";
+import type { EnemyBulletRuntimeEntity } from "../entities/enemy-bullet/model.ts";
+import type { EnemyRuntimeEntity } from "../entities/enemy/model.ts";
+import type { Vector2 } from "../entities/model-common.ts";
+import type { PlayerShotRuntimeEntity } from "../entities/player-shot/model.ts";
+import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
 import type { SERIALIZED_STATE_HASH_VERSION } from "../serialization/metadata.ts";
 import type {
   SerializedEnabledFeatureState,
@@ -16,13 +21,6 @@ import type {
 } from "../serialization/types.ts";
 import { defineFieldOrder } from "../shared/field-order.ts";
 import type { SerializedPrngState } from "../simulation/prng.ts";
-import type {
-  EnemyBulletRuntimeEntity,
-  EnemyRuntimeEntity,
-  PlayerRuntimeEntity,
-  PlayerShotRuntimeEntity,
-  Vector2,
-} from "../simulation/runtime-entity.ts";
 
 /** Hash 対象の PRNG snapshot。 */
 export type HashablePrngState = Readonly<{ state: number }>;

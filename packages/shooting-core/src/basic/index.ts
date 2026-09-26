@@ -14,7 +14,7 @@ export type {
   StageSession,
   StartStageOptions,
 } from "./api-types.ts";
-export type { ReadonlyEntityState } from "./simulation/runtime-entity.ts";
+export type { ReadonlyEntityState } from "./entities/runtime-entity.ts";
 export type { ReplayMetadata } from "./replay/metadata.ts";
 export type {
   AssetKeyRegistry,

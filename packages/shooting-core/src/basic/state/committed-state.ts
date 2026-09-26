@@ -1,4 +1,5 @@
 import type { StageId } from "../content/types.ts";
+import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import { EventLog } from "../events/game-event.ts";
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
@@ -6,7 +7,6 @@ import { deepFreezeClone } from "../shared/immutable.ts";
 import { EntityAllocator } from "../simulation/entity.ts";
 import { XorShift32 } from "../simulation/prng.ts";
 import type { SerializedPrngState } from "../simulation/prng.ts";
-import type { RuntimeEntityState } from "../simulation/runtime-entity.ts";
 import { freezeEntitiesInIdOrder } from "../simulation/system-order.ts";
 
 /** Committed state が次 tick へ持ち越してよい deterministic event。 */

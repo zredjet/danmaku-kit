@@ -1,13 +1,11 @@
 import type { EnemyId } from "../content/types.ts";
 import type { GameEvent } from "../events/game-event.ts";
 import { compareEntityIdAscending } from "./system-order.ts";
-import type {
-  EnemyBulletRuntimeEntity,
-  EnemyRuntimeEntity,
-  PlayerRuntimeEntity,
-  PlayerShotRuntimeEntity,
-  RuntimeEntityState,
-} from "./runtime-entity.ts";
+import type { EnemyBulletRuntimeEntity } from "../entities/enemy-bullet/model.ts";
+import type { EnemyRuntimeEntity } from "../entities/enemy/model.ts";
+import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
+import type { PlayerShotRuntimeEntity } from "../entities/player-shot/model.ts";
+import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 
 type CollisionResolutionOptions = Readonly<{
   /** debug serializer を登録した test session だけ true にする。省略時は計測せず hot path に counter を作らない。 */

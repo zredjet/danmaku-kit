@@ -1,11 +1,12 @@
 import type { PlayerShotDefinition } from "../content/types.ts";
+import { createPlayerShotRuntimeEntity } from "../entities/player-shot/model.ts";
+import type { PlayerShotRuntimeEntity } from "../entities/player-shot/model.ts";
+import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
 import type { GameEvent } from "../events/game-event.ts";
 import type { InputFrame } from "../input/input-frame.ts";
 import { okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
 import { EntityAllocator } from "./entity.ts";
-import { createPlayerShotRuntimeEntity } from "./runtime-entity.ts";
-import type { PlayerRuntimeEntity, PlayerShotRuntimeEntity } from "./runtime-entity.ts";
 
 type PlayerShotSpawnEventItem = Readonly<{
   entityId: PlayerShotRuntimeEntity["id"];

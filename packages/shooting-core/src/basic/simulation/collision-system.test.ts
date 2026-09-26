@@ -1,14 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import type { EnemyBulletRuntimeEntity } from "../entities/enemy-bullet/model.ts";
+import type { EnemyRuntimeEntity } from "../entities/enemy/model.ts";
+import type { PlayerShotRuntimeEntity } from "../entities/player-shot/model.ts";
+import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
+import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import { resolveCollisionAndScoring } from "./collision-system.ts";
-import type {
-  EnemyBulletRuntimeEntity,
-  EnemyRuntimeEntity,
-  PlayerRuntimeEntity,
-  PlayerShotRuntimeEntity,
-  RuntimeEntityState,
-} from "./runtime-entity.ts";
 
 test("resolves player hit by enemy bullet before player shot damage", () => {
   const result = resolveCollisionAndScoring(

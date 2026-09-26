@@ -1,10 +1,10 @@
 import type { StageSession } from "../api-types.ts";
+import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import type { GameEvent } from "../events/game-event.ts";
 import type { HashableGameState } from "../hash/hashable-state.ts";
 import { errorResult, okResult } from "../result.ts";
 import type { CoreError, CoreResult, CoreWarning } from "../result.ts";
 import type { StageSessionSerializationMetadata } from "../serialization/metadata.ts";
-import type { RuntimeEntityState } from "../simulation/runtime-entity.ts";
 import type { CommittedStageState } from "../state/committed-state.ts";
 import { createHashableGameState } from "../state/hashable-projection.ts";
 

@@ -1,10 +1,11 @@
 import type { BulletDefinition, PatternDefinition } from "../content/types.ts";
+import { createEnemyBulletRuntimeEntity } from "../entities/enemy-bullet/model.ts";
+import type { EnemyBulletRuntimeEntity } from "../entities/enemy-bullet/model.ts";
+import type { EnemyRuntimeEntity } from "../entities/enemy/model.ts";
 import type { GameEvent } from "../events/game-event.ts";
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
 import { EntityAllocator } from "./entity.ts";
-import { createEnemyBulletRuntimeEntity } from "./runtime-entity.ts";
-import type { EnemyBulletRuntimeEntity, EnemyRuntimeEntity } from "./runtime-entity.ts";
 
 type EnemyBulletSpawnEventItem = Readonly<{
   entityId: EnemyBulletRuntimeEntity["id"];

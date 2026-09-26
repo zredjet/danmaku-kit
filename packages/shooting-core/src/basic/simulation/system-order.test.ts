@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { freezeEntitiesInIdOrder, STAGE_TICK_SYSTEM_ORDER } from "./system-order.ts";
-import type { RuntimeEntityState } from "./runtime-entity.ts";
+import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 
 test("locks the basic core tick system order", () => {
   assert.deepEqual(STAGE_TICK_SYSTEM_ORDER, [

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import type { InputFrame } from "../input/input-frame.ts";
 import { advancePlayerMovement } from "./player-movement-system.ts";
-import type { RuntimeEntityState } from "./runtime-entity.ts";
 
 test("moves player by content speed from input axes", () => {
   const entities = [createPlayer()] as const;
