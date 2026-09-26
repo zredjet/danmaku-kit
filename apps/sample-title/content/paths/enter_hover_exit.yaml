@@ -1,0 +1,12 @@
+id: path.enter_hover_exit
+version: 1
+segments:
+  - type: velocity
+    duration: 56
+    velocity: { x: 0, y: 2 }
+  - type: velocity
+    duration: 120
+    velocity: { x: 0, y: 0 }
+  - type: velocity
+    duration: 150
+    velocity: { x: 2, y: -1 }

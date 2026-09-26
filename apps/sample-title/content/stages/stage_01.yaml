@@ -7,8 +7,8 @@ timeline:
     action:
       type: spawnEnemy
       enemy: enemy.scout
-      path: path.none
+      path: path.enter_hover_exit
       pattern: pattern.basic
       position:
         x: 192
-        y: 96
+        y: -16
