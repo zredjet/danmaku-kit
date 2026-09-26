@@ -10,17 +10,20 @@ import {
 } from "../../test-support/stage-harness.ts";
 import type { SerializedGameState } from "../types.ts";
 
-test("restore validates deterministic payload before accepting a session", () => {
-  const loaded = loadMinimumGame("core.test");
-  const validState = serializeInitialStageState("core.test");
+const validPatternRunnerState = {
+  runnerId: "patternRunner.main",
+  patternId: "pattern.none",
+  stateVersion: 1,
+  payload: { cursor: 0, flags: [true, "ready", null] },
+};
+const validEnabledFeatureState = {
+  feature: "bomb",
+  stateVersion: 1,
+  payload: { charges: 1 },
+};
 
-  const expectRestoreError = (state: unknown, code: CoreErrorCode, detail: RegExp) => {
-    const restored = loaded.restore(state as SerializedGameState);
-    assert.equal(restored.ok, false);
-    assert.equal(!restored.ok && restored.errors[0]?.code, code);
-    assert.match(!restored.ok ? restored.errors[0]?.message ?? "" : "", detail);
-  };
-
+test("restore rejects malformed PRNG snapshots and deterministic state containers", () => {
+  const { validState, expectRestoreError } = createRestorePayloadHarness();
   expectRestoreError({ ...validState, prngState: { state: 0 } }, "state.prngInvalid", /prngState/);
   expectRestoreError({ ...validState, prngState: { state: "not-a-prng-state" } }, "state.prngInvalid", /prngState/);
   expectRestoreError({ ...validState, prngState: { state: 1, extra: true } }, "state.invalidShape", /prngState/);
@@ -83,11 +86,11 @@ test("restore validates deterministic payload before accepting a session", () =>
     ...validState,
     state: { ...validState.state, runtimeEntities: throwingRuntimeEntitiesLength },
   }, "state.invalidShape", /runtimeEntities/);
-  const serializedPlayer = validState.state.runtimeEntities[0];
-  assert.equal(serializedPlayer?.kind, "player");
-  if (serializedPlayer?.kind !== "player") {
-    assert.fail("expected serialized player entity");
-  }
+});
+
+test("restore rejects runtime entity envelopes that do not match the initial snapshot", () => {
+  const { validState, expectRestoreError } = createRestorePayloadHarness();
+  const serializedPlayer = getSerializedPlayer(validState);
   const playerWithNonEnumerableExtra = { ...serializedPlayer };
   Object.defineProperty(playerWithNonEnumerableExtra, "hp", { enumerable: false, value: 1 });
   expectRestoreError({
@@ -198,6 +201,11 @@ test("restore validates deterministic payload before accepting a session", () =>
     ...validState,
     state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, position: { x: Infinity, y: 400 } }] },
   }, "state.invalidShape", /position/);
+});
+
+test("restore descriptor-clones accepted player positions instead of rereading proxies", () => {
+  const { loaded, validState } = createRestorePayloadHarness();
+  const serializedPlayer = getSerializedPlayer(validState);
   const throwingPlayerPosition = new Proxy({ x: 192, y: 400 }, {
     get() {
       throw new Error("position should not be read directly after validation");
@@ -245,6 +253,11 @@ test("restore validates deterministic payload before accepting a session", () =>
     assert.fail("expected descriptor-cloned moved player position proxy to restore");
   }
   assert.deepEqual(restoredMovedPlayer.value.serialize(), movedState);
+});
+
+test("restore rejects player runtime values that disagree with content or the initial player", () => {
+  const { validState, expectRestoreError } = createRestorePayloadHarness();
+  const serializedPlayer = getSerializedPlayer(validState);
   expectRestoreError({
     ...validState,
     state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, movement: { speed: 17, focusSpeed: 1.8 } }] },
@@ -285,6 +298,10 @@ test("restore validates deterministic payload before accepting a session", () =>
     ...validState,
     state: { ...validState.state, runtimeEntities: [{ ...serializedPlayer, nextShotAllowedTick: 1 }] },
   }, "state.invalidShape", /initial player/);
+});
+
+test("restore rejects inconsistent score and timeline cursor", () => {
+  const { validState, expectRestoreError } = createRestorePayloadHarness();
   expectRestoreError({
     ...validState,
     state: { ...validState.state, score: -1 },
@@ -316,6 +333,10 @@ test("restore validates deterministic payload before accepting a session", () =>
     expectedTick: 61,
     state: { ...validState.state, timelineCursor: 0, pendingEvents: [] },
   }, "state.invalidShape", /timelineCursor/);
+});
+
+test("restore rejects inconsistent pending events", () => {
+  const { validState, expectRestoreError } = createRestorePayloadHarness();
   expectRestoreError({
     ...validState,
     state: { ...validState.state, pendingEvents: [] },
@@ -358,17 +379,10 @@ test("restore validates deterministic payload before accepting a session", () =>
       pendingEvents: [{ type: "stageStarted", tick: 0, stageId: "stage.stage_01" }],
     },
   }, "state.invalidShape", /pendingEvents/);
-  const validPatternRunnerState = {
-    runnerId: "patternRunner.main",
-    patternId: "pattern.none",
-    stateVersion: 1,
-    payload: { cursor: 0, flags: [true, "ready", null] },
-  };
-  const validEnabledFeatureState = {
-    feature: "bomb",
-    stateVersion: 1,
-    payload: { charges: 1 },
-  };
+});
+
+test("restore rejects disabled, malformed, or unordered pattern runner states", () => {
+  const { validState, expectRestoreError } = createRestorePayloadHarness();
   expectRestoreError({
     ...validState,
     state: { ...validState.state, patternRunnerStates: [validPatternRunnerState] },
@@ -383,10 +397,6 @@ test("restore validates deterministic payload before accepting a session", () =>
       })),
     },
   }, "state.invalidShape", /patternRunnerStates/);
-  expectRestoreError({
-    ...validState,
-    state: { ...validState.state, enabledFeatureStates: [validEnabledFeatureState] },
-  }, "state.featureMismatch", /enabled feature/);
   expectRestoreError({
     ...validState,
     state: {
@@ -452,6 +462,10 @@ test("restore validates deterministic payload before accepting a session", () =>
       patternRunnerStates: [{ ...validPatternRunnerState, stateVersion: 0 }],
     },
   }, "state.invalidShape", /stateVersion/);
+});
+
+test("restore guards pattern runner JSON payload values and budgets", () => {
+  const { validState, expectRestoreError } = createRestorePayloadHarness();
   expectRestoreError({
     ...validState,
     state: {
@@ -563,6 +577,14 @@ test("restore validates deterministic payload before accepting a session", () =>
       },
     }, "state.invalidShape", /payload|JSON|plain/);
   }
+});
+
+test("restore rejects disabled or malformed enabled feature states", () => {
+  const { validState, expectRestoreError } = createRestorePayloadHarness();
+  expectRestoreError({
+    ...validState,
+    state: { ...validState.state, enabledFeatureStates: [validEnabledFeatureState] },
+  }, "state.featureMismatch", /enabled feature/);
   expectRestoreError({
     ...validState,
     state: {
@@ -592,3 +614,29 @@ test("restore validates deterministic payload before accepting a session", () =>
     },
   }, "state.invalidShape", /stateVersion/);
 });
+
+/** restore payload test ごとに valid な初期 snapshot と、error code / message を検証する helper を用意する。 */
+function createRestorePayloadHarness() {
+  const loaded = loadMinimumGame("core.test");
+  const validState = serializeInitialStageState("core.test");
+
+  const expectRestoreError = (state: unknown, code: CoreErrorCode, detail: RegExp) => {
+    const restored = loaded.restore(state as SerializedGameState);
+    assert.equal(restored.ok, false);
+    assert.equal(!restored.ok && restored.errors[0]?.code, code);
+    assert.match(!restored.ok ? restored.errors[0]?.message ?? "" : "", detail);
+  };
+
+  return { loaded, validState, expectRestoreError };
+}
+
+/** 初期 snapshot の唯一の runtime entity が player であることを確認して取り出す。 */
+function getSerializedPlayer(validState: SerializedGameState) {
+  const serializedPlayer = validState.state.runtimeEntities[0];
+  assert.equal(serializedPlayer?.kind, "player");
+  if (serializedPlayer?.kind !== "player") {
+    assert.fail("expected serialized player entity");
+  }
+
+  return serializedPlayer;
+}
