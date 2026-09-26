@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump と first divergent checkpoint の field-level replay divergence artifact、Phase 1C-R の振る舞いを変えない module 分割リファクタリングも完了し、Phase 1C の tooling minimum を完了した。次は「Phase 2A へ進む条件」を確認し、Vite sample app と Phaser adapter の最初の slice を計画する。
+Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump と first divergent checkpoint の field-level replay divergence artifact、Phase 1C-R の振る舞いを変えない module 分割リファクタリングも完了し、Phase 1C の tooling minimum を完了した。次は Phase 2A 着手前に、ディレクトリと依存 layer の対応、および entity kind の変更波及を整理する Phase 1C-S（振る舞いを変えない構造整理）を行い、その後「Phase 2A へ進む条件」を確認して Vite sample app と Phaser adapter の最初の slice を計画する。
 
 Done:
 
@@ -89,6 +89,7 @@ Done:
 
 Next:
 
+- Phase 1C-S の構造整理（`internal/` の layer 分解、restore / hash の配置修正、session と test hook の境界、entity kind の縦割り）を振る舞いを変えずに行う
 - 「Phase 2A へ進む条件」を確認し、Vite sample app、Phaser adapter、keyboard input adapter の最初の slice を計画する
 
 Phase 1C-1 は診断と出力の安定した契約、Phase 1C-2 は実績ある YAML parser と source span 付き診断の CLI 接続、Phase 1C-3 は静的 fixture と実プロセスの JSON / human golden contract を固定した。Phase 1C-4 は renderer / browser field を含まない headless debug state summary と、summary から値を復元せず deterministic snapshot、順序付き frame event、side 別 input、side status を比較する field-level replay divergence artifact を固定した。
@@ -401,6 +402,48 @@ Done:
    - Done: Phase 1C-R9: `tests/module-graph.test.mjs` に、型 import も含めて `core.ts`、`session/`、`serialization/restore/`、`state/` を import してよい module を固定する layer rule test を追加する。`hash/` から `state/` への型 import を注入した copy で違反を検出することを確認した
    - Done: Phase 1C-R9: `AGENTS.md` にファイル規模の目安、shooting-core の依存方向、分割時の注意（re-export shim を作らない、同一 helper だけ統合、`test-support/`、`@ts-expect-error` の diagnostic 確認）を追加する
    - Done: Phase 1C-R9: `docs/design.md` の directory 構成と Core module 構成を実装へ合わせ、対応表の path は各 slice で実 module へ更新済みとした
+
+## Phase 1C-S タスク分割（構造整理リファクタリング）
+
+Phase 1C-R で巨大ファイルは責務単位に分割したが、ディレクトリと依存 layer の対応、および変更の波及範囲に歪みが残っている。`internal/` は最下層の guard / immutable から `core.ts` を import する test factory までを同居させ、layer を持たない。`serialization/restore-json.ts` は restore 層の外にあり、`hash/` が UTF-8 順序比較のためだけにこれを import する。`CommittedPendingEvent` は hash DTO の alias で、committed model が hash DTO に依存している。difficulty の列挙は4箇所で重複している。`session/stage-session.ts` の `tick()` は fault injection を直書きし、`StageTickContext` は content lookup と test hook を同居させ、timeline spawn だけが simulation system になっていない。entity kind の知識は runtime / serialize / hash / restore の層を横断して散在し、player の1 field 追加で非 test source 8 file、`"playerShot"` は14 file に出現する。Phase 2A（敵 path runner、敵弾 velocity / lifetime、pattern runner）と Phase 2B（pickup）の追加が1ディレクトリ内の変更と型検査が示す登録で済むよう、Phase 1C-S では gameplay、public API、state hash、CLI output を一切変えずに構造を整理する。
+
+共通ルール:
+
+- Phase 1C-R の共通ルール（1 slice 1 commit、`npm run check`、state hash / validate-content golden 無変更、`git diff --color-moved=zebra`、re-export shim を作らない、同一 helper だけ統合、サイズ目安）をそのまま適用する
+- 移動 commit に本文の変更を混ぜない。新たな `export` 付与と import path 更新だけは changed 行として見えるため review で明記する
+- S2 / S3 の各 commit では、hook 付き replay trace を全 test definition で記録した JSON を commit 前後で比較し、state / event / fatal 記録の完全一致を確認する
+- 型契約 file に触れる commit では、全 `@ts-expect-error` を無効化した diagnostic を親 commit と比較する
+
+整理後の shooting-core `src/basic/` 構成:
+
+| Module | 内容 |
+| --- | --- |
+| `shared/` | guard、immutable、UTF-8 順序比較、field order 型 utility。basic 内の他 module を import しない |
+| `instrumentation/` | test hook 有効化 guard、session testing hook、headless debug checkpoint。`core.ts` / `session/` / `testing/` だけが import する |
+| `testing/` | `testing-hooks.ts`（hook 付き Core factory）と既存の test-only helper |
+| `entities/` | kind 横断の kind 一覧 / 共通型 / union、`<kind>/model.ts`（runtime 型・生成・再構築）、`<kind>/snapshot.ts`（public serialize DTO、hash DTO と field order、両 projection）、`<kind>/restore.ts`（key 一覧と検証） |
+| `serialization/restore/` | restore orchestration、top-level、deterministic payload、`restore-json.ts`、entity dispatch、allocation order |
+
+1. Phase 1C-S1: 配置の修正（本文は変えない）
+   - Next: `internal/guards.ts` / `internal/immutable.ts` を `shared/` へ移し、`shared/` が basic 内の他 module を import しない leaf rule を `tests/module-graph.test.mjs` に追加する
+   - Next: 残りの `internal/` を `instrumentation/`（`test-hooks-guard.ts`、`stage-session-testing-hooks.ts`、`debug-state.ts`）と `testing/testing-hooks.ts` へ分けて `internal/` を廃止し、`core.ts` / `state/` / `instrumentation/` の layer rule を更新する
+   - Next: `compareUtf8Lexicographic` を `shared/utf8-order.ts` へ抽出し、`hash/` から restore 用 module への依存をなくしてから `restore-json.ts` を `serialization/restore/` へ移す。lone surrogate の扱いが異なる `hash/canonical-encoder.ts` の UTF-8 比較とは統合しない
+   - Next: `CommittedPendingEvent` を `state/committed-state.ts` で明示定義し、`hash/` を import してよい module を layer rule で固定する
+   - Next: difficulty の error message を test で固定してから、`content/types.ts` の `KNOWN_DIFFICULTIES` / `isKnownDifficulty()` へ4箇所の列挙を寄せる。各 error message は literal のまま残す
+   - Next: validate-content の `output.ts` を、diagnostic 正規化・比較（`diagnostic-normalization.ts`）、result 構築（`output.ts`）、JSON / human formatter（`output-format.ts`）へ一方向の依存で分ける
+   - Next: 古いコメント、存在しない `StageSessionTestingHooks` を検査している型契約、参照のない `containsLoneSurrogate` を個別 commit で直す
+   - Next: `AGENTS.md`、`docs/design.md` の module 構成と依存方向、この文書の対応表を新 path へ更新する
+2. Phase 1C-S2: session / tick pipeline の整理
+   - Next: pending event 上書きが working state だけに効くこと、input 拒否 tick で hook を消費しないこと、同一 tick の複数 fault の適用順を test で固定する
+   - Next: `tick()` の fault injection を `instrumentation/` の `applyCommittedStateFaultsBeforeTick()` へ本文そのままで移す
+   - Next: `loaded-game.ts` の restore / startStage で重複する session context 構築を共通化し、`StageTickContext` を content と instrumentation に分ける
+   - Next: timeline spawn を純粋関数の `simulation/stage-timeline-system.ts` へ抽出する。`STAGE_TICK_SYSTEM_ORDER` は design 7.1 の記録として現状のまま残す
+3. Phase 1C-S3: entity kind の縦割り
+   - Next: `matchesModulePath` を1 segment の `*` に対応させ、stale rule、basic 内の型 cycle、kind 間 import を検査する guardrail を先に追加する
+   - Next: field order 型 utility を `shared/field-order.ts`、restore の plain data guard を `serialization/restore-plain-data.ts` へ下げ、`entities/entity-kinds.ts` に canonical kind 一覧を置く
+   - Next: `simulation/runtime-entity.ts`、`serialization/restore/runtime-entity-kinds.ts`、public DTO と serialize projection、hash DTO / field order と hash projection の kind 別部分を `entities/<kind>/` へ移す。union と dispatch は関心ごとに1箇所へ残し、fixedStruct 名の表と canonical adapter は変更しない
+   - Next: `Restored*RuntimeEntityInput` を `Omit` で導出し、restore key 一覧と public DTO / runtime の key 集合一致を型で固定する。serialize / hash projection は契約が異なるため統合しない
+   - Next: canonical adapter の entity field 値型を絞って nested field の fixedStruct 化漏れを型エラーにし、`AGENTS.md` に field 追加 / kind 追加の checklist を置く
 
 ## Phase 2A へ進む条件
 
