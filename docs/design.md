@@ -909,7 +909,7 @@ MVP の内部解像度は `384x448` とする。ブラウザ表示は integer sc
 
 高速弾のすり抜けを避けるため、敵弾と自機判定は tick 間の移動線分に対する swept circle collision を基本とする。player shot と enemy hitbox も、shot の `collisionMode` に応じて swept circle または segment 判定を使う。実装初期は、1 tick の移動量が判定半径合計を大きく超える entity について collision sampling を追加するか、content validation で最大速度を制限する。
 
-collision broad phase は playfield を固定サイズ grid に分割し、layer 別 collision pair で候補を絞り込む。総当たり判定は禁止する。高速移動 entity は current position だけで grid 登録せず、previous-to-current の swept AABB を collider 半径で膨らませた範囲で grid 登録/検索する。Phase 1A の Core minimum 実装だけは契約固定用の小規模 content に限定し、id 昇順の provisional full scan を許可する。高密度 bullet を扱う playable runtime へ進む前に broad phase grid へ置き換える。
+collision broad phase は playfield を固定サイズ grid に分割し、layer 別 collision pair で候補を絞り込む。総当たり判定は禁止する。高速移動 entity は current position だけで grid 登録せず、previous-to-current の swept AABB を collider 半径で膨らませた範囲で grid 登録/検索する。Phase 1A の Core minimum 実装は契約固定用の小規模 content に限定した id 昇順の provisional full scan だったが、Phase 2A-7 で broad phase grid（`simulation/collision-grid.ts`）へ置き換えた。grid は playfield を 32 px の cell（12 x 14）に分け、tick ごとに layer（enemy bullet、enemy）の collider を中心の cell に 1 回だけ登録する。playfield の外の座標は端の cell にまとめる（座標から cell への写像が単調なので、重なる collider は重なる cell 範囲に入る）。問い合わせは問い合わせ側の半径と登録済み collider の最大半径の和だけ中心から広げた範囲の cell を、浮動小数点の丸めで境界をまたいでも取りこぼさないよう前後 1 cell ずつ広げて調べ、候補を entity id 昇順で返す。resolver はその中で円判定が成り立つ最初の候補を選ぶため、全探索と同じ組を同じ順で選び、state hash と replay は変わらない。移動線分の swept 登録は swept circle collision を入れる slice で扱い、それまでは現在位置で登録と判定をそろえる。
 
 MVP の collision pair:
 
@@ -918,6 +918,8 @@ MVP の collision pair:
 | player vs enemyBullet | enemyBullet grid |
 | player vs enemy | enemy contact grid |
 | playerShot vs enemy | enemy grid |
+
+MVP では enemy の接触判定と被弾判定が同じ collider なので、enemy contact grid と enemy grid は 1 つの enemy grid を共有する。
 
 Phase 2B で追加する collision pair:
 
@@ -1844,7 +1846,7 @@ Phase 1C の debug state dump は headless/core dump とし、root package へ�
 
 `tick` は state hash の `expectedTick` と同じく、その committed checkpoint が次に受け付ける入力 tick を表す。開始時の seed は replay snapshot に保存しないため、`startStage()` から作った session では元の文字列、`restore()` から作った session では `null` とする。seed の有無は state hash へ影響させない。canonical hash の resource budget 超過などで digest を生成できない場合、helper は throw せず `debugState.hashFailed` の test-only result error を返す。この内部 code は root 公開の `CoreErrorCode` union へ追加しない。
 
-`entityCounts` は現在の committed entity、`eventCounts` と `collisionCandidates` は直前に成功して commit された tick を表す。start / restore 直後はまだ成功 frame がないため、未計測を実測ゼロと区別して両 field を `null` にする。最初の成功 tick では pending `stageStarted` を含む実際の frame event を集計し、以後も成功 tick ごとに置き換える。非fatalな失敗 tick では直前値を保持し、fatal latch 後は破損し得る committed snapshot をdumpせず `stageSession.fatal` errorを返す。`collisionCandidates` は broad phase 導入前は narrow-phase の円判定を実行した entity pair 数とし、render-only state や object pool state と同様に state hash / serialize 対象へ含めない。
+`entityCounts` は現在の committed entity、`eventCounts` と `collisionCandidates` は直前に成功して commit された tick を表す。start / restore 直後はまだ成功 frame がないため、未計測を実測ゼロと区別して両 field を `null` にする。最初の成功 tick では pending `stageStarted` を含む実際の frame event を集計し、以後も成功 tick ごとに置き換える。非fatalな失敗 tick では直前値を保持し、fatal latch 後は破損し得る committed snapshot をdumpせず `stageSession.fatal` errorを返す。`collisionCandidates` は broad phase を通過した collider の組の数（問い合わせごとに grid が返した候補数の合計で、narrow phase の早期終了や撃破済み enemy の読み飛ばしの前に数える）とし、render-only state や object pool state と同様に state hash / serialize 対象へ含めない。Phase 2A-7 までは narrow phase の円判定を実行した組の数だった。
 
 collision / event metrics は test serializer が登録された session でだけ収集する。通常の `createShootingCore()` session では collision counter、event count object、freeze を tick hot path に生成せず、Core の本番性能へ test-only diagnostics の費用を持ち込まない。
 

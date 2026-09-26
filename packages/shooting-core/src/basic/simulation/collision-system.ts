@@ -1,5 +1,6 @@
 import type { EnemyId } from "../content/types.ts";
 import type { GameEvent } from "../events/game-event.ts";
+import { CollisionGrid } from "./collision-grid.ts";
 import { compareEntityIdAscending } from "./system-order.ts";
 import type { EnemyBulletRuntimeEntity } from "../entities/enemy-bullet/model.ts";
 import type { EnemyRuntimeEntity } from "../entities/enemy/model.ts";
@@ -23,6 +24,7 @@ export type CollisionResolutionResult = Readonly<{
   score: number;
 }>;
 
+/** broad phase を通過した collider の組の数。debug metric としてだけ数える。 */
 type CollisionMetrics = {
   candidates: number;
 };
@@ -34,8 +36,8 @@ type EntityDestroyedByCollision = EnemyBulletRuntimeEntity | PlayerShotRuntimeEn
  * MVP の collision pair と basic score を deterministic に解決する。
  *
  * 解決順は design の `player hit vs enemy bullet`、`player hit vs enemy contact`、
- * `player shot vs enemy` に固定する。broad phase grid は後続で追加するため、Phase 1A
- * では小規模 content を前提に id 昇順の全探索で契約を先に固める。
+ * `player shot vs enemy` に固定する。候補は layer ごとの broad phase grid（enemy bullet grid と enemy grid）から entity id 昇順で
+ * 取り出し、円判定が成り立つ最初の候補を選ぶ。grid は重なり得る候補を必ず含むため、全探索と同じ組を同じ順で選ぶ。
  */
 export function resolveCollisionAndScoring(
   entities: readonly RuntimeEntityState[],
@@ -47,10 +49,13 @@ export function resolveCollisionAndScoring(
   const metrics: CollisionMetrics | null = options.collectMetrics === true ? { candidates: 0 } : null;
   let score = options.score;
 
+  // enemy の位置は collision 解決の間に変わらず、hp の変化は player shot の解決側で追う。
+  const enemyGrid = new CollisionGrid(getEnemies(workingEntities));
   const player = findPlayer(workingEntities);
   const playerWasInvincibleAtTickStart = Boolean(player && player.invincibleTicksRemaining > 0);
   if (player && player.invincibleTicksRemaining === 0) {
-    const bulletHit = findFirstCollision(player, getEnemyBullets(workingEntities), metrics);
+    const bulletGrid = new CollisionGrid(getEnemyBullets(workingEntities));
+    const bulletHit = findFirstCollision(player, queryCandidates(bulletGrid, player, metrics));
     if (bulletHit) {
       const hitPlayer = applyPlayerHit(player, options.playerInvincibleTicksAfterHit);
       workingEntities = replaceEntity(workingEntities, hitPlayer);
@@ -58,7 +63,7 @@ export function resolveCollisionAndScoring(
       events.push(buildPlayerHitEvent(options.tick, hitPlayer, bulletHit));
       events.push(buildEntityDestroyedEvent(options.tick, bulletHit, "collision"));
     } else {
-      const enemyContact = findFirstCollision(player, getEnemies(workingEntities), metrics);
+      const enemyContact = findFirstCollision(player, queryCandidates(enemyGrid, player, metrics));
       if (enemyContact) {
         const hitPlayer = applyPlayerHit(player, options.playerInvincibleTicksAfterHit);
         workingEntities = replaceEntity(workingEntities, hitPlayer);
@@ -71,7 +76,7 @@ export function resolveCollisionAndScoring(
     workingEntities = decrementPlayerInvincibility(workingEntities);
   }
 
-  const shotHits = resolvePlayerShotEnemyHits(workingEntities, destroyedEntityIds, metrics);
+  const shotHits = resolvePlayerShotEnemyHits(workingEntities, enemyGrid, destroyedEntityIds, metrics);
   for (const hit of shotHits) {
     destroyedEntityIds.add(hit.shot.id);
     events.push(buildEntityDestroyedEvent(options.tick, hit.shot, "collision"));
@@ -113,6 +118,7 @@ function decrementPlayerInvincibility(entities: readonly RuntimeEntityState[]): 
 
 function resolvePlayerShotEnemyHits(
   entities: readonly RuntimeEntityState[],
+  enemyGrid: CollisionGrid<EnemyRuntimeEntity>,
   destroyedEntityIds: ReadonlySet<number>,
   metrics: CollisionMetrics | null,
 ): Array<Readonly<{
@@ -121,7 +127,6 @@ function resolvePlayerShotEnemyHits(
   shot: PlayerShotRuntimeEntity;
 }>> {
   const hits = [];
-  const enemyOrder = getEnemies(entities).map((enemy) => enemy.id);
   const enemiesById = new Map(getEnemies(entities).map((enemy) => [enemy.id, enemy]));
   const defeatedEnemyIds = new Set<number>();
 
@@ -131,11 +136,10 @@ function resolvePlayerShotEnemyHits(
     }
     const enemy = findFirstCollidingEnemy(
       shot,
-      enemyOrder,
+      queryCandidates(enemyGrid, shot, metrics).map((candidate) => candidate.id),
       enemiesById,
       destroyedEntityIds,
       defeatedEnemyIds,
-      metrics,
     );
     if (!enemy) {
       continue;
@@ -156,15 +160,15 @@ function resolvePlayerShotEnemyHits(
   return hits;
 }
 
+/** broad phase の候補（id 昇順）のうち、まだ倒れていない enemy で shot と重なる最初の enemy を返す。 */
 function findFirstCollidingEnemy(
   shot: PlayerShotRuntimeEntity,
-  enemyOrder: readonly number[],
+  candidateEnemyIds: readonly number[],
   enemiesById: ReadonlyMap<number, EnemyRuntimeEntity>,
   destroyedEntityIds: ReadonlySet<number>,
   defeatedEnemyIds: ReadonlySet<number>,
-  metrics: CollisionMetrics | null,
 ): EnemyRuntimeEntity | null {
-  for (const enemyId of enemyOrder) {
+  for (const enemyId of candidateEnemyIds) {
     if (destroyedEntityIds.has(enemyId) || defeatedEnemyIds.has(enemyId)) {
       continue;
     }
@@ -172,7 +176,7 @@ function findFirstCollidingEnemy(
     if (!enemy || enemy.hp <= 0) {
       continue;
     }
-    if (testCollisionCandidate(shot, enemy, metrics)) {
+    if (circlesOverlap(shot, enemy)) {
       return enemy;
     }
   }
@@ -185,15 +189,11 @@ function findPlayer(entities: readonly RuntimeEntityState[]): PlayerRuntimeEntit
 }
 
 function getEnemyBullets(entities: readonly RuntimeEntityState[]): EnemyBulletRuntimeEntity[] {
-  return entities
-    .filter((entity): entity is EnemyBulletRuntimeEntity => entity.kind === "enemyBullet")
-    .sort(compareEntityIdAscending);
+  return entities.filter((entity): entity is EnemyBulletRuntimeEntity => entity.kind === "enemyBullet");
 }
 
 function getEnemies(entities: readonly RuntimeEntityState[]): EnemyRuntimeEntity[] {
-  return entities
-    .filter((entity): entity is EnemyRuntimeEntity => entity.kind === "enemy")
-    .sort(compareEntityIdAscending);
+  return entities.filter((entity): entity is EnemyRuntimeEntity => entity.kind === "enemy");
 }
 
 function getPlayerShots(entities: readonly RuntimeEntityState[]): PlayerShotRuntimeEntity[] {
@@ -202,24 +202,22 @@ function getPlayerShots(entities: readonly RuntimeEntityState[]): PlayerShotRunt
     .sort(compareEntityIdAscending);
 }
 
-function findFirstCollision<T extends RuntimeEntityState>(
-  source: RuntimeEntityState,
-  candidates: readonly T[],
-  metrics: CollisionMetrics | null,
-): T | null {
-  return candidates.find((candidate) => testCollisionCandidate(source, candidate, metrics)) ?? null;
+/** id 昇順の候補のうち、source の円と重なる最初の候補を返す。 */
+function findFirstCollision<T extends RuntimeEntityState>(source: RuntimeEntityState, candidates: readonly T[]): T | null {
+  return candidates.find((candidate) => circlesOverlap(source, candidate)) ?? null;
 }
 
-/** narrow-phase の円判定を実行した entity pair を debug metric として数える。 */
-function testCollisionCandidate(
-  left: RuntimeEntityState,
-  right: RuntimeEntityState,
+/** source の円と重なり得る候補を grid から取り出し、broad phase を通過した組の数を debug metric として数える。 */
+function queryCandidates<T extends RuntimeEntityState>(
+  grid: CollisionGrid<T>,
+  source: RuntimeEntityState,
   metrics: CollisionMetrics | null,
-): boolean {
+): T[] {
+  const candidates = grid.query(source.position, source.collisionRadius);
   if (metrics) {
-    metrics.candidates += 1;
+    metrics.candidates += candidates.length;
   }
-  return circlesOverlap(left, right);
+  return candidates;
 }
 
 function circlesOverlap(left: RuntimeEntityState, right: RuntimeEntityState): boolean {
