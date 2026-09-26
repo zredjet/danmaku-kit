@@ -1,12 +1,13 @@
-import { Loader, Scene, type Types } from "phaser";
+import { Loader, Scene } from "phaser";
 
 import { planAssetLoads, resolveAssetLoadResults } from "../assets/asset-loading.ts";
 import type { AssetLoadRequest } from "../assets/asset-loading.ts";
 import type { AssetManifest } from "../assets/asset-manifest.ts";
+import { buildLoadingHudView, type HudPort } from "../hud/hud-view.ts";
+import type { GameShell } from "../lifecycle/game-shell.ts";
 import { describeRuntimeEvent } from "../runtime-event.ts";
 import type { RuntimeEvent } from "../runtime-event.ts";
 import { resolveDefinitionTextures } from "../view/definition-assets.ts";
-import { PLAYFIELD_HEIGHT, PLAYFIELD_WIDTH } from "../view/playfield.ts";
 import type { ViewPoolPlan } from "../view/view-pool-plan.ts";
 
 export type BootSceneOptions = Readonly<{
@@ -16,6 +17,8 @@ export type BootSceneOptions = Readonly<{
   /** definition id から content の asset key を引く表。 */
   definitionAssets: ReadonlyMap<string, string>;
   viewPoolPlan: ViewPoolPlan;
+  shell: Pick<GameShell, "beginLoading">;
+  hud: HudPort;
 }>;
 
 /** loading が済んだ stage scene へ渡す、texture と view pool の見積もり。 */
@@ -27,20 +30,13 @@ export type StageSceneData = Readonly<{
   assetEvents: readonly RuntimeEvent[];
 }>;
 
-const TEXT_STYLE: Types.GameObjects.Text.TextStyle = {
-  color: "#9aa4c7",
-  fontFamily: "monospace",
-  fontSize: "12px",
-  align: "center",
-  wordWrap: { width: PLAYFIELD_WIDTH - 32 },
-};
-
 /**
- * lifecycle の loading にあたる scene（design 17）。
+ * lifecycle の loading の前半にあたる scene（design 6、17）。
  *
- * manifest の sprite を base URL と合成して preload し、読み込めなかった asset に design 17 の規則（required は開始を止め、fallback が
- * あれば使い、省略できるものは省略する）を当てる。asset の出来事は log に出し、stage を始められるときは texture と view pool の見積もりを
- * stage scene へ渡す。始められないときは理由を表示して止まる。
+ * lifecycle を loading へ進め、manifest の sprite を base URL と合成して preload する。読み込めなかった asset に design 17 の規則
+ * （required は開始を止め、fallback があれば使い、省略できるものは省略する）を当てる。asset の出来事は log に出し、stage を始められる
+ * ときは texture と view pool の見積もりを stage scene へ渡す（view pool の準備までが loading）。始められないときは理由を HUD に
+ * 出して止まる。
  */
 export class BootScene extends Scene {
   readonly #options: BootSceneOptions;
@@ -61,9 +57,11 @@ export class BootScene extends Scene {
     this.load.on(Loader.Events.FILE_LOAD_ERROR, (file: Loader.File) => {
       this.#failures.set(file.key, `could not load ${String(file.url)}`);
     });
-    const progress = this.add.text(PLAYFIELD_WIDTH / 2, PLAYFIELD_HEIGHT / 2, "loading assets", TEXT_STYLE).setOrigin(0.5);
+    this.#options.shell.beginLoading();
+    const { hud } = this.#options;
+    hud.render(buildLoadingHudView("assets 0%"));
     this.load.on(Loader.Events.PROGRESS, (value: number) => {
-      progress.setText(`loading assets ${Math.round(value * 100)}%`);
+      hud.render(buildLoadingHudView(`assets ${Math.round(value * 100)}%`));
     });
     for (const request of plan.requests) {
       if (request.format === "svg") {
@@ -87,17 +85,17 @@ export class BootScene extends Scene {
       console.warn(`[sample-title] ${describeRuntimeEvent(event)}`);
     }
     if (!outcome.ok) {
-      this.#showLoadError(["Asset load failed", ...outcome.events.map(describeRuntimeEvent)]);
+      this.#options.hud.showError("Asset load failed", outcome.events.map(describeRuntimeEvent));
       return;
     }
     const textures = resolveDefinitionTextures(this.#options.definitionAssets, outcome.loadedKeys);
     if (!textures.ok) {
-      this.#showLoadError(["Entity sprites are missing", ...textures.missingAssets]);
+      this.#options.hud.showError("Entity sprites are missing", textures.missingAssets);
       return;
     }
     const plan = this.#options.viewPoolPlan;
     if (!plan.ok) {
-      this.#showLoadError(["View pool budget exceeded", plan.error]);
+      this.#options.hud.showError("View pool budget exceeded", [plan.error]);
       return;
     }
     const data: StageSceneData = {
@@ -106,12 +104,5 @@ export class BootScene extends Scene {
       assetEvents: outcome.events,
     };
     this.scene.start("stage", data);
-  }
-
-  #showLoadError(lines: readonly string[]): void {
-    this.children.removeAll(true);
-    this.add
-      .text(PLAYFIELD_WIDTH / 2, PLAYFIELD_HEIGHT / 2, [...lines], { ...TEXT_STYLE, color: "#fca5a5" })
-      .setOrigin(0.5);
   }
 }

@@ -11,7 +11,8 @@ export type SampleTitleGameOptions = Readonly<{
 }>;
 
 /**
- * 内部解像度の canvas で loading（boot scene）を始め、asset を読み込めたら stage scene へ進む。
+ * 内部解像度の canvas で loading（boot scene）を始め、asset を読み込めたら stage scene へ進む。`parent` には canvas と DOM overlay の
+ * HUD を重ねる箱を渡す。
  *
  * keyboard 入力は scene が window から受けるため、Phaser の keyboard plugin は無効にする。integer scale と letterbox は
  * Phase 2A-10 で扱う。

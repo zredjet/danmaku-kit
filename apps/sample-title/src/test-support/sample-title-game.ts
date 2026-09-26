@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import {
   createShootingCore,
   type GameDefinition,
+  type LoadedGame,
   type StageSession,
 } from "@shooting-sample/shooting-core";
 import { formatValidateContentHuman, loadValidatedGameDefinition } from "@shooting-sample/validate-content";
@@ -22,13 +23,18 @@ export async function loadSampleTitleDefinition(): Promise<GameDefinition> {
   return loaded.definition;
 }
 
-/** sample title の content を Core に load し、`stage.stage_01` を指定 seed で開始した session を返す。 */
-export async function startSampleTitleStage(seed: string): Promise<StageSession> {
+/** sample title の content を Core に load した `LoadedGame` を返す。 */
+export async function loadSampleTitleGame(): Promise<LoadedGame> {
   const game = createShootingCore().load(await loadSampleTitleDefinition());
   if (!game.ok) {
     throw new Error(JSON.stringify(game.errors));
   }
-  const session = game.value.startStage({ stageId: "stage.stage_01", difficulty: "normal", seed });
+  return game.value;
+}
+
+/** sample title の content を Core に load し、`stage.stage_01` を指定 seed で開始した session を返す。 */
+export async function startSampleTitleStage(seed: string): Promise<StageSession> {
+  const session = (await loadSampleTitleGame()).startStage({ stageId: "stage.stage_01", difficulty: "normal", seed });
   if (!session.ok) {
     throw new Error(JSON.stringify(session.errors));
   }

@@ -1,48 +1,41 @@
-import type { CoreError, GameFrame, LoadedGame, StartStageOptions } from "@shooting-sample/shooting-core";
-import { Scene, Scenes, type GameObjects, type Types } from "phaser";
+import { Scene, Scenes } from "phaser";
 
-import { KeyboardInputAdapter } from "../input/keyboard-input.ts";
-import { StageLoop } from "../loop/stage-loop.ts";
+import type { AudioStatus } from "../audio/audio-status.ts";
+import { buildHudView, buildLoadingHudView, type HudPort } from "../hud/hud-view.ts";
+import type { GameShell, GameShellStep } from "../lifecycle/game-shell.ts";
 import { describeRuntimeEvent } from "../runtime-event.ts";
-import type { RuntimeEvent } from "../runtime-event.ts";
-import { PLAYFIELD_HEIGHT, PLAYFIELD_WIDTH } from "../view/playfield.ts";
 import type { StageSceneData } from "./boot-scene.ts";
 import { EntityViews } from "./entity-views.ts";
 
 export type StageSceneOptions = Readonly<{
-  loadedGame: LoadedGame;
-  stage: StartStageOptions;
+  shell: GameShell;
+  hud: HudPort;
   collisionRadii: ReadonlyMap<string, number>;
   versionLabel: string;
+  audioStatus: AudioStatus;
 }>;
 
-const TEXT_STYLE: Types.GameObjects.Text.TextStyle = {
-  color: "#9aa4c7",
-  fontFamily: "monospace",
-  fontSize: "12px",
-};
-const TEXT_DEPTH = 10;
 /** stage start 前の view pool の準備で、1 render frame に作る view の上限。 */
 const VIEW_WARMUP_PER_FRAME = 256;
 
 /**
- * 1 stage を固定 tick で進め、`GameFrame` を描画する scene。
+ * loading の後半（view pool の準備）から title、stage、stage 終了までを受け持つ scene。
  *
- * keyboard event は Phaser の keyboard plugin を使わず window から受けて `KeyboardInputAdapter` に渡し、割り当てのある key は
- * browser の既定動作を止める。focus lost と visibility change では stage loop の clock と入力を捨てる（lifecycle の paused
- * 遷移は Phase 2A-9）。Core が error を返したら stage を止めて error を表示する。stageCleared / gameOver の frame で stage が
- * 終わったら結果を表示して loop を止める（result 画面と title への遷移は Phase 2A-9）。
+ * loading（boot scene）が渡した texture と見積もりで view pool を作り、1 render frame に `VIEW_WARMUP_PER_FRAME` 個ずつ作り終えたら
+ * lifecycle を title へ進める。以後は render frame ごとに `GameShell` を進め、tick を実行した frame と stage を始めた・離れた frame で
+ * `GameFrame.state.entities` を view へ同期し、HUD（score、lives、状態の見出し、debug）を更新する。
  *
- * loading（boot scene）が渡した texture と見積もりで view pool を作り、1 render frame に `VIEW_WARMUP_PER_FRAME` 個ずつ作り終えてから
- * stage を始める。stage 中に pool を使い切ったら `viewPoolExhausted` を log と画面に出して stage を止める。
+ * keyboard event は Phaser の keyboard plugin を使わず window から受けて shell に渡し、割り当てのある key は browser の既定動作を
+ * 止める。focus lost と visibility change は lifecycle の focus lost として渡す。Core の error と view pool の枯渇では scene を止めて
+ * HUD に error を出す。
  */
 export class StageScene extends Scene {
   readonly #options: StageSceneOptions;
   #data: StageSceneData | null = null;
-  #loop: StageLoop | null = null;
   #views: EntityViews | null = null;
   #warming = false;
-  #status: GameObjects.Text | null = null;
+  #halted = false;
+  #assetNotes: readonly string[] = [];
 
   constructor(options: StageSceneOptions) {
     super("stage");
@@ -58,94 +51,75 @@ export class StageScene extends Scene {
     if (!data) {
       throw new Error("stage scene must be started by the boot scene");
     }
-    this.add.text(8, 8, this.#options.versionLabel, TEXT_STYLE).setDepth(TEXT_DEPTH);
-    this.#status = this.add.text(8, 24, `seed ${this.#options.stage.seed}`, TEXT_STYLE).setDepth(TEXT_DEPTH);
-    const assetNotes = data.assetEvents.filter((event) => event.type === "assetFallbackUsed");
-    if (assetNotes.length > 0) {
-      this.add
-        .text(8, PLAYFIELD_HEIGHT - 8, assetNotes.map(describeRuntimeEvent), { ...TEXT_STYLE, color: "#fcd34d" })
-        .setOrigin(0, 1)
-        .setDepth(TEXT_DEPTH);
-    }
+    this.#assetNotes = data.assetEvents.filter((event) => event.type === "assetFallbackUsed").map(describeRuntimeEvent);
     this.#views = new EntityViews(this, {
       collisionRadii: this.#options.collisionRadii,
       textures: data.textures,
       capacities: data.viewPoolCapacities,
     });
     this.#warming = true;
+    this.#listenToBrowser();
   }
 
   update(_time: number, delta: number): void {
-    if (this.#warming) {
-      this.#warmViews();
-      return;
-    }
-    const loop = this.#loop;
-    if (!loop) {
-      return;
-    }
-    const step = loop.advance(delta);
-    if (!step.ok) {
-      this.#loop = null;
-      this.#showFatal(step.errors);
-      return;
-    }
-    const frame = step.latestFrame;
-    // tick が進まなかった render frame（高 refresh rate の display で起きる）は state が変わらないので同期しない。
-    if (!frame || step.ticks === 0) {
-      return;
-    }
-    const exhausted = this.#views?.sync(frame.state.entities, {
-      showPlayerHitbox: step.latestInput?.held.includes("focus") ?? false,
-    }) ?? null;
-    if (exhausted) {
-      this.#loop = null;
-      this.#showRuntimeFatal(exhausted);
-      return;
-    }
-    this.#status?.setText([
-      `seed ${this.#options.stage.seed}  tick ${frame.tick}  dropped ${loop.droppedTicksTotal}`,
-      `score ${frame.state.score}  lives ${frame.state.player.lives}`,
-    ]);
-    if (loop.ended) {
-      this.#loop = null;
-      this.#showResult(frame);
-    }
-  }
-
-  /** view pool を 1 frame 分だけ作り、作り終えたら stage を始める。 */
-  #warmViews(): void {
     const views = this.#views;
-    if (!views) {
+    if (this.#halted || !views) {
       return;
     }
-    const warmed = views.warm(VIEW_WARMUP_PER_FRAME);
-    const { created, capacity } = views.warmProgress;
-    this.#status?.setText(`preparing views ${created}/${capacity}`);
-    if (!warmed) {
+    if (this.#warming) {
+      const warmed = views.warm(VIEW_WARMUP_PER_FRAME);
+      if (!warmed) {
+        const { created, capacity } = views.warmProgress;
+        this.#options.hud.render(buildLoadingHudView(`views ${created}/${capacity}`));
+        return;
+      }
+      this.#warming = false;
+      this.#options.shell.finishLoading();
+    }
+
+    const step = this.#options.shell.advance(delta);
+    if (!step.ok) {
+      this.#halt("Core error", step.errors.map((error) => `${error.code}: ${error.message}`));
       return;
     }
-    this.#warming = false;
-    this.#status?.setText(`seed ${this.#options.stage.seed}`);
-    const session = this.#options.loadedGame.startStage(this.#options.stage);
-    if (!session.ok) {
-      this.#showFatal(session.errors);
-      return;
+    // tick が進まなかった render frame（高 refresh rate の display や pause 中）は state が変わらないので同期しない。
+    if (step.stageChanged || step.ticks > 0) {
+      const exhausted = views.sync(step.frame?.state.entities ?? [], {
+        showPlayerHitbox: step.latestInput?.held.includes("focus") ?? false,
+      });
+      if (exhausted) {
+        console.error(`[sample-title] ${describeRuntimeEvent(exhausted)}`);
+        this.#halt("Runtime error", [describeRuntimeEvent(exhausted)]);
+        return;
+      }
     }
-    const input = new KeyboardInputAdapter();
-    const loop = new StageLoop(session.value, input);
-    this.#loop = loop;
-    this.#listenToBrowser(input, loop);
+    this.#options.hud.render(buildHudView(step.lifecycle.state, step.frame));
+    this.#options.hud.setDebugLines(this.#debugLines(step));
   }
 
-  #listenToBrowser(input: KeyboardInputAdapter, loop: StageLoop): void {
+  #debugLines(step: Extract<GameShellStep, { ok: true }>): readonly string[] {
+    const lines = [this.#options.versionLabel, `${step.lifecycle.state}  audio ${this.#options.audioStatus}`];
+    if (step.seed !== null) {
+      lines.push(`seed ${step.seed}  tick ${step.frame?.tick ?? "-"}  dropped ${step.droppedTicksTotal}`);
+    }
+    return [...lines, ...this.#assetNotes];
+  }
+
+  /** Core の error や runtime の fatal で scene を止め、HUD に出す。Phase 2A は dev と本番のどちらも止める。 */
+  #halt(title: string, lines: readonly string[]): void {
+    this.#halted = true;
+    this.#options.hud.showError(title, lines);
+  }
+
+  #listenToBrowser(): void {
+    const { shell } = this.#options;
     const onKey = (event: KeyboardEvent): void => {
-      if (input.handleKeyEvent(event)) {
+      if (shell.handleKeyEvent(event)) {
         event.preventDefault();
       }
     };
     const onFocusLost = (): void => {
-      loop.reset();
+      shell.loseFocus();
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKey);
@@ -160,44 +134,5 @@ export class StageScene extends Scene {
     // scene の停止は SHUTDOWN、game の破棄は SHUTDOWN を経ず DESTROY だけを出すため、両方で外す。
     this.events.once(Scenes.Events.SHUTDOWN, removeListeners);
     this.events.once(Scenes.Events.DESTROY, removeListeners);
-  }
-
-  #showResult(frame: GameFrame): void {
-    const cleared = frame.state.status === "stageCleared";
-    this.add
-      .text(PLAYFIELD_WIDTH / 2, PLAYFIELD_HEIGHT / 2, [cleared ? "STAGE CLEAR" : "GAME OVER", `score ${frame.state.score}`], {
-        ...TEXT_STYLE,
-        align: "center",
-        color: cleared ? "#86efac" : "#fca5a5",
-        fontSize: "20px",
-      })
-      .setOrigin(0.5)
-      .setDepth(TEXT_DEPTH);
-  }
-
-  /** runtime の fatal（view pool の枯渇など）を log と画面に出す。Phase 2A は dev と本番のどちらも stage を止める。 */
-  #showRuntimeFatal(event: RuntimeEvent): void {
-    console.error(`[sample-title] ${describeRuntimeEvent(event)}`);
-    this.add
-      .text(PLAYFIELD_WIDTH / 2, PLAYFIELD_HEIGHT / 2, ["Runtime error", describeRuntimeEvent(event)], {
-        ...TEXT_STYLE,
-        align: "center",
-        color: "#fca5a5",
-        wordWrap: { width: PLAYFIELD_WIDTH - 32 },
-      })
-      .setOrigin(0.5)
-      .setDepth(TEXT_DEPTH);
-  }
-
-  #showFatal(errors: readonly CoreError[]): void {
-    this.add
-      .text(PLAYFIELD_WIDTH / 2, PLAYFIELD_HEIGHT / 2, ["Core error", ...errors.map((error) => `${error.code}: ${error.message}`)], {
-        ...TEXT_STYLE,
-        align: "center",
-        color: "#fca5a5",
-        wordWrap: { width: PLAYFIELD_WIDTH - 32 },
-      })
-      .setOrigin(0.5)
-      .setDepth(TEXT_DEPTH);
   }
 }

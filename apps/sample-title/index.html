@@ -18,6 +18,82 @@
         justify-content: center;
         height: 100%;
       }
+
+      /* canvas と DOM overlay の HUD を同じ大きさの箱に重ねる。scale と letterbox は Phase 2A-10 で扱う。 */
+      .stage-root {
+        position: relative;
+        width: 384px;
+        height: 448px;
+      }
+
+      .hud {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        color: #e2e8f0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+
+      .hud-top {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 8px 0;
+        font-size: 13px;
+        letter-spacing: 0.05em;
+      }
+
+      .hud-lives {
+        color: #7dd3fc;
+      }
+
+      .hud-banner {
+        position: absolute;
+        top: 42%;
+        left: 0;
+        right: 0;
+        text-align: center;
+      }
+
+      .hud-banner-title {
+        font-size: 22px;
+        font-weight: bold;
+        letter-spacing: 0.12em;
+      }
+
+      .hud-banner-detail {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #9aa4c7;
+      }
+
+      .hud-banner[data-tone="success"] .hud-banner-title {
+        color: #86efac;
+      }
+
+      .hud-banner[data-tone="danger"] .hud-banner-title {
+        color: #fca5a5;
+      }
+
+      .hud-debug {
+        position: absolute;
+        top: 26px;
+        left: 8px;
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.35;
+        color: #64748b;
+        white-space: pre-wrap;
+      }
+
+      .hud-error {
+        position: absolute;
+        inset: 30% 16px auto;
+        font-size: 12px;
+        text-align: center;
+        color: #fca5a5;
+        white-space: pre-wrap;
+      }
     </style>
   </head>
   <body>
