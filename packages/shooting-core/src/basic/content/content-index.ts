@@ -1,3 +1,5 @@
+import { compilePatternProgram } from "../patterns/pattern-program.ts";
+import type { PatternProgram } from "../patterns/pattern-program.ts";
 import type {
   BulletDefinition,
   EnemyDefinition,
@@ -15,6 +17,8 @@ export type LoadedContentIndex = Readonly<{
   enemiesById: ReadonlyMap<string, EnemyDefinition>;
   pathsById: ReadonlyMap<string, PathDefinition>;
   patternsById: ReadonlyMap<string, PatternDefinition>;
+  /** `steps` を持つ pattern だけの PatternProgram。 */
+  patternProgramsById: ReadonlyMap<string, PatternProgram>;
   playerShotsById: ReadonlyMap<string, PlayerShotDefinition>;
   playersById: ReadonlyMap<string, PlayerDefinition>;
   stagesById: ReadonlyMap<string, StageDefinition>;
@@ -28,6 +32,10 @@ export function createLoadedContentIndex(definition: GameDefinition): LoadedCont
     enemiesById: new Map(definition.content.enemies.map((enemy) => [enemy.id, enemy])),
     pathsById: new Map(definition.content.paths.map((path) => [path.id, path])),
     patternsById: new Map(definition.content.patterns.map((pattern) => [pattern.id, pattern])),
+    patternProgramsById: new Map(definition.content.patterns.flatMap((pattern) => {
+      const program = compilePatternProgram(pattern);
+      return program ? [[pattern.id, program] as const] : [];
+    })),
     playerShotsById: new Map(definition.content.playerShots.map((playerShot) => [playerShot.id, playerShot])),
     playersById: new Map(definition.content.players.map((player) => [player.id, player])),
     stagesById: new Map(definition.content.stages.map((stage) => [stage.id, stage])),

@@ -146,14 +146,16 @@ export type PlayerShotDefinition = {
 };
 
 /**
- * 敵 pattern の最小 content 定義。
+ * 敵 pattern の content 定義。
  *
- * Phase 1A では full DSL ではなく、spawn 直後に 1 batch だけ敵弾を生成する
- * `fireOnSpawn` を扱う。wait / loop / aim / fan は Phase 2A 以降で追加する。
+ * `fireOnSpawn` は spawn 直後に 1 batch だけ敵弾を生成する最小形、`steps` は `wait` / `fire` / `loop` の命令列（PatternProgram）で、
+ * 1 つの pattern ではどちらか一方だけを使う。`repeat`、`parallel`、`if`、`randomSpread` は Phase 2B の DSL で追加する。
  */
 export type PatternDefinition = {
   id: PatternId;
   version: number;
+  /** spawn tick から実行する命令列。`fireOnSpawn` とは同時に指定できない。 */
+  steps?: readonly PatternStepDefinition[];
   fireOnSpawn?: {
     bullet: BulletId;
     offset: {
@@ -167,6 +169,47 @@ export type PatternDefinition = {
     };
   };
 };
+
+/** pattern の 1 命令。1 step は `wait`、`fire`、`loop` のどれか 1 つの key だけを持つ。 */
+export type PatternStepDefinition =
+  | {
+    /** 次の命令を実行するまで待つ tick 数。 */
+    wait: number;
+  }
+  | {
+    fire: PatternFireDefinition;
+  }
+  | {
+    /** 同じ tick のうちに戻る step index。戻った先から loop までの間に `wait` を含む必要がある。 */
+    loop: number;
+  };
+
+/**
+ * pattern の発射命令。
+ *
+ * 向きは自機を狙う `aim: player` か、+x を 0°、+y（下）へ回る向きを正とする `angleDeg` のどちらか一方で指定し、0.25° 刻みの角度
+ * step にそろえる。`fan` は基準の向きを中心に `count` 発を、最初と最後の弾の間が `spreadDeg` になるよう等間隔に並べる。
+ */
+export type PatternFireDefinition = {
+  bullet: BulletId;
+  /** 発射元。現在は発射する enemy の位置だけを扱う。 */
+  origin?: "self";
+  /** 敵弾の速さ（px / tick）。 */
+  speed: number;
+  fan?: {
+    count: number;
+    spreadDeg: number;
+  };
+} & (
+  | {
+    aim: "player";
+    angleDeg?: never;
+  }
+  | {
+    angleDeg: number;
+    aim?: never;
+  }
+);
 
 /**
  * enemy の移動 path。

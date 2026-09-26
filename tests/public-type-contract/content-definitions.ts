@@ -187,6 +187,65 @@ const invalidFireOnSpawnPatternOffsetY: PatternDefinition = {
     },
   },
 };
+const stepsPatternDefinition: PatternDefinition = {
+  id: "pattern.scout_three_way",
+  version: 1,
+  steps: [
+    { wait: 20 },
+    {
+      fire: {
+        bullet: "bullet.red_small",
+        origin: "self",
+        aim: "player",
+        fan: { count: 3, spreadDeg: 24 },
+        speed: 2.4,
+      },
+    },
+    { fire: { bullet: "bullet.red_small", angleDeg: 90, speed: 3 } },
+    { wait: 50 },
+    { loop: 0 },
+  ],
+};
+const invalidPatternFireWithAimAndAngle: PatternDefinition = {
+  id: "pattern.invalid",
+  version: 1,
+  steps: [
+    // @ts-expect-error fire aims at the player or uses a fixed angle, not both.
+    { fire: { bullet: "bullet.red_small", aim: "player", angleDeg: 90, speed: 3 } },
+  ],
+};
+const invalidPatternFireWithoutDirection: PatternDefinition = {
+  id: "pattern.invalid",
+  version: 1,
+  steps: [
+    // @ts-expect-error fire requires aim or angleDeg.
+    { fire: { bullet: "bullet.red_small", speed: 3 } },
+  ],
+};
+const invalidPatternFireOrigin: PatternDefinition = {
+  id: "pattern.invalid",
+  version: 1,
+  steps: [
+    // @ts-expect-error fire origin supports only the firing enemy.
+    { fire: { bullet: "bullet.red_small", origin: "player", aim: "player", speed: 3 } },
+  ],
+};
+const invalidPatternFireBullet: PatternDefinition = {
+  id: "pattern.invalid",
+  version: 1,
+  steps: [
+    // @ts-expect-error fire must reference an enemy bullet id.
+    { fire: { bullet: "enemy.scout", aim: "player", speed: 3 } },
+  ],
+};
+const invalidPatternWait: PatternDefinition = {
+  id: "pattern.invalid",
+  version: 1,
+  steps: [
+    // @ts-expect-error wait must be a tick count.
+    { wait: "20" },
+  ],
+};
 const pathDefinition: PathDefinition = definition.content.paths[0]!;
 const velocityPathDefinition: PathDefinition = {
   id: "path.down",
@@ -265,6 +324,12 @@ void invalidFireOnSpawnPatternOffsetX;
 void invalidFireOnSpawnPatternOffsetY;
 void movingFireOnSpawnPatternDefinition;
 void invalidFireOnSpawnPatternVelocity;
+void stepsPatternDefinition;
+void invalidPatternFireWithAimAndAngle;
+void invalidPatternFireWithoutDirection;
+void invalidPatternFireOrigin;
+void invalidPatternFireBullet;
+void invalidPatternWait;
 void pathDefinition;
 void velocityPathDefinition;
 void sinePathDefinition;

@@ -49,9 +49,29 @@ export const ENEMY_CLEANUP_PLAYFIELD_MARGIN = 64;
  * enemy bullet velocity の axis ごとの絶対値上限（px / tick）。
  *
  * swept collision を入れるまでは、1 tick の移動量が自機と敵弾の判定半径の合計（約 7 px）を大きく超えて弾が自機をすり抜けない
- * ように、この上限で速度を制限する。
+ * ように、この上限で速度を制限する。pattern の `fire.speed` もこの値以下にし、表の単位 vector を掛けた各成分が上限を超えない。
  */
 export const MAX_ENEMY_BULLET_SPEED_PER_AXIS = 8;
+
+/** 1 pattern が持てる step 数の上限。 */
+export const MAX_PATTERN_STEPS = 64;
+
+/** pattern の `wait` 1 つの tick 上限。 */
+export const MAX_PATTERN_WAIT_TICKS = 3_600;
+
+/** pattern の `fire` 1 つが並べる fan の弾数上限。 */
+export const MAX_PATTERN_FAN_COUNT = 64;
+
+/** pattern の `angleDeg` の絶対値と `fan.spreadDeg` の上限（度）。 */
+export const MAX_PATTERN_ANGLE_DEGREES = 360;
+
+/**
+ * 1 tick に全 pattern runner が実行できる命令数の上限（design 14）。
+ *
+ * `loop` は戻り先までに `wait` を含むことを validation で保証するが、多数の enemy が長い命令列を同じ tick に実行したときの上限はこの
+ * budget で守る。超えた tick は fatal にする。
+ */
+export const MAX_PATTERN_COMMANDS_PER_TICK = 2_000;
 
 /** 同時に存在できる enemy bullet 数の上限（design 14）。超える生成は entity を落とさず fatal にする。 */
 export const MAX_ACTIVE_ENEMY_BULLETS = 2_000;

@@ -100,24 +100,30 @@ export function validatePlayerShotReferences(registry: ContentRegistry, errors: 
   }
 }
 
-/** PatternDefinition から参照される enemy bullet が registry に存在するか検証する。 */
+/** PatternDefinition の `fireOnSpawn` と `steps` の `fire` から参照される enemy bullet が registry に存在するか検証する。 */
 export function validatePatternBulletReferences(registry: ContentRegistry, errors: CoreError[]): void {
   const bulletIds = new Set(registry.bullets.map((definition) => definition.id));
   for (const [index, pattern] of registry.patterns.entries()) {
-    const bulletId = pattern.fireOnSpawn?.bullet;
-    if (bulletId === undefined) {
-      continue;
-    }
-    const context = {
-      schemaPath: `content.patterns[${index}].fireOnSpawn.bullet`,
-      referrerId: pattern.id,
-      targetId: bulletId,
-    } as const;
-    if (!validateNamespacedReference("pattern.fireOnSpawn.bullet", "bullet", bulletId, errors, context)) {
-      continue;
-    }
-    if (!bulletIds.has(bulletId)) {
-      errors.push({ code: "bullet.notFound", message: `Bullet not found: ${bulletId}`, ...context });
+    const references = [
+      ...(pattern.fireOnSpawn
+        ? [{ bulletId: pattern.fireOnSpawn.bullet, localPath: "pattern.fireOnSpawn.bullet", schemaPath: `content.patterns[${index}].fireOnSpawn.bullet` }]
+        : []),
+      ...(pattern.steps ?? []).flatMap((step, stepIndex) => "fire" in step
+        ? [{
+          bulletId: step.fire.bullet,
+          localPath: "pattern.steps[].fire.bullet",
+          schemaPath: `content.patterns[${index}].steps[${stepIndex}].fire.bullet`,
+        }]
+        : []),
+    ];
+    for (const { bulletId, localPath, schemaPath } of references) {
+      const context = { schemaPath, referrerId: pattern.id, targetId: bulletId } as const;
+      if (!validateNamespacedReference(localPath, "bullet", bulletId, errors, context)) {
+        continue;
+      }
+      if (!bulletIds.has(bulletId)) {
+        errors.push({ code: "bullet.notFound", message: `Bullet not found: ${bulletId}`, ...context });
+      }
     }
   }
 }
