@@ -2,6 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createShootingCore,
+  createShootingCoreWithTestingHooksForInternalTest,
+} from "./core.ts";
+import type { LoadedGame, ShootingCore, StageSession, StartStageOptions } from "./core.ts";
+import type { GameDefinition } from "./content/types.ts";
+import { validateGameDefinition } from "./content/validation.ts";
+import {
   HASHABLE_ENABLED_FEATURE_STATE_FIELD_ORDER,
   HASHABLE_FIXED_STRUCT_NAME_BY_DTO,
   HASHABLE_GAME_STATE_FIELD_ORDER,
@@ -11,12 +18,8 @@ import {
   HASHABLE_PRNG_STATE_FIELD_ORDER,
   HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND,
   HASHABLE_VECTOR2_FIELD_ORDER,
-  createShootingCore,
-  createShootingCoreWithTestingHooksForInternalTest,
-} from "./core.ts";
-import type { HashableGameState, LoadedGame, ShootingCore, StageSession, StartStageOptions } from "./core.ts";
-import type { GameDefinition } from "./content/types.ts";
-import { validateGameDefinition } from "./content/validation.ts";
+} from "./hash/hashable-state.ts";
+import type { HashableGameState } from "./hash/hashable-state.ts";
 import { createEmptyInputFrame } from "./input/input-frame.ts";
 import type { InputFrame } from "./input/input-frame.ts";
 import { createShootingCoreWithTestingHooksForTest } from "./internal/testing-hooks.ts";

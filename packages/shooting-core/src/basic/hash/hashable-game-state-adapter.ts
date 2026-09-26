@@ -10,7 +10,7 @@ import {
   HASHABLE_PRNG_STATE_FIELD_ORDER,
   HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND,
   HASHABLE_VECTOR2_FIELD_ORDER,
-} from "../core.ts";
+} from "./hashable-state.ts";
 import type {
   HashableEnabledFeatureState,
   HashableGameState,
@@ -21,7 +21,7 @@ import type {
   HashablePrngState,
   HashableRuntimeEntityState,
   HashableVector2,
-} from "../core.ts";
+} from "./hashable-state.ts";
 import { compareUtf8Lexicographic } from "../serialization/restore-json.ts";
 import { fixedStruct } from "./canonical-encoder.ts";
 import type { CanonicalFixedStruct, CanonicalValue } from "./canonical-encoder.ts";

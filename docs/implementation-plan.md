@@ -363,10 +363,10 @@ Done:
 | `internal/guards.ts`, `internal/test-hooks-guard.ts`, `internal/stage-session-testing-hooks.ts`, `internal/debug-state.ts` | 共通 guard、test hook 有効化 guard、session testing hook、headless debug serializer |
 
 1. Phase 1C-R1: hashable state 分離と cycle 解消
-   - Next: `Hashable*` 型、field order 型 utility、`HASHABLE_*` 定数を `hash/hashable-state.ts` へ移し、hash module から `core.ts` への import をなくす
-   - Next: shooting-core source の runtime import cycle を検出する module graph test を追加する
+   - Done: `Hashable*` 型、field order 型 utility、`HASHABLE_*` 定数を `hash/hashable-state.ts` へ移し、hash module から `core.ts` への import をなくす。`HashableGameState` が参照する `SERIALIZED_STATE_HASH_VERSION` と `SERIALIZED_INPUT_FORMAT_VERSION` は先行して `serialization/metadata.ts` へ移した
+   - Done: shooting-core / validate-content の非 test source で runtime import cycle を検出する `tests/module-graph.test.mjs` を追加する。`import type` / `export type` だけを erased edge とし、`import { type X }` は保守的に runtime edge として扱う
 2. Phase 1C-R2: leaf module 抽出
-   - Queued: Phase 1C-R2: `internal/guards.ts`、3箇所の test hook 有効化 guard を message を保ったまま統合する `internal/test-hooks-guard.ts`、`input/parse-input-frame.ts`、`session/start-stage-options.ts`、`serialization/metadata.ts` を抽出し、同一実装の `isPlainObjectContainer` を1つにする
+   - Next: `internal/guards.ts`、3箇所の test hook 有効化 guard を message を保ったまま統合する `internal/test-hooks-guard.ts`、`input/parse-input-frame.ts`、`session/start-stage-options.ts` を抽出し、`serialization/metadata.ts` へ serialization metadata 型と feature canonical order を寄せ、同一実装の `isPlainObjectContainer` を1つにする
 3. Phase 1C-R3: state model 層
    - Queued: Phase 1C-R3: `api-types.ts`、`session/committed-state.ts`、`content/content-index.ts`、`serialization/serialize-state.ts`、`hash/hashable-projection.ts`、`internal/stage-session-testing-hooks.ts`、headless debug serializer を抽出する
 4. Phase 1C-R4: restore validation 分割

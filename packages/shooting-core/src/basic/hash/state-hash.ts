@@ -1,4 +1,4 @@
-import type { HashableGameState, HashablePrngState } from "../core.ts";
+import type { HashableGameState, HashablePrngState } from "./hashable-state.ts";
 import { writeCanonicalValueToSink } from "./canonical-encoder.ts";
 import {
   adaptHashableGameStateToCanonicalValue,

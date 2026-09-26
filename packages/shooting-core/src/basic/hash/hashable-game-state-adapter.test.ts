@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { HashableGameState } from "../core.ts";
+import type { HashableGameState } from "./hashable-state.ts";
 import { encodeCanonicalValue, fixedStruct } from "./canonical-encoder.ts";
 import { adaptHashableGameStateToCanonicalValue } from "./hashable-game-state-adapter.ts";
 

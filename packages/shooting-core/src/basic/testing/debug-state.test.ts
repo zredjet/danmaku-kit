@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import { createShootingCore } from "../core.ts";
-import type { HashableGameState } from "../core.ts";
+import type { HashableGameState } from "../hash/hashable-state.ts";
 import type { GameDefinition } from "../content/types.ts";
 import { hashHashableGameState, hashHashablePrngState } from "../hash/state-hash.ts";
 import { createEmptyInputFrame } from "../input/input-frame.ts";
