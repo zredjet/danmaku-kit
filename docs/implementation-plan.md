@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump と first divergent checkpoint の field-level replay divergence artifact、Phase 1C-R の振る舞いを変えない module 分割リファクタリングも完了し、Phase 1C の tooling minimum を完了した。Phase 2A 着手前の Phase 1C-S（振る舞いを変えない構造整理）で、ディレクトリと依存 layer の対応を整え、entity kind の知識を `entities/<kind>/` へ縦に集めた。次は「Phase 2A へ進む条件」を確認し、Vite sample app と Phaser adapter の最初の slice を計画する。
+Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump と first divergent checkpoint の field-level replay divergence artifact、Phase 1C-R の振る舞いを変えない module 分割リファクタリングも完了し、Phase 1C の tooling minimum を完了した。Phase 2A 着手前の Phase 1C-S（振る舞いを変えない構造整理）で、ディレクトリと依存 layer の対応を整え、entity kind の知識を `entities/<kind>/` へ縦に集めた。「Phase 2A へ進む条件」を確認し、Phase 2A を walking skeleton、Core gameplay、runtime / app、仕上げの slice へ分割した（「Phase 2A タスク分割」）。次は Phase 2A-0 の import guard と Phase 2A-1 の walking skeleton に着手する。
 
 Done:
 
@@ -90,7 +90,8 @@ Done:
 
 Next:
 
-- 「Phase 2A へ進む条件」を確認し、Vite sample app、Phaser adapter、keyboard input adapter の最初の slice を計画する
+- Phase 2A-0: shooting-core の非 test source が相対 path 以外を import しない rule を `tests/module-graph.test.mjs` に固定する
+- Phase 2A-1: `apps/sample-title` の Vite / Phaser skeleton、validate-content の Node API と Vite content plugin、固定 tick clock と keyboard input adapter、`GameFrame` からの view 同期で、ブラウザ上で自機の移動・低速移動・連射ができる walking skeleton を作る
 
 Phase 1C-1 は診断と出力の安定した契約、Phase 1C-2 は実績ある YAML parser と source span 付き診断の CLI 接続、Phase 1C-3 は静的 fixture と実プロセスの JSON / human golden contract を固定した。Phase 1C-4 は renderer / browser field を含まない headless debug state summary と、summary から値を復元せず deterministic snapshot、順序付き frame event、side 別 input、side status を比較する field-level replay divergence artifact を固定した。
 
@@ -133,6 +134,20 @@ Status legend:
 | `docs/design.md` Debug state dump | headless dump foundation | Done | `packages/shooting-core/src/basic/instrumentation/debug-state.ts`, `packages/shooting-core/src/basic/testing/debug-state.ts`, `packages/shooting-core/src/basic/session/stage-session.ts`, `packages/shooting-core/src/basic/simulation/collision-system.ts` | immutable checkpoint、失敗 tick 不変、restore seed / nullable metrics、collision count、schema-order JSON、hash error、root export 非公開を固定 | `packages/shooting-core/src/basic/testing/debug-state.test.ts`, `packages/shooting-core/src/basic/simulation/collision-system.test.ts`, `tests/public-type-contract/root-export-exclusions.ts`, `tests/public-type-contract/core-api.ts`; `npm test`, `npm run typecheck` |
 | `docs/design.md` 21.4 Golden Test | first divergent checkpoint の replay divergence artifact | Done | `packages/shooting-core/src/basic/testing/replay-trace.ts`, `packages/shooting-core/src/basic/testing/replay-metadata.ts`, `packages/shooting-core/src/basic/testing/replay-diff.ts`, `packages/shooting-core/src/basic/testing/replay-divergence.ts` | `packages/shooting-core/src/basic/testing/replay-divergence.test.ts`, `packages/shooting-core/src/basic/testing/replay-metadata.test.ts`, `tests/public-type-contract/root-export-exclusions.ts` | `npm test`, `npm run typecheck` |
 | `docs/design.md` 4 ディレクトリ構成 | module 分割と依存方向 | Done | `packages/shooting-core/src/basic/core.ts`, `packages/shooting-core/src/basic/session/`, `packages/shooting-core/src/basic/state/`, `packages/shooting-core/src/basic/serialization/restore/`, `packages/shooting-core/src/basic/instrumentation/`, `packages/shooting-core/src/basic/shared/`, `packages/shooting-core/src/basic/entities/`, `AGENTS.md` | `tests/module-graph.test.mjs` | `npm test` |
+| `docs/design.md` 22 Phase 2A | Core の bare specifier / `node:` import 禁止 | Next: Phase 2A-0 | `tests/module-graph.test.mjs` | 違反を注入した copy で検出を確認 | `npm test` |
+| `docs/design.md` 5.2 / 19 Content pipeline | validate-content の Node API と sample app の Vite content plugin | Next: Phase 2A-1 | `tools/validate-content/src/index.ts`, `apps/sample-title/vite/`, `apps/sample-title/config/`, `apps/sample-title/content/` | Node API の package boundary / 型契約、既存 CLI golden 不変、sample content の validate-content | `npm run check` |
+| `docs/design.md` 5.4 / 7 / 11 Runtime adapter | Vite / Phaser skeleton、固定 tick clock、keyboard input adapter、`GameFrame` からの view 同期 | Next: Phase 2A-1 | `apps/sample-title/src/runtime/loop/`, `apps/sample-title/src/runtime/input/`, `apps/sample-title/src/runtime/view/`, `apps/sample-title/src/runtime/phaser/` | tap / catch-up / dropped tick / blur 後の再ラッチ抑止を node:test、app の import rule を `tests/module-graph.test.mjs` で検査 | `npm run check`, `npm run dev` |
+| `docs/design.md` 9.8 Path | path movement minimum と `pathRunnerState` | Queued: Phase 2A-2 | `packages/shooting-core/src/basic/content/`, `packages/shooting-core/src/basic/entities/enemy/`, `packages/shooting-core/src/basic/simulation/` | path golden、restore roundtrip、hash golden 更新 | `npm run check` |
+| `docs/design.md` 9.7 / 14 Enemy bullet | enemy bullet movement / cleanup / active 上限 | Queued: Phase 2A-3 | `packages/shooting-core/src/basic/entities/enemy-bullet/`, `packages/shooting-core/src/basic/simulation/`, `packages/shooting-core/src/basic/content/runtime-budgets.ts` | movement、cleanup、上限超過 fatal、hash golden 更新 | `npm run check` |
+| `docs/design.md` 9.8 / 10 決定的角度 | sin / cos 表と `aim: player` の方向計算 | Queued: Phase 2A-4 | `packages/shooting-core/src/basic/simulation/` | 表の golden vector、path `offset.sine` | `npm run check` |
+| `docs/design.md` 9.6 / 10 PatternProgram | `wait` / `fire` / `loop` の最小 command subset と pattern runner state | Queued: Phase 2A-5 | `packages/shooting-core/src/basic/patterns/`, `packages/shooting-core/src/basic/content/`, `packages/shooting-core/src/basic/serialization/restore/` | 3-way golden（弾数、角度、seed 再現性）、validate-content golden | `npm run check` |
+| `docs/design.md` 6 / 20 Stage 終了 | 残機切れと timeline 消化後の全滅による最小終了判定 | Queued: Phase 2A-6 | `packages/shooting-core/src/basic/session/`, `packages/shooting-core/src/basic/state/` | 終了 event、終了後 tick の precondition error、serialize / restore | `npm run check` |
+| `docs/design.md` 13 Collision broad phase | 固定 grid と layer 別 collision pair | Queued: Phase 2A-7 | `packages/shooting-core/src/basic/simulation/collision-system.ts` | state hash golden と replay trace の不変 | `npm run check` |
+| `docs/design.md` 5.4 / 17 Asset / view pool | manifest entry 検証、仮素材 preload、view pool | Queued: Phase 2A-8 | `tools/validate-content/src/`, `apps/sample-title/src/runtime/assets/`, `apps/sample-title/src/runtime/view/`, `apps/sample-title/public/assets/` | manifest diagnostic golden、pool sizing | `npm run check` |
+| `docs/design.md` 5.5 / 6 / 16 Lifecycle / HUD | `GameLifecycleState`、DOM HUD、collision event 演出 | Queued: Phase 2A-9 | `apps/sample-title/src/runtime/lifecycle/`, `apps/sample-title/src/ui/` | lifecycle 遷移と focus lost の扱いを node:test | `npm run check` |
+| `docs/design.md` 12 / 19 / 21.5 Scaling / debug | scaling、debug overlay、`BrowserDebugStateDump` | Queued: Phase 2A-10 | `apps/sample-title/src/runtime/`, `apps/sample-title/src/ui/`, `apps/sample-title/src/debug/` | scale 計算を node:test、production build での hook 未定義 | `npm run check` |
+| `docs/design.md` 21.6 / 23 Sample stage | サンプルステージ 1 | Queued: Phase 2A-11 | `apps/sample-title/content/` | schema test、headless replay golden | `npm run check` |
+| `docs/design.md` 21.5 Browser Test | Playwright の browser smoke と deterministic replay smoke | Queued: Phase 2A-12 | `apps/sample-title/e2e/` | 起動、描画、入力、HUD、overlay、viewport / DPR、replay 一致 | `npm run test:browser` |
 
 ## 次の作業順
 
@@ -468,3 +483,123 @@ Phase 1C-R で巨大ファイルは責務単位に分割したが、ディレク
 - object pool sizing と performance budget は runtime adapter / performance design 側で扱う
 
 Phase 2A で初期 playable を目標にする。
+
+確認結果（Phase 1C-S 完了時点。`npm run check` は 303 test pass）:
+
+| 条件 | 結果 | 根拠 / 残作業 |
+| --- | --- | --- |
+| Core が Phaser / Vite に依存していない | 満たす | `packages/shooting-core/package.json` は dependency を持たず、root `tsconfig.json` は `lib: ["ES2024"]`、`types: []` で DOM 型を含めない。ただし `apps/*` の追加で `phaser` / `vite` が root `node_modules` へ hoist されると Core source から bare specifier で解決できるため、Phase 2A-0 で import 制約を test に固定する |
+| sample app が Core の `GameFrame` を読むだけで描画できる | 満たす | `GameFrame.state.entities` は kind、definitionId、position を持ち、asset key と collision radius は app が保持する content 定義から definitionId で引ける。自機の focus 状態は app 自身の入力から得る。弾の向きは public state に含まれないため、Phase 2A の仮素材は向きを持たない円形弾にする |
+| keyboard input は runtime adapter で `InputFrame` に変換される | Core 側は満たす | `InputFrame` の parse と canonical order は Core にある。adapter は Phase 2A-1 で実装する |
+| Core event と render-only event が混ざっていない | 満たす | `GameEvent` は gameplay の事実だけを持つ。`RuntimeEvent` は app 側の別型として定義する |
+| Core state hash に render-only state、view id、object pool state が含まれていない | 満たす | `HashableGameState` は committed state だけを投影する |
+| object pool sizing と performance budget は runtime adapter / performance design 側で扱う | 設計上満たす | view pool は Phase 2A-8 で runtime adapter に実装する |
+
+## Phase 2A タスク分割（Minimum playable）
+
+Phase 1C-S 完了時点の Core では、`PathDefinition` が id / version だけを持ち、敵は spawn 位置から動かない（最小 fixture の敵は `y=-16` に留まる）。敵弾は velocity と cleanup を持たず、pattern は `fireOnSpawn` だけで、残機が 0 になっても stage は終わらない。collision は Phase 1A の provisional full scan のままで、restore は敵と敵弾の位置が処理済み timeline の spawn 位置と一致することを要求している。validate-content の content loader は public export されておらず `node:path` に依存し、asset manifest は key の shape しか検証しない。Phase 2A では、ブラウザで自機を操作し、3-way 弾幕を撃つ敵を倒して stage の終了まで遊べる初期 playable milestone（design 23）を、Core の determinism contract を保ったまま作る。
+
+決定事項:
+
+- Browser test は Playwright を使う。unit test は既存の node:test を続け、Vitest は導入しない。Core / tools / app の Phaser 非依存 module は Node で TypeScript source を直接実行でき、既存の node:test 49 file は mock や snapshot 機能を使っていないため、移行や2 runner 併存の費用に見合う利点がない。app の unit test が DOM 環境や Vite 固有の変換（`import.meta.env`、virtual module）を必要とした時点で再検討する
+- content は dev server / build 時に Vite plugin が validate-content の Node API で検証・組み立て、検証済み `GameDefinition` と asset manifest を virtual module で browser に渡す。browser に YAML parser と filesystem access を持ち込まない
+- 残機切れと timeline 消化後の全滅による stage の最小終了判定を Phase 2A の Core に入れる。`clearCondition` / `failCondition` schema は Phase 2B 以降で扱う
+- pattern runner state は design 20 どおり `patternRunnerStates` の versioned payload とし、path runner state は enemy runtime entity の `pathRunnerState` field とする
+- 仮素材は diff で読める SVG とし、manifest から読み込む
+- debug HUD と browser dump には Core 内部の state hash、PRNG hash、collision candidate 数を出さない（design 21.5）。design 19 の HUD 項目は Phase 2A-10 で直す
+
+共通ルール:
+
+- slice は責務ごとの commit に分け、各 commit で `npm run check` を通す。振る舞いを変えない移動と振る舞いを変える変更を同じ commit に混ぜない
+- Core の field 追加・kind 追加は `AGENTS.md` の checklist に従い、hash の byte 列が変わる commit で `SERIALIZED_STATE_HASH_VERSION`、hash golden、public 型契約、`docs/design.md` の field order を同時に更新する
+- 振る舞いを変えない slice（2A-0、2A-7）は state hash golden と replay trace の不変を完了条件にする
+- design 7.1 の system order に substep を足す commit では design も同時に更新し、既存 content の event 順と採番順が変わらないことを golden で確認する
+- app の Phaser 非依存 module は node:test で検査し、Phaser / DOM を含む確認は Phase 2A-12 の Browser test に寄せる
+
+推奨順序は 2A-0 → 2A-1 → Core の 2A-2〜2A-7 → app の 2A-8〜2A-10 → 2A-11 → 2A-12 → 2A-13 とする。2A-1 の後は Core と app の slice を交互に進めてよい。2A-11 は 2A-2〜2A-6、2A-12 は 2A-9 / 2A-10 に依存する。
+
+`apps/sample-title/` の構成:
+
+| Path | 内容 |
+| --- | --- |
+| `config/game-definition.yaml` | sample title の game definition（`contentVersion` を含む plugin / CLI 入力） |
+| `content/` | design 4 の種類別 YAML と `assets/manifest.yaml` |
+| `public/assets/` | manifest が参照する仮素材 SVG |
+| `vite/` | content を検証して virtual module を生成する Vite plugin（Node で実行） |
+| `src/runtime/loop/` | 固定 tick clock、catch-up、dropped tick |
+| `src/runtime/input/` | keyboard queue、`InputFrame` / `UiInputFrame` 変換、default binding |
+| `src/runtime/lifecycle/` | `GameLifecycleState` と遷移 |
+| `src/runtime/view/` | entity id 差分からの view spawn / update / destroy 計画と pool sizing |
+| `src/runtime/assets/` | manifest path 解決、load 結果、fallback |
+| `src/runtime/phaser/` | Phaser Scene、view pool、描画。`phaser` を import してよいのはここと entry だけ |
+| `src/ui/` | DOM overlay の HUD、debug HUD、fatal / result 表示 |
+| `src/debug/` | `BrowserDebugStateDump` と dev / test build 専用の global hook |
+| `e2e/` | Playwright の Browser test |
+
+1. Phase 2A-0: 着手条件の import guard（振る舞いは変えない）
+   - Next: `tests/module-graph.test.mjs` に、shooting-core の非 test source が相対 path の module だけを import し、bare specifier と `node:` を型 import も含めて import しない rule を追加する。`apps/*` の追加で `phaser` / `vite` が root `node_modules` へ hoist された後も、Core から解決させない
+   - Next: 違反を注入した copy で rule が検出することを確認する
+2. Phase 2A-1: walking skeleton（ブラウザで自機が動き、低速移動し、ショットを撃てる）
+   - Next: 2A-1a: `apps/sample-title` workspace を作る。`phaser` と `vite` を依存に、`@shooting-sample/shooting-core` を workspace 依存にし、browser 用（DOM lib）と Node 用（vite config / plugin）の tsconfig を分けて root `typecheck` に加える。root に `dev` と `build` script を足し、`build` を `npm run check` に含める。Phaser は導入時点の安定版を固定する
+   - Next: 2A-1a: `tests/module-graph.test.mjs` に、app が Core を package root からだけ import すること、`phaser` を import してよい module が `src/runtime/phaser/` と entry だけであること、`src/runtime/` の Phaser 非依存 module が DOM global と `import.meta.env` を参照しないことを追加する。`import.meta.env` は entry で読み、引数で渡す
+   - Next: 2A-1b: validate-content に、game-definition file と content root から検証済み `GameDefinition` と diagnostic を返す Node API を追加して public export し、package boundary と型契約を更新する。CLI はこの API の上に載せ、既存の CLI golden を変えない
+   - Next: 2A-1b: Vite plugin が dev server / build 時にこの API で `apps/sample-title/config/game-definition.yaml` と `apps/sample-title/content/` を検証し、error があれば human 形式の diagnostic で失敗させ、成功時は `GameDefinition` と asset manifest を virtual module として提供する。初期 content は `fixtures/content-minimum/` を複製し、Phase 2A-11 で sample stage に差し替える。design 19 の `config/game-definition.yaml` の path を app 配下へ更新し、`npm run check` に sample content の `validate-content` を加える
+   - Next: 2A-1c: `src/runtime/loop/` に固定 tick clock を置く。可変 delta を accumulator に積んで `1 / 60` sec ごとに tick を返し、1 render frame の catch-up を 5 tick に制限して超過分を破棄し、`RuntimeDroppedTicks` として数える。pause / focus lost では accumulator を reset する
+   - Next: 2A-1c: `src/runtime/input/` に keyboard adapter を置く。KeyboardEvent queue を tick sampling 時に action へ変換し、`pressed` / `released` を次の tick までラッチする。render frame 間で完結した tap は同じ tick の `pressed` と `released` に入れて `held` に含めず、edge は複数 catch-up tick の最初だけで消費し、`held` と axes は全 catch-up tick に適用する。pause / blur / visibility change で全ラッチと key state を破棄し、復帰前から押されている key は keyup を観測するまで再ラッチしない。`pause` などの UI action は `UiInputFrame` に分けて `InputFrame` に入れず、default binding は同一 physical key を複数 gameplay action に割り当てない
+   - Next: 2A-1c: clock と adapter は fake delta / fake KeyboardEvent を使う node:test で、tap、catch-up、dropped tick、blur 後の再ラッチ抑止、生成した `InputFrame` が Core の parse を通ることを検査する
+   - Next: 2A-1d: Phaser Scene を置き、load → `startStage()`（seed は app が決めて表示する）→ clock → `tick()` を回し、`GameFrame.state.entities` の entity id 差分から view を生成・更新・破棄する。view は kind ごとの仮 Graphics とし、focus held 中は自機の collision radius を表示する。Core の error は fatal 表示で止める
+   - Next: 2A-1d: 完了条件は、`npm run dev` で移動、低速移動、連射を手動確認でき、`npm run check` が `build` を含めて通ること
+3. Phase 2A-2: 敵の path 移動
+   - Queued: `PathDefinition` に `segments`（`type: velocity`、`duration`、`velocity`）を追加し、空の segments は静止として既存の `path.none` と互換にする。content validation、validate-content の diagnostic / golden、public 型契約を更新する
+   - Queued: enemy runtime entity に segment index、segment 開始位置 `p0`、segment 内経過 tick を持つ `pathRunnerState` を足し、design 7.1 の update movement step で位置を進める。serialize / hash DTO と field order へ AGENTS.md の field 追加手順で加え、restore の「処理済み timeline 由来の位置一致」検証を、現在座標から path を逆算せず、spawn 位置と runner state から到達可能な値かを確かめる形へ置き換える
+   - Queued: path を終えて playfield + margin の外へ出た enemy は、player shot の lifetime 切れと同じく event を出さずに cleanup する。view は state 差分で消える
+   - Queued: path golden、restore roundtrip、state hash version と hash golden を更新する
+4. Phase 2A-3: 敵弾の movement / cleanup / active 上限
+   - Queued: enemy bullet runtime entity に `velocity` を足し、`fireOnSpawn` に optional の velocity（未指定は静止）を追加する。design 20 の方針どおり serialize / hash DTO と `SERIALIZED_STATE_HASH_VERSION` を更新し、restore の位置検証を movement 前提に直す
+   - Queued: playfield + margin の外へ出た敵弾を event なしで cleanup する。swept collision を導入するまでは、1 tick の移動量が判定半径を大きく超えないよう content validation で速度上限を設け、上限値は `content/runtime-budgets.ts` で restore と共有する
+   - Queued: active enemy bullet 2,000（design 14）を超える生成は entity を落とさず fatal として latch し、この runtime policy を design 14 に記録する
+5. Phase 2A-4: 決定的な角度計算
+   - Queued: tick 中に host の `Math.sin` / `Math.cos` / `Math.atan2` を使わない。content の `angleDeg` / `spreadDeg` を 0.25° 刻みに validation で制限し、1 周 1,440 entry の sin / cos 表を生成 script から literal として source に置く（補間なし、丸めは生成時だけ）。表の生成方法、解像度、丸め規則を design に記録し、golden vector で固定する
+   - Queued: `aim: player` は自機との差分 vector の正規化で方向を得る。`Math.sqrt` が ECMAScript 上 host 差を持たないことを確認し、持つ場合は決定的な実装へ置き換える
+   - Queued: 同じ表で path の `offset.sine`（design 9.8）を追加する
+6. Phase 2A-5: PatternProgram の最小 command subset
+   - Queued: `PatternDefinition.steps` に `wait`、`fire`（`bullet`、`origin: self`、`aim: player` または `angleDeg`、`fan.count` / `fan.spreadDeg`、`speed`）、`loop`（指定 step へ戻る）を追加する。`fireOnSpawn` は既存 content 互換のため残し、`steps` とは排他にする。`repeat`、`parallel`、`if`、`randomSpread` は Phase 2B の DSL で扱う
+   - Queued: runner は enemy ごとに spawn tick から開始し、design 7.1 の update enemy behavior / pattern step で進める。発射は spawn substep で `fireOnSpawn` の後、player shot の前に timeline order / entity id 昇順で解決して `enemyBulletsSpawnedBatch` にまとめ、design 7.1 の substep を更新する
+   - Queued: runner state は `patternRunnerStates` に enemy 単位の `runnerId`、`patternId`、`stateVersion`、payload（cursor、残り wait）として出力し、UTF-8 byte order の canonical order、enemy 撃破時の破棄、restore の payload 検証と enemy との対応を実装する。restore の `nextEntityId` 到達可能性と敵弾数の上限を pattern 発射込みに更新する
+   - Queued: `wait` を含まない `loop` を validation で拒否し、pattern commands / tick 2,000（design 14）を runtime budget とする
+   - Queued: design 21.6 の 3-way golden（指定 tick の弾数、角度、seed 再現性）と validate-content の fixture / golden を追加する
+7. Phase 2A-6: stage の最小終了判定
+   - Queued: 残機切れを gameOver、timeline 消化後に active enemy が 0 になった時点を stageCleared とする判定を Core に入れ、`stageCleared` と gameOver の event を frame に出す
+   - Queued: 終了後の `tick()` は design 20 どおり caller precondition error を返し、session を fatal にしない。stage status を committed state、serialize / hash DTO、restore 検証へ加える
+8. Phase 2A-7: collision broad phase grid
+   - Queued: playfield の固定サイズ grid と layer 別 collision pair（design 13）で候補を絞り込み、full scan を置き換える。collision resolution order と tie-breaker は変えず、既存の state hash golden と replay trace の不変を完了条件にする
+   - Queued: headless debug dump の `collisionCandidates` を broad phase 通過 pair 数へ更新し、design 21.5 の定義を直す
+9. Phase 2A-8: asset manifest と view pool
+   - Queued: validate-content に manifest entry の検証（`type`、`path`、`required`、`usage`、`fallback` の型一致と cycle、`runtime.` built-in）を追加し、diagnostic golden を足す
+   - Queued: 仮素材 SVG を `public/assets/` に置き、manifest path を `import.meta.env.BASE_URL` と合成して loading で preload する。`required: true` の load 失敗は stage start を止め、fallback の使用は debug HUD と log に出す
+   - Queued: runtime budget（enemy 100、enemy bullet 2,000、player shot 300）から view pool を stage start 前に見積もり、不足は load error にする。spawn / destroy を queue で batch 化して 1 render frame の生成・破棄数に上限を設け、destroyed gameplay entity の view は即 hide / unmap する。枯渇時は `RuntimeEvent.viewPoolExhausted` を出す。`RuntimeEvent` は app 側の型とし、`GameEvent` に混ぜない
+10. Phase 2A-9: lifecycle / HUD / collision 演出
+    - Queued: `src/runtime/lifecycle/` に `GameLifecycleState` を置き、Phase 2A では `booting`、`loading`、`title`（開始待ちの簡易画面）、`stageStarting`、`playing`、`paused`、`stageCleared`、`gameOver` を使う。`pausedFrom` と、focus lost / visibility change の state 別の扱い（design 6）を node:test で固定する
+    - Queued: DOM overlay の HUD に score と lives を `GameFrame.state` から表示する。`playerHit` は無敵中の点滅、`entityDestroyed`（defeated）は render-only の hit spark に変換し、spark は budget 超過時に落としてよい
+    - Queued: audio は Phase 2A の対象外とし、browser dump の `audioStatus` は `"muted"` に固定する
+11. Phase 2A-10: scaling / debug overlay / browser dump
+    - Queued: 内部解像度 384x448 を integer scale と letterbox で表示し、viewport が 384x448 未満のときだけ fractional downscale する。canvas と DOM overlay を同じ CSS transform root に置き、devicePixelRatio は Phaser の renderer 解像度だけに使う。scale 計算は純粋関数として node:test で検査する
+    - Queued: debug overlay の切り替えで、content の collision radius による collider 表示と debug HUD（lifecycle、tick、seed、content version、dropped tick、kind 別 entity 数）を出す。design 19 の HUD 項目から state hash、PRNG hash、collision candidate 数、pattern commands / tick を外し、browser へ Core 内部 diagnostics を公開しない方針（design 21.5）に合わせる
+    - Queued: `BrowserDebugStateDump`（design 21.5）と `window.__SHOOTING_DEBUG_STATE__()` を dev / test build にだけ置き、production build で未定義であることを検査する
+12. Phase 2A-11: サンプルステージ 1
+    - Queued: `apps/sample-title/content/stages/stage_01.yaml` に、path で移動する複数 wave、3-way 弾幕、撃破できる HP を持つ敵を定義し、stage clear まで遊べる長さにする
+    - Queued: design 21.6 の schema test（stage / enemy / path / pattern / bullet / asset 参照）と、敵撃破・score 加算・3-way を含む headless replay golden を追加する
+13. Phase 2A-12: Browser smoke test
+    - Queued: Playwright を導入し、`npm test`（node:test）とは別の `test:browser` script で実行する。起動、canvas 非空、キー入力による移動、HUD 更新、debug overlay の切り替えを `BrowserDebugStateDump` で検証する
+    - Queued: desktop、mobile 相当、384x448 未満の fractional downscale、resize 後の viewport と、DPR 1 / high DPI での canvas と DOM overlay の座標一致を検証する。screenshot diff は tolerance と mask 付きの補助とする
+    - Queued: browser で実際に Core へ渡した `InputFrame` 列を dev / test build 専用の hook で取り出し、Node の headless replay で同じ入力から同じ state hash が得られること、browser dump の tick、entity 数、自機座標と一致することを確認する。hook は dump schema の外に置き、design 21.5 に追記する
+14. Phase 2A-13: docs と milestone 確認
+    - Queued: `docs/design.md` の directory 構成と Phase 2A の実装状況、この文書の対応表、README の開発コマンド、`AGENTS.md` の app の依存方向を更新する
+    - Queued: design 23 の初期マイルストーンの各項目を、対応する test または手動確認手順に対応付けて Phase 2A の完了を判定する
+
+Later（Phase 2A の外）:
+
+- swept circle collision、enemy bullet の `damage`、audio adapter、key config の localStorage 保存と settings migration、gamepad / touch
+- content hot reload と Preview scene、Pattern DSL の残りの命令と semantic validation（Phase 2B）
+- Core の bullet / shot / event builder の object pool（design 14。負荷が見えた段階で導入する）
+- design 25 の docs 分割

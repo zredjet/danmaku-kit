@@ -65,7 +65,7 @@ Core が扱うのは、抽象化されたプレイヤー、敵、弾、パター
 | 2D ランタイム | Phaser | Sprite、Camera、Scene、Asset Loading が揃っている |
 | UI | DOM overlay | HUD、設定、ポーズ、リザルトを柔軟に作れる |
 | データ | YAML + schema | ステージや敵をコード外で編集でき、コメント付きで調整しやすい |
-| テスト | node:test + TypeScript typecheck、後続で Vitest + Playwright | Phase 1A は renderer 非依存の Core 契約を軽く検証し、Phase 2 以降でブラウザ確認を追加する |
+| テスト | node:test + TypeScript typecheck、Phase 2A から Playwright | Core / tools / app の Phaser 非依存 module は node:test で TypeScript source を直接検証し、Phaser / DOM を含む確認は Playwright の Browser test に寄せる。Vitest は app の unit test が DOM 環境や Vite 固有の変換を必要とするまで導入しない |
 
 ## 4. ディレクトリ構成
 
@@ -218,7 +218,7 @@ packages/shooting-core/src/
 - バージョン差分の吸収
 - タイトル固有 content と core API の接続
 
-YAML の読み込み、ファイル探索、行番号付きエラー整形は `apps/sample-title` または `validate-content` CLI の責務とする。`packages/shooting-core` はファイルシステム、Vite の asset base、ブラウザ fetch に依存しない。
+YAML の読み込み、ファイル探索、行番号付きエラー整形は `apps/sample-title` または `validate-content` CLI の責務とする。`packages/shooting-core` はファイルシステム、Vite の asset base、ブラウザ fetch に依存しない。`apps/sample-title` は dev server / build 時に Vite plugin から validate-content の Node API を呼んで content を検証・組み立て、検証済み `GameDefinition` と asset manifest だけを browser へ渡す。browser には YAML parser と filesystem access を持ち込まない。
 
 ### 5.3 `core/patterns`
 
@@ -1935,7 +1935,10 @@ Phase 1C の完了条件は、content authoring と CI で最低限の validatio
 - Debug overlay
 - Stage timeline の sample content 読み込み
 - Enemy / Bullet / PlayerShot definition の sample content 読み込み
+- Path movement minimum（velocity segment）と enemy bullet movement / cleanup
 - 最小 pattern command subset
+- 残機切れと timeline 消化後の全滅による stage の最小終了判定
+- collision broad phase grid
 - Asset manifest
 - サンプルステージ 1 つ
 - Browser smoke test
@@ -2021,6 +2024,6 @@ MVP では対象外だが、再利用基盤として以下を追跡する。
 
 Phase 1A の Core minimum contract は、TypeScript package、最小 content schema、registry validation、fixed tick、InputFrame、immutable event log、Entity/Component、seed/PRNG、Player / Enemy / EnemyBullet / PlayerShot、minimum Pattern `fireOnSpawn`、MVP collision resolution pair、fixed `scoreOnKill`、package boundary test まで実装済みである。collision broad phase は Phase 1A 完了条件ではなく、playable runtime へ向けた後続性能タスクとして残す。
 
-Phase 1B-5D として、`LoadedGame.restore(state): CoreResult<StageSession>` の public API、top-level error boundary、PRNG snapshot の public restore error 変換、deterministic payload の shape、pending event、runtime entity の kind 別 shape / registry / runtime budget validation、accepted committed state 変換、非空 extension state の shape / JSON guard / feature mismatch 分類、transactional restore、roundtrip determinism は実装済みである。`nextEntityId` は EntityAllocator と共有する上限まで含めて `state.invalidShape` として正規化する。続く Phase 1B-6 の state hash minimum も canonical encoder、fixed seed xxHash64、gameplay digest golden、restore 後の複数 tick 一致まで実装済みである。Phase 1B-7 では metadata-only の `ReplayMetadata` を root type export し、未検証 `enabledFeatures` を replay 互換性 field として含め、snapshot 専用 `stateHashVersion` と replay playback API は公開しない境界を型契約で固定した。Phase 1C-1 では `tools/validate-content` package と immutable diagnostic / JSON / human / exit code contract、Phase 1C-2 では YAML parser、source span、CLI / filesystem boundary、Core validation adapter、Phase 1C-3 では静的な最小 content fixture と実プロセス CLI golden test、Phase 1C-4 では test-only headless debug dump、state / PRNG hash、count metrics、portable artifact path / JSON formatter と、first divergent checkpoint の field-level replay divergence artifact を追加した。Phase 1C-R では振る舞いを変えない module 分割リファクタリング（`docs/implementation-plan.md` の Phase 1C-R）を完了した。Phase 1C の tooling minimum は完了し、次は Phase 2A へ進む条件を確認して minimum playable の最初の slice を計画する。
+Phase 1B-5D として、`LoadedGame.restore(state): CoreResult<StageSession>` の public API、top-level error boundary、PRNG snapshot の public restore error 変換、deterministic payload の shape、pending event、runtime entity の kind 別 shape / registry / runtime budget validation、accepted committed state 変換、非空 extension state の shape / JSON guard / feature mismatch 分類、transactional restore、roundtrip determinism は実装済みである。`nextEntityId` は EntityAllocator と共有する上限まで含めて `state.invalidShape` として正規化する。続く Phase 1B-6 の state hash minimum も canonical encoder、fixed seed xxHash64、gameplay digest golden、restore 後の複数 tick 一致まで実装済みである。Phase 1B-7 では metadata-only の `ReplayMetadata` を root type export し、未検証 `enabledFeatures` を replay 互換性 field として含め、snapshot 専用 `stateHashVersion` と replay playback API は公開しない境界を型契約で固定した。Phase 1C-1 では `tools/validate-content` package と immutable diagnostic / JSON / human / exit code contract、Phase 1C-2 では YAML parser、source span、CLI / filesystem boundary、Core validation adapter、Phase 1C-3 では静的な最小 content fixture と実プロセス CLI golden test、Phase 1C-4 では test-only headless debug dump、state / PRNG hash、count metrics、portable artifact path / JSON formatter と、first divergent checkpoint の field-level replay divergence artifact を追加した。Phase 1C-R では振る舞いを変えない module 分割リファクタリング（`docs/implementation-plan.md` の Phase 1C-R）、Phase 1C-S では振る舞いを変えない構造整理（同 Phase 1C-S）を完了した。Phase 1C の tooling minimum は完了し、Phase 2A へ進む条件の確認結果と minimum playable の slice 分割は `docs/implementation-plan.md` の「Phase 2A タスク分割」に置いた。
 
 state hash は `docs/implementation-plan.md` の Phase 1B-6、replay metadata minimum は同計画の Phase 1B-7 で実装済みである。
