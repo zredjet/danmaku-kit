@@ -377,8 +377,8 @@ Done:
    - Done: restore validation を `serialization/restore/` の7 module へ移す。top-level metadata / compatibility は `top-level-state.ts`、deterministic payload / PRNG / pending event / extension state は `deterministic-payload.ts`、entity 列の検証は `runtime-entities.ts`、kind 別 shape と共通 field は `runtime-entity-kinds.ts`、spawn budget と allocation order は `allocation-order.ts`、top-level / nested plain data clone guard は `plain-data.ts` に置く
    - Done: `LoadedGame.restore()` 内の検証手順を本文そのままで `restore-stage-state.ts` の `restoreStageState()` へ抽出する。restore test hook の呼び出しと stage / player の解決は従来どおり `restore()` 側に残し、error 分類順と hook の呼び出し時点を変えない
 5. Phase 1C-R5: session 分割
-   - Next: Phase 1C-R5a: `createStageSession` と `createLoadedGame` を `session/` へ移し、`core.ts` を facade にする
-   - Queued: Phase 1C-R5b: tick 内 system step を `session/tick-pipeline.ts` の関数へ抽出する。移動ではなく構造変更なので別 commit とし、system order と golden の不変を確認する
+   - Done: Phase 1C-R5a: `createStageSession` と fatal latch / player lookup helper を `session/stage-session.ts`、`createLoadedGame` を `session/loaded-game.ts` へ移し、`core.ts` を `createShootingCore()` / 内部 test factory / `load()` だけの facade にする
+   - Next: Phase 1C-R5b: tick 内 system step を `session/tick-pipeline.ts` の関数へ抽出する。移動ではなく構造変更なので別 commit とし、system order と golden の不変を確認する
 6. Phase 1C-R6: core test 分割
    - Queued: Phase 1C-R6: `core.test.ts` を content load / runtime input / player tick / enemy・timeline tick / transactional tick / serialize / hashable state / restore shape・payload・entity・roundtrip / testing hook / facade smoke の test file へ分ける。582行の restore payload test は複数 test に分ける
    - Queued: Phase 1C-R6: assert を使う共通 helper と definition / input factory は `src/basic/test-support/` に置き、root `tsconfig.json` から除外、`tsconfig.test.json` に追加し、package boundary test でも test code として扱う。hook を使う test file はそれぞれ `SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS` を設定し、`after` で復元する
