@@ -5,7 +5,7 @@ import {
   createShootingCore,
   createShootingCoreWithTestingHooksForInternalTest,
 } from "./core.ts";
-import type { LoadedGame, ShootingCore, StageSession, StartStageOptions } from "./core.ts";
+import type { LoadedGame, ShootingCore, StageSession, StartStageOptions } from "./api-types.ts";
 import type { GameDefinition } from "./content/types.ts";
 import { validateGameDefinition } from "./content/validation.ts";
 import {

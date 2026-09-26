@@ -1,7 +1,7 @@
 import type { GameEvent } from "../events/game-event.ts";
 import type { CoreError, CoreWarning } from "../result.ts";
 import type { RuntimeEntityState } from "../simulation/runtime-entity.ts";
-import type { StageSession } from "../core.ts";
+import type { StageSession } from "../api-types.ts";
 
 /** headless dump が固定する runtime entity kind ごとの件数。 */
 export type HeadlessDebugEntityCounts = Readonly<Record<RuntimeEntityState["kind"], number>>;

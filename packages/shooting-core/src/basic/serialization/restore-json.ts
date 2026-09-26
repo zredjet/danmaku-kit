@@ -1,3 +1,4 @@
+import { isPlainObjectContainer } from "../internal/guards.ts";
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
 import type { SerializedJsonValue } from "./types.ts";
@@ -286,18 +287,5 @@ function cloneRestoreJsonObject(
     return okResult(Object.freeze(clone));
   } catch {
     return coreError("state.invalidShape", `${fieldName} must be a plain JSON object`);
-  }
-}
-
-/** nested payload の property は未検証なので読まず、plain object shell かだけを見る。 */
-function isPlainObjectContainer(value: unknown): boolean {
-  try {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return (prototype === Object.prototype || prototype === null) && Object.getOwnPropertySymbols(value).length === 0;
-  } catch {
-    return false;
   }
 }

@@ -1,3 +1,4 @@
+import type { LoadedGame, ReadonlyGameState, ReadonlyPlayerState, ShootingCore, StageSession } from "./api-types.ts";
 import { isNamespacedId } from "./content/identifier.ts";
 import {
   MAX_PLAYER_MOVEMENT_SPEED,
@@ -12,7 +13,6 @@ import { KNOWN_ENABLED_FEATURES } from "./content/types.ts";
 import type {
   BulletDefinition,
   Difficulty,
-  EnabledFeature,
   EnemyDefinition,
   GameDefinition,
   PathDefinition,
@@ -28,8 +28,7 @@ import { EventLog } from "./events/game-event.ts";
 import type { GameEvent } from "./events/game-event.ts";
 import type { HashableGameState, HashablePendingEvent, HashableRuntimeEntityState } from "./hash/hashable-state.ts";
 import { hashHashableGameState, hashHashablePrngState } from "./hash/state-hash.ts";
-import { GAMEPLAY_ACTION_ORDER } from "./input/input-frame.ts";
-import type { InputFrame } from "./input/input-frame.ts";
+import { parseInputFrame } from "./input/parse-input-frame.ts";
 import type {
   HeadlessDebugEntityCounts,
   HeadlessDebugEventCounts,
@@ -37,10 +36,25 @@ import type {
   HeadlessDebugTickMetrics,
   RegisterHeadlessDebugStateSerializer,
 } from "./internal/debug-state.ts";
+import {
+  asRecord,
+  assertNever,
+  hasOnlyKeys,
+  isNonNegativeSafeInteger,
+  isPlainObjectContainer,
+  isPositiveFiniteNumber,
+  isPositiveSafeInteger,
+} from "./internal/guards.ts";
 import { deepFreezeClone, deepFreezePlainData } from "./internal/immutable.ts";
+import { assertInternalTestHooksEnabled } from "./internal/test-hooks-guard.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
 import type { CoreError, CoreResult } from "./result.ts";
-import { SERIALIZED_INPUT_FORMAT_VERSION, SERIALIZED_STATE_HASH_VERSION } from "./serialization/metadata.ts";
+import {
+  SERIALIZED_INPUT_FORMAT_VERSION,
+  SERIALIZED_STATE_HASH_VERSION,
+  canonicalizeEnabledFeatures,
+} from "./serialization/metadata.ts";
+import type { StageSessionSerializationMetadata } from "./serialization/metadata.ts";
 import type {
   SerializedDeterministicState,
   SerializedEnabledFeatureState,
@@ -56,6 +70,7 @@ import {
   validateRestoreJsonPayload,
 } from "./serialization/restore-json.ts";
 import type { RestoreJsonBudget } from "./serialization/restore-json.ts";
+import { parseStartStageOptions } from "./session/start-stage-options.ts";
 import { resolveCollisionAndScoring } from "./simulation/collision-system.ts";
 import { EntityAllocator } from "./simulation/entity.ts";
 import { resolveEnemyBulletSpawnPosition, spawnEnemyBulletsOnSpawn } from "./simulation/enemy-bullet-system.ts";
@@ -77,7 +92,6 @@ import type {
   EnemyRuntimeEntity,
   PlayerRuntimeEntity,
   PlayerShotRuntimeEntity,
-  ReadonlyEntityState,
   RuntimeEntityState,
 } from "./simulation/runtime-entity.ts";
 import { freezeEntitiesInIdOrder } from "./simulation/system-order.ts";
@@ -85,114 +99,8 @@ import { XorShift32 } from "./simulation/prng.ts";
 import type { SerializedPrngState } from "./simulation/prng.ts";
 import { MAX_RESTORABLE_NEXT_ENTITY_ID } from "./simulation/entity-id-budget.ts";
 
-const MAX_SEED_LENGTH = 128;
-const INTERNAL_TEST_HOOKS_ENV = "SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS";
-
-/**
- * ステージ開始時に runtime adapter から渡すオプション。
- *
- * `seed` は replay determinism の入口なので、タイトル側の乱数とは分けて
- * Core に明示的に渡す。
- */
-export type StartStageOptions = {
-  stageId: StageId;
-  difficulty: Difficulty;
-  playerId?: PlayerId;
-  seed: string;
-};
-
-/**
- * 1 tick 終了時点の gameplay state。
- *
- * renderer / debug HUD が読む表示用 snapshot。HP や pattern cursor のような内部 component は、
- * serialize / state hash 用の内部 DTO 側で扱い、この型へは直接混ぜない。
- */
-export type ReadonlyGameState = Readonly<{
-  tick: number;
-  stageId: StageId;
-  playerId: PlayerId;
-  player: ReadonlyPlayerState;
-  score: number;
-  entities: ReadonlyArray<ReadonlyEntityState>;
-}>;
-
-/** HUD / debug が event fold なしで参照できる自機の現在状態。 */
-export type ReadonlyPlayerState = Readonly<{
-  lives: number;
-  invincibleTicksRemaining: number;
-}>;
-
 /** Committed state が次 tick へ持ち越してよい deterministic event。 */
 type CommittedPendingEvent = HashablePendingEvent;
-
-/**
- * serialize / restore compatibility 判定に必要な session metadata。
- *
- * tick state だけからは `difficulty` や content / input format version を復元できないため、
- * startStage の時点で確定した値を session context に保持する。
- */
-type StageSessionSerializationMetadata = Readonly<{
-  coreVersion: string;
-  schemaVersion: string;
-  contentVersion: string;
-  inputFormatVersion: typeof SERIALIZED_INPUT_FORMAT_VERSION;
-  stateHashVersion: typeof SERIALIZED_STATE_HASH_VERSION;
-  enabledFeatures: readonly EnabledFeature[];
-  stageId: StageId;
-  difficulty: Difficulty;
-  playerId: PlayerId;
-}>;
-
-/**
- * Core から renderer / debug / replay へ渡す 1 tick 分の出力。
- *
- * `events` はこの frame で発生した gameplay event のみを含み、DOM や audio の
- * runtime event とは混ぜない。
- */
-export type GameFrame = Readonly<{
-  tick: number;
-  state: ReadonlyGameState;
-  events: ReadonlyArray<GameEvent>;
-}>;
-
-/**
- * renderer 非依存の shooting core 入口。
- *
- * `load()` は型上は `GameDefinition` を受けるが、JS や unsafe cast からの呼び出しも
- * runtime validation に通して immutable snapshot を保持する。
- */
-export type ShootingCore = {
-  coreVersion: string;
-  load(definition: GameDefinition): CoreResult<LoadedGame>;
-};
-
-/**
- * 検証済みの game definition から stage session を開始する API。
- *
- * `LoadedGame` は load 後の content mutation に影響されない snapshot を参照する。
- */
-export type LoadedGame = {
-  /** serialized snapshot から stage session を復元し、不整合や未対応 snapshot は `CoreResult` error として返す。 */
-  restore(state: SerializedGameState): CoreResult<StageSession>;
-  /** stage id / difficulty / player / seed から新しい stage session を開始する。 */
-  startStage(options: StartStageOptions): CoreResult<StageSession>;
-};
-
-/**
- * gameplay simulation の実行単位。
- *
- * 現時点では playing 中の fixed tick だけを扱う。pause / result / replay UI は
- * runtime lifecycle 側で管理する。`serialize()` は simulation を進めない読み取り API であり、
- * 成功時は restore 用の deep immutable snapshot を返す。state hash は committed state から
- * 別の内部 DTO を生成して計算する。
- * fatal state に入った後は `tick()` と同じ fatal error を返す。
- */
-export type StageSession = {
-  /** 次の fixed tick を実行し、frame state とその tick の event を返す。 */
-  tick(input: InputFrame): CoreResult<GameFrame>;
-  /** 現在の committed state を serialized snapshot として返す。 */
-  serialize(): CoreResult<SerializedGameState>;
-};
 
 /**
  * Core minimum 実装を生成する。
@@ -213,7 +121,7 @@ export function createShootingCoreWithTestingHooksForInternalTest(
   coreVersion = "0.0.0",
   testingHooks: StageSessionTestingHookOptions = {},
 ): ShootingCore {
-  assertInternalTestHooksEnabled();
+  assertInternalTestHooksEnabled("create a hook-enabled shooting core");
   return createShootingCoreInternal(coreVersion, testingHooks);
 }
 
@@ -651,11 +559,6 @@ function createRestoreSerializationMetadata(
     difficulty: compatibilityMetadata.difficulty,
     playerId: compatibilityMetadata.playerId,
   });
-}
-
-/** optional feature set を snapshot / hash 用の安定順に並べる。 */
-function canonicalizeEnabledFeatures(features: readonly EnabledFeature[]): readonly EnabledFeature[] {
-  return Object.freeze(KNOWN_ENABLED_FEATURES.filter((feature) => features.includes(feature)));
 }
 
 /**
@@ -1435,14 +1338,6 @@ function isCommittedStageStartedEvent(value: unknown, stageId: StageId): value i
   return event.type === "stageStarted" && event.tick === 0 && event.stageId === stageId;
 }
 
-/** source import から test hook を誤って有効化しないための最終ガード。 */
-function assertInternalTestHooksEnabled(): void {
-  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
-  if (env?.[INTERNAL_TEST_HOOKS_ENV] !== "1") {
-    throw new Error(`${INTERNAL_TEST_HOOKS_ENV}=1 is required to create a hook-enabled shooting core`);
-  }
-}
-
 /** active entity list から現在の自機 runtime component を探す。 */
 function findPlayerEntity(
   entities: readonly RuntimeEntityState[],
@@ -1468,49 +1363,6 @@ function replaceRuntimeEntity(entities: RuntimeEntityState[], replacement: Runti
   }
   entities[index] = replacement;
   return true;
-}
-
-/**
- * public API 境界で受け取る stage start option を検証する。
- *
- * `load()` 以外の API も runtime adapter から呼ばれるため、壊れた入力は throw ではなく
- * `CoreResult` の失敗として返す。
- */
-function parseStartStageOptions(value: unknown): CoreResult<StartStageOptions> {
-  const record = asRecord(value);
-  if (!record) {
-    return coreError("startStage.invalidShape", "StartStageOptions must be an object");
-  }
-  if (!hasOnlyKeys(record, ["stageId", "difficulty", "playerId", "seed"])) {
-    return coreError("startStage.invalidShape", "StartStageOptions contains unknown fields");
-  }
-  if (typeof record.stageId !== "string") {
-    return coreError("startStage.invalidShape", "stageId must be a string");
-  }
-  if (!isNamespacedId(record.stageId, "stage")) {
-    return coreError("startStage.invalidShape", "stageId must use the stage.* namespace");
-  }
-  if (record.difficulty !== "normal" && record.difficulty !== "hard") {
-    return coreError("startStage.invalidShape", "difficulty must be normal or hard");
-  }
-  if (typeof record.seed !== "string") {
-    return coreError("startStage.invalidShape", "seed must be a string");
-  }
-  if (record.seed.trim().length === 0 || record.seed.length > MAX_SEED_LENGTH) {
-    return coreError("startStage.invalidShape", `seed must be a non-empty string up to ${MAX_SEED_LENGTH} characters`);
-  }
-  if (record.playerId !== undefined && typeof record.playerId !== "string") {
-    return coreError("startStage.invalidShape", "playerId must be a string when provided");
-  }
-  if (typeof record.playerId === "string" && !isNamespacedId(record.playerId, "player")) {
-    return coreError("startStage.invalidShape", "playerId must use the player.* namespace");
-  }
-  return okResult(deepFreezeClone({
-    stageId: record.stageId as StageId,
-    difficulty: record.difficulty,
-    playerId: record.playerId as PlayerId | undefined,
-    seed: record.seed,
-  }));
 }
 
 /** core / schema mismatch を現行 schema の key set より先に分類するための metadata だけを読む。 */
@@ -2163,10 +2015,6 @@ function isValidPatternRunnerId(value: string): boolean {
     && isRestoreJsonStringWithinSingleValueBudget(value);
 }
 
-function isPositiveSafeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
-}
-
 type RestoreSpawnBudget = Readonly<{
   enemySpawnCandidates: RestoreEnemySpawnCandidate[];
   enemyBulletCandidates: RestoreEnemyBulletCandidate[];
@@ -2756,91 +2604,9 @@ function validateRestoreVector2(value: unknown, fieldName: string): CoreResult<R
   return okResult(Object.freeze({ x: vector.value.x, y: vector.value.y }));
 }
 
-function isPositiveFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
-}
-
-function isNonNegativeSafeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-
-function parseInputFrame(value: unknown): CoreResult<InputFrame> {
-  const record = asRecord(value);
-  if (!record) {
-    return coreError("input.invalidShape", "InputFrame must be an object");
-  }
-  if (!hasOnlyKeys(record, ["tick", "axes", "held", "pressed", "released"])) {
-    return coreError("input.invalidShape", "InputFrame contains unknown fields");
-  }
-  if (typeof record.tick !== "number" || !Number.isSafeInteger(record.tick) || record.tick < 0) {
-    return coreError("input.invalidShape", "input.tick must be a non-negative safe integer");
-  }
-
-  const axes = asRecord(record.axes);
-  if (!axes || !isAxisValue(axes.moveX) || !isAxisValue(axes.moveY)) {
-    return coreError("input.invalidShape", "input.axes must contain moveX/moveY values of -1, 0, or 1");
-  }
-  if (!hasOnlyKeys(axes, ["moveX", "moveY"])) {
-    return coreError("input.invalidShape", "input.axes contains unknown fields");
-  }
-
-  const held = parseActionArray(record.held);
-  const pressed = parseActionArray(record.pressed);
-  const released = parseActionArray(record.released);
-  if (!held || !pressed || !released) {
-    return coreError("input.invalidShape", "input action arrays must contain unique supported gameplay actions");
-  }
-  if (hasIntersection(held, released)) {
-    return coreError("input.invalidShape", "input.held and input.released must not contain the same action");
-  }
-
-  return okResult(deepFreezeClone({
-    tick: record.tick,
-    axes: { moveX: axes.moveX, moveY: axes.moveY },
-    held,
-    pressed,
-    released,
-  }));
-}
-
-function isAxisValue(value: unknown): value is -1 | 0 | 1 {
-  return value === -1 || value === 0 || value === 1;
-}
-
-/** action 配列を重複のない canonical order へ正規化する。 */
-function parseActionArray(value: unknown): InputFrame["held"] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-
-  const actions = new Set<InputFrame["held"][number]>();
-  for (const item of value) {
-    if (item !== "shot" && item !== "focus") {
-      return null;
-    }
-    if (actions.has(item)) {
-      return null;
-    }
-    actions.add(item);
-  }
-  return GAMEPLAY_ACTION_ORDER.filter((action) => actions.has(action));
-}
-
-/** same tick の押下/離上 edge と held state の矛盾を検出する。 */
-function hasIntersection(left: readonly InputFrame["held"][number][], right: readonly InputFrame["held"][number][]): boolean {
-  const rightActions = new Set(right);
-  return left.some((action) => rightActions.has(action));
-}
-
 /** feature list など、順序まで contract の一部である配列を比較する。 */
 function sameOrderedValues(left: readonly unknown[], right: readonly unknown[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-/** public API 境界で typo 付き field を silent accept しないための key 検査。 */
-function hasOnlyKeys(value: Record<string, unknown>, allowedKeys: readonly string[]): boolean {
-  const allowed = new Set(allowedKeys);
-  return Object.keys(value).every((key) => allowed.has(key));
 }
 
 /** restore の top-level string は deep guard を通らないため、ここで最小 budget を守る。 */
@@ -3000,29 +2766,4 @@ function validateRestoreEnabledFeatureContract(features: readonly string[]): Cor
   }
 
   return okResult(null);
-}
-
-/** nested payload の property は未検証なので読まず、plain object shell かだけを見る。 */
-function isPlainObjectContainer(value: unknown): boolean {
-  try {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return (prototype === Object.prototype || prototype === null) && Object.getOwnPropertySymbols(value).length === 0;
-  } catch {
-    return false;
-  }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
-
-/** union 型の追加時に switch の更新漏れを型エラーとして検出する。 */
-function assertNever(value: never): never {
-  throw new Error(`Unhandled value: ${String(value)}`);
 }

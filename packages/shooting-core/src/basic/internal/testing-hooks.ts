@@ -1,8 +1,7 @@
 import { createShootingCoreWithTestingHooksForInternalTest } from "../core.ts";
-import type { ShootingCore } from "../core.ts";
+import type { ShootingCore } from "../api-types.ts";
 import { registerHeadlessDebugStateSerializerForTest } from "../testing/debug-state.ts";
-
-const INTERNAL_TEST_HOOKS_ENV = "SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS";
+import { assertInternalTestHooksEnabled } from "./test-hooks-guard.ts";
 
 type InternalStageSessionTestingHooks = NonNullable<
   Parameters<typeof createShootingCoreWithTestingHooksForInternalTest>[1]
@@ -19,16 +18,9 @@ export function createShootingCoreWithTestingHooksForTest(
   coreVersion: string,
   hooks: StageSessionTestingHooks,
 ): ShootingCore {
-  assertInternalTestHooksEnabled();
+  assertInternalTestHooksEnabled("create a hook-enabled shooting core");
   return createShootingCoreWithTestingHooksForInternalTest(coreVersion, {
     ...hooks,
     registerHeadlessDebugStateSerializer: registerHeadlessDebugStateSerializerForTest,
   });
-}
-
-function assertInternalTestHooksEnabled(): void {
-  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
-  if (env?.[INTERNAL_TEST_HOOKS_ENV] !== "1") {
-    throw new Error(`${INTERNAL_TEST_HOOKS_ENV}=1 is required to create a hook-enabled shooting core`);
-  }
 }

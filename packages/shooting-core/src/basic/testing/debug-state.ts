@@ -1,11 +1,10 @@
-import type { StageSession } from "../core.ts";
+import type { StageSession } from "../api-types.ts";
 import type {
   HeadlessDebugStateDump,
   HeadlessDebugStateResult,
   HeadlessDebugStateSerializer,
 } from "../internal/debug-state.ts";
-
-const INTERNAL_TEST_HOOKS_ENV = "SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS";
+import { assertInternalTestHooksEnabled } from "../internal/test-hooks-guard.ts";
 const MAX_ARTIFACT_TEST_NAME_LENGTH = 128;
 const ARTIFACT_TEST_NAME_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const debugStateSerializers = new WeakMap<StageSession, HeadlessDebugStateSerializer>();
@@ -20,7 +19,7 @@ export function registerHeadlessDebugStateSerializerForTest(
 
 /** hook-enabled session の committed state を進めずに headless dump を返す。 */
 export function serializeDebugStateForTest(session: StageSession): HeadlessDebugStateResult {
-  assertInternalTestHooksEnabled();
+  assertInternalTestHooksEnabled("serialize debug state");
   const serializer = debugStateSerializers.get(session);
   if (!serializer) {
     throw new Error("StageSession is not registered for headless debug state serialization");
@@ -80,12 +79,4 @@ function projectHeadlessDebugStateForStableJson(dump: HeadlessDebugStateDump): H
       scoreChanged: dump.eventCounts.scoreChanged,
     },
   };
-}
-
-/** debug serializer の利用を明示的に有効化した内部test processだけに制限する。 */
-function assertInternalTestHooksEnabled(): void {
-  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
-  if (env?.[INTERNAL_TEST_HOOKS_ENV] !== "1") {
-    throw new Error(`${INTERNAL_TEST_HOOKS_ENV}=1 is required to serialize debug state`);
-  }
 }

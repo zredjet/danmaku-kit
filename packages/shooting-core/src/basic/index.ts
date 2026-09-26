@@ -13,7 +13,7 @@ export type {
   ShootingCore,
   StageSession,
   StartStageOptions,
-} from "./core.ts";
+} from "./api-types.ts";
 export type { ReadonlyEntityState } from "./simulation/runtime-entity.ts";
 export type { ReplayMetadata } from "./replay/metadata.ts";
 export type {

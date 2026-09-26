@@ -1,4 +1,5 @@
 import type { CoreError } from "../result.ts";
+import { asRecord } from "../internal/guards.ts";
 import { deepFreezePlainData } from "../internal/immutable.ts";
 import { MAX_IDENTIFIER_LENGTH, isNamespacedId, isSafeAssetKey } from "./identifier.ts";
 import {
@@ -874,12 +875,4 @@ function validateNumberAtMost(
   ) {
     errors.push({ code: "definition.invalidShape", message: `${path} must be less than or equal to ${maxPath}` });
   }
-}
-
-/** unknown value を plain object として扱えるか判定する。 */
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
 }
