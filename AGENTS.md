@@ -66,6 +66,13 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 - `index.ts` から実行時 import で到達する範囲に test / tooling 専用の `hash/` と `testing/` を含めない。`testing/` は非 test source から型 import も含めて import しない。state hash と headless debug dump の digest は test helper 側で計算する。
 - runtime import cycle を作らない。`tests/module-graph.test.mjs` が layer rule は型 import も含めて、cycle と到達範囲は実行時 import（`import type` を除く）で検査する。rule に書いた path が実在する module を指すことも同じ test が検査するため、module を移動・改名したら rule も更新する。
 
+### sample app（`apps/sample-title/`）
+
+- `src/` は browser bundle に入る。非 test source は `src/` 内の module を相対 path で import し、package は `tests/module-graph.test.mjs` の `SAMPLE_TITLE_PACKAGE_IMPORT_RULES` に載せたものだけを型 import も含めて import する。Core は package root（`@shooting-sample/shooting-core`）からだけ import し、deep import、`node:`、validate-content は使わない。新しい package が必要なら rule に足す。
+- `phaser` を import してよいのは entry の `src/main.ts` と Phaser adapter の `src/runtime/phaser/` だけにする。それ以外の runtime module は Phaser なしで node:test から検査できる形に保つ。
+- `import.meta`（`import.meta.env` など Vite 固有の値）を読むのは `src/main.ts` だけにし、他の module へは引数で渡す。
+- Vite config と content plugin のように Node で動く code は `src/` の外に置き、`tsconfig.node.json` で型検査する。
+
 ### runtime entity kind（`packages/shooting-core/src/basic/entities/`）
 
 - `entities/` 直下は kind 横断の module（`entity-kinds.ts`、`model-common.ts`、`snapshot-common.ts`、`restore-common.ts`、`runtime-entity.ts`）だけにし、サブディレクトリは `RUNTIME_ENTITY_KINDS` の1 kind（kebab-case）に1つ対応させる。

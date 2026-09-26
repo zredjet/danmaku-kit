@@ -9,9 +9,11 @@ import { collectTypeScriptFiles, isTestCodeFile } from "./support/source-files.m
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const shootingCoreSourceRoot = path.join(repositoryRoot, "packages/shooting-core/src");
+const sampleTitleSourceRoot = path.join(repositoryRoot, "apps/sample-title/src");
 const sourceRoots = [
   shootingCoreSourceRoot,
   path.join(repositoryRoot, "tools/validate-content/src"),
+  sampleTitleSourceRoot,
 ];
 const shootingCoreBasicRoot = path.join(repositoryRoot, "packages/shooting-core/src/basic");
 
@@ -45,6 +47,24 @@ const SHOOTING_CORE_LEAF_LAYER_RULES = Object.freeze([
 
 /** root export から runtime import で到達させない test / tooling 専用 module。state hash と debug dump は test 側で計算する。 */
 const SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES = Object.freeze(["hash/", "testing/"]);
+
+/**
+ * sample app の `src/` が package 名で import してよい package と、それを import してよい module。
+ *
+ * `src/` は browser bundle に入るため、ここに無い package、`node:`、Core の deep import、validate-content は型 import も含めて
+ * import しない。`phaser` は Phaser adapter と entry に閉じ込め、それ以外の runtime module を node:test で検査できるようにする。
+ * path は `apps/sample-title/src/` からの相対で、表記は `SHOOTING_CORE_LAYER_RULES` と同じ。
+ */
+const SAMPLE_TITLE_PACKAGE_IMPORT_RULES = Object.freeze([
+  { specifier: "@shooting-sample/shooting-core", allowedImporters: ["main.ts", "runtime/"] },
+  { specifier: "phaser", allowedImporters: ["main.ts", "runtime/phaser/"] },
+]);
+
+/** `import.meta`（Vite 固有の `import.meta.env` など）を読んでよい sample app の module。他の module へは引数で渡す。 */
+const SAMPLE_TITLE_IMPORT_META_READERS = Object.freeze(["main.ts"]);
+
+/** module を specifier で読み込む記述の種類。triple-slash reference directive は含めない。 */
+const MODULE_IMPORT_KINDS = Object.freeze(["import", "export", "importEquals", "dynamicImport", "importType"]);
 
 test("matches dependency rule paths by file, directory, and single-segment wildcard", () => {
   const cases = [
@@ -83,7 +103,7 @@ test("collects every module reference form and accepts only relative paths insid
 
   assert.deepEqual(
     collectModuleReferences(file, sourceText)
-      .map((reference) => [reference.kind, reference.specifier, isShootingCoreSourceReference(file, reference)]),
+      .map((reference) => [reference.kind, reference.specifier, isRelativeReferenceInside(file, reference, shootingCoreSourceRoot)]),
     [
       ["referenceTypes", "node", false],
       ["referenceLib", "dom", false],
@@ -108,13 +128,75 @@ test("keeps shooting-core source free of package and platform imports", async ()
   for (const file of files) {
     const sourceText = await readFile(file, "utf8");
     for (const reference of collectModuleReferences(file, sourceText)) {
-      if (!isShootingCoreSourceReference(file, reference)) {
+      if (!isRelativeReferenceInside(file, reference, shootingCoreSourceRoot)) {
         violations.push(`${toRepositoryPath(file)} -> ${reference.kind} ${reference.specifier ?? "(non-literal)"}`);
       }
     }
   }
 
   assert.deepEqual(violations, [], "shooting-core source must import only its own modules by relative path");
+});
+
+test("keeps sample app source on the shooting-core root export and its allowed packages", async () => {
+  const violations = [];
+
+  for (const file of await collectSampleTitleSourceFiles()) {
+    const importer = toSampleTitlePath(file);
+    const sourceText = await readFile(file, "utf8");
+    for (const reference of collectModuleReferences(file, sourceText)) {
+      if (isRelativeReferenceInside(file, reference, sampleTitleSourceRoot)) {
+        continue;
+      }
+      const rule = MODULE_IMPORT_KINDS.includes(reference.kind)
+        ? SAMPLE_TITLE_PACKAGE_IMPORT_RULES.find((candidate) => candidate.specifier === reference.specifier)
+        : undefined;
+      if (!rule?.allowedImporters.some((allowed) => matchesModulePath(importer, allowed))) {
+        violations.push(`${importer} -> ${reference.kind} ${reference.specifier ?? "(non-literal)"}`);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, [], "sample app source must import Core by its root export and only the allowed packages");
+});
+
+test("detects import.meta reads but not dynamic import or ordinary meta properties", () => {
+  const file = path.join(sampleTitleSourceRoot, "runtime/example.ts");
+  const sourceTexts = [
+    "const base = import.meta.env.BASE_URL;",
+    "const url = new URL(\"./a.svg\", import.meta.url);",
+    "const loaded = await import(\"./a.ts\");",
+    "const meta = { env: {} };\nconst env = meta.env;",
+  ];
+
+  assert.deepEqual(sourceTexts.map((sourceText) => readsImportMeta(file, sourceText)), [true, true, false, false]);
+});
+
+test("reads import.meta only in the sample app entry", async () => {
+  const violations = [];
+
+  for (const file of await collectSampleTitleSourceFiles()) {
+    const importer = toSampleTitlePath(file);
+    if (SAMPLE_TITLE_IMPORT_META_READERS.some((allowed) => matchesModulePath(importer, allowed))) {
+      continue;
+    }
+    if (readsImportMeta(file, await readFile(file, "utf8"))) {
+      violations.push(importer);
+    }
+  }
+
+  assert.deepEqual(violations, [], "only the sample app entry may read import.meta");
+});
+
+test("points sample app import rules at existing modules", async () => {
+  const modulePaths = (await collectSampleTitleSourceFiles()).map(toSampleTitlePath);
+  const rulePaths = [
+    ...SAMPLE_TITLE_PACKAGE_IMPORT_RULES.flatMap((rule) => rule.allowedImporters),
+    ...SAMPLE_TITLE_IMPORT_META_READERS,
+  ];
+  const stale = [...new Set(rulePaths)]
+    .filter((rulePath) => !modulePaths.some((modulePath) => matchesModulePath(modulePath, rulePath)));
+
+  assert.deepEqual(stale, [], "sample app import rules must name existing modules");
 });
 
 test("keeps package source free of runtime import cycles", async () => {
@@ -330,20 +412,37 @@ function stringLiteralText(node) {
 }
 
 /**
- * shooting-core の source から、同じ package の `src/` 配下の module を相対 path で読む記述か判定する。
+ * `sourceRoot` 配下の module を相対 path で読む記述か判定する。
  *
- * bare specifier（npm package）、`node:`、`src/` の外へ出る相対 path、非 literal の dynamic import を拒否する。
- * triple-slash reference directive は `types` / `lib` で node や DOM の型を持ち込めるため、種類を問わず拒否する。
+ * bare specifier（npm package）、`node:`、`sourceRoot` の外へ出る相対 path、非 literal の dynamic import は false にする。
+ * triple-slash reference directive は `types` / `lib` で node や DOM の型を持ち込めるため、種類を問わず false にする。
  */
-function isShootingCoreSourceReference(file, reference) {
-  if (!["import", "export", "importEquals", "dynamicImport", "importType"].includes(reference.kind)) {
+function isRelativeReferenceInside(file, reference, sourceRoot) {
+  if (!MODULE_IMPORT_KINDS.includes(reference.kind)) {
     return false;
   }
   if (reference.specifier === null || !(reference.specifier.startsWith("./") || reference.specifier.startsWith("../"))) {
     return false;
   }
-  const target = path.relative(shootingCoreSourceRoot, path.resolve(path.dirname(file), reference.specifier));
+  const target = path.relative(sourceRoot, path.resolve(path.dirname(file), reference.specifier));
   return !target.startsWith("..") && !path.isAbsolute(target);
+}
+
+/** source が `import.meta` を読むかを返す。dynamic `import()` は含めない。 */
+function readsImportMeta(file, sourceText) {
+  const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const visit = (node) =>
+    (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword) || ts.forEachChild(node, visit);
+  return ts.forEachChild(sourceFile, visit) === true;
+}
+
+/** sample app の `src/` から test 以外の source を path 順に返す。 */
+async function collectSampleTitleSourceFiles() {
+  return (await collectTypeScriptFiles(sampleTitleSourceRoot)).filter((file) => !isTestCodeFile(sampleTitleSourceRoot, file));
+}
+
+function toSampleTitlePath(file) {
+  return path.relative(sampleTitleSourceRoot, file).split(path.sep).join("/");
 }
 
 /**
