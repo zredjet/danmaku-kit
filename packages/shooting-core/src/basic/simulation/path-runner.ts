@@ -1,11 +1,13 @@
 import type { PathSegmentDefinition } from "../content/types.ts";
 import type { Vector2 } from "../entities/model-common.ts";
+import { ANGLE_STEPS_PER_TURN } from "../shared/angle-steps.ts";
+import { sinOfAngleSteps } from "./deterministic-trig.ts";
 
 /**
  * path 上の進行状態（design 9.8 の PathRunner）。
  *
- * 位置は現在の segment の開始位置 `p0` と経過 tick `t` から `p0 + velocity * t` として毎 tick 求め直し、tick ごとの加算誤差を
- * 積まない。segment を終えた tick の位置を次 segment の `p0` にする。`segmentIndex` が segment 数と等しい runner は path を
+ * 位置は現在の segment の開始位置 `p0` と経過 tick `t` から `p0 + velocity * t`（sine offset を持つ segment はその変位も足す）として
+ * 毎 tick 求め直し、tick ごとの加算誤差を積まない。segment を終えた tick の位置を次 segment の `p0` にする。`segmentIndex` が segment 数と等しい runner は path を
  * 終えており、それ以降は位置を変えない。
  */
 export type PathRunnerState = Readonly<{
@@ -107,9 +109,22 @@ export function resolvePathRunnerAt(
   });
 }
 
+/**
+ * segment 開始位置から `elapsedTicks` 進んだ位置を `p0 + velocity * t + offset(t)` として求める。
+ *
+ * sine offset の位相は `floor(t * 1440 / periodTicks)` step を整数演算で求める（`t * 1440` は 2^53 未満なので、割り算の丸めが
+ * 整数境界をまたがず floor は正確）。offset を持たない segment は offset の項を足さず、既存の座標を変えない。
+ */
 function moveAlongSegment(start: Vector2, segment: PathSegmentDefinition, elapsedTicks: number): Vector2 {
-  return Object.freeze({
-    x: start.x + segment.velocity.x * elapsedTicks,
-    y: start.y + segment.velocity.y * elapsedTicks,
-  });
+  const x = start.x + segment.velocity.x * elapsedTicks;
+  const y = start.y + segment.velocity.y * elapsedTicks;
+  const offset = segment.offset;
+  if (!offset) {
+    return Object.freeze({ x, y });
+  }
+  const phaseSteps = Math.floor((elapsedTicks * ANGLE_STEPS_PER_TURN) / offset.periodTicks);
+  const displacement = offset.amplitude * sinOfAngleSteps(phaseSteps);
+  return offset.axis === "x"
+    ? Object.freeze({ x: x + displacement, y })
+    : Object.freeze({ x, y: y + displacement });
 }

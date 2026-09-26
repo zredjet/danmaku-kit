@@ -196,6 +196,31 @@ const velocityPathDefinition: PathDefinition = {
     { type: "velocity", duration: 30, velocity: { x: 1.5, y: 0 } },
   ],
 };
+const sinePathDefinition: PathDefinition = {
+  id: "path.wave",
+  version: 1,
+  segments: [
+    {
+      type: "velocity",
+      duration: 120,
+      velocity: { x: 0, y: 1.5 },
+      offset: { type: "sine", axis: "x", amplitude: 32, periodTicks: 120 },
+    },
+  ],
+};
+const invalidPathSineOffsetAxis: PathDefinition = {
+  id: "path.wave",
+  version: 1,
+  segments: [
+    {
+      type: "velocity",
+      duration: 120,
+      velocity: { x: 0, y: 1.5 },
+      // @ts-expect-error sine offsets move along the x or y axis only.
+      offset: { type: "sine", axis: "z", amplitude: 32, periodTicks: 120 },
+    },
+  ],
+};
 const invalidPathSegmentType: PathDefinition = {
   id: "path.sine",
   version: 1,
@@ -242,6 +267,8 @@ void movingFireOnSpawnPatternDefinition;
 void invalidFireOnSpawnPatternVelocity;
 void pathDefinition;
 void velocityPathDefinition;
+void sinePathDefinition;
+void invalidPathSineOffsetAxis;
 void invalidPathSegmentType;
 void invalidPathSegmentDuration;
 void contentRegistry;

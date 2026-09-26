@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { PathSegmentDefinition } from "../content/types.ts";
+import { sinOfAngleSteps } from "./deterministic-trig.ts";
 import {
   advancePathRunner,
   createPathRunnerState,
@@ -72,5 +73,30 @@ test("resolves the same runner state and position as advancing tick by tick", ()
   });
   for (const [index, step] of steps.entries()) {
     assert.deepEqual(resolvePathRunnerAt({ x: 192, y: -16 }, segments, index + 1), step, `progress ${index + 1}`);
+  }
+});
+
+test("adds a table-based sine offset whose phase floors t * 1440 / periodTicks", () => {
+  const sineSegments: readonly PathSegmentDefinition[] = [
+    { type: "velocity", duration: 120, velocity: { x: 0, y: 1 }, offset: { type: "sine", axis: "x", amplitude: 32, periodTicks: 120 } },
+    { type: "velocity", duration: 14, velocity: { x: 0, y: 0 }, offset: { type: "sine", axis: "y", amplitude: 10, periodTicks: 7 } },
+  ];
+  const spawn = { x: 100, y: 0 };
+  const at = (progressTicks: number) => resolvePathRunnerAt(spawn, sineSegments, progressTicks).position;
+
+  assert.deepEqual([30, 60, 90].map(at), [{ x: 132, y: 30 }, { x: 100, y: 60 }, { x: 68, y: 90 }]);
+  assert.deepEqual(at(1), { x: 100 + 32 * sinOfAngleSteps(12), y: 1 });
+  // 周期 120 tick の segment は t = 120 で位相 1,440 step（sin 0）に戻るため、次の segment は変位なしの位置から始まる。
+  assert.deepEqual(resolvePathRunnerAt(spawn, sineSegments, 120).state.segmentStart, { x: 100, y: 120 });
+  // 1,440 を割り切らない周期 7 の位相は floor(1 * 1440 / 7) = 205 step になる。
+  assert.deepEqual(at(121), { x: 100, y: 120 + 10 * sinOfAngleSteps(205) });
+
+  let state = createPathRunnerState(spawn);
+  let position: { x: number; y: number } = spawn;
+  for (let tick = 1; tick <= 140; tick += 1) {
+    const step = advancePathRunner(state, position, sineSegments);
+    assert.deepEqual(step, resolvePathRunnerAt(spawn, sineSegments, tick), `progress ${tick}`);
+    state = step.state;
+    position = step.position;
   }
 });

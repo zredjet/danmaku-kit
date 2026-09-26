@@ -189,6 +189,19 @@ export type PathSegmentDefinition = {
     x: number;
     y: number;
   };
+  offset?: PathSineOffsetDefinition;
+};
+
+/**
+ * segment の基本位置に足す sine の相対変位（design 9.8）。速度は変えない。
+ *
+ * segment 内経過 tick `t` の変位は `amplitude * sin(floor(t * 1440 / periodTicks) step)` で、sine は決定的な表から引く。
+ */
+export type PathSineOffsetDefinition = {
+  type: "sine";
+  axis: "x" | "y";
+  amplitude: number;
+  periodTicks: number;
 };
 
 /**

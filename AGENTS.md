@@ -74,6 +74,12 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 - Vite config と content plugin のように Node で動く code は `src/` の外（`vite.config.ts`、`vite/`）に置き、`tsconfig.node.json` で型検査する。`vite/**/*.test.ts` も `npm test` の対象にする。
 - content は build / dev server 時に `vite/content-plugin.ts` が validate-content の `loadValidatedGameDefinition()` で検証する。browser へ YAML parser や filesystem access を持ち込まない。
 
+### 決定性（`packages/shooting-core/src/`）
+
+- tick に入り得る Core の source は host によって結果が変わる演算を使わない。`Math.sin` / `Math.cos` / `Math.atan2` / `Math.hypot` / `Math.pow` などの implementation-approximated な `Math` function と `**` 演算子は `tests/deterministic-math.test.mjs` が拒否する。`Math.sqrt`、`Math.floor`、`Math.abs`、四則演算は正確なので使ってよい。
+- 角度は 0.25° 刻みの整数 step（`shared/angle-steps.ts`）で扱い、sine / cosine / 回転 / 狙いの向きは `simulation/deterministic-trig.ts` を使う。sine 表 `simulation/sine-table.ts` は `npm run generate-sine-table` が生成する正本で、手で編集しない。
+- 移動する entity の位置は、生成位置や segment 開始位置から `origin + velocity * t` のように毎 tick 求め直し、tick ごとの加算を積まない。restore はこの式で state が spawn から到達可能かを検証するため、式を変えるときは restore の検証も同じ式にそろえる。
+
 ### runtime entity kind（`packages/shooting-core/src/basic/entities/`）
 
 - `entities/` 直下は kind 横断の module（`entity-kinds.ts`、`model-common.ts`、`snapshot-common.ts`、`restore-common.ts`、`runtime-entity.ts`）だけにし、サブディレクトリは `RUNTIME_ENTITY_KINDS` の1 kind（kebab-case）に1つ対応させる。

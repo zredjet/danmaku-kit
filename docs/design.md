@@ -665,9 +665,9 @@ segments:
 
 PathRunner は segment 開始位置を `p0`、segment 内経過 tick を `t` として、基本位置 `p0 + velocity * t` に `offset(t)` を足す。`offset.sine` は位置への相対変位であり、速度そのものは変更しない。segment が切り替わると、その時点の最終位置を次 segment の `p0` とする。
 
-Phase 2A-2 の Core は `type: velocity` の segment だけを受け付け、`offset` は Phase 2A-4 の決定的な角度計算と同時に追加する。`segments` は省略でき、省略時と空配列は動かない path になる（`path.none` 互換）。content validation は 1 path を 64 segment、1 segment の `duration` を 1〜3,600 tick、`velocity` を axis ごとに ±16 px/tick に制限する。enemy は spawn した tick から system order の update movement で path を進み、位置は毎 tick `p0 + velocity * t` として求め直して加算誤差を積まない。全 segment を終えた enemy は最終位置に止まり、中心が playfield を 64 px の余白より外れていれば update lifetime で event を出さずに取り除く。画面外から登場する enemy を消さないよう、path の途中では cleanup しない。
+Phase 2A-2 の Core は `type: velocity` の segment だけを受け付け、Phase 2A-4 で `offset`（`type: sine`、`axis: x | y`、`amplitude`、`periodTicks`）を追加した。sine offset の変位は `amplitude * sin(floor(t * 1440 / periodTicks) step)` で、sine は下の決定的な表から引き、位相は整数演算で求める（`t * 1440` は 2^53 未満なので、割り算の丸めが整数境界をまたがず floor は正確）。`periodTicks` が 1,440 を割り切らない場合も位相は floor で丸める。content validation は `amplitude` を ±256 px、`periodTicks` を 1〜3,600 tick に制限する。offset を持たない segment の座標と state hash は変わらず、phase は `segmentElapsedTicks` から求まるため `pathRunnerState` も変えない。`segments` は省略でき、省略時と空配列は動かない path になる（`path.none` 互換）。content validation は 1 path を 64 segment、1 segment の `duration` を 1〜3,600 tick、`velocity` を axis ごとに ±16 px/tick に制限する。enemy は spawn した tick から system order の update movement で path を進み、位置は毎 tick `p0 + velocity * t` として求め直して加算誤差を積まない。全 segment を終えた enemy は最終位置に止まり、中心が playfield を 64 px の余白より外れていれば update lifetime で event を出さずに取り除く。画面外から登場する enemy を消さないよう、path の途中では cleanup しない。
 
-Phase 1 の Simulation 座標は JavaScript の finite number として保持し、state hash では IEEE-754 binary64 の canonical encoding で比較する。斜め移動や sine offset によって小数座標が自然に発生するため、固定小数点へ変換できない値を不正扱いにしない。ただし tick 中の非線形関数は host `Math.sin` などの実装差へ依存させない。`offset.sine` のような機能を実装する slice では、core version に紐づく deterministic lookup table または決定的な近似関数を feature ごとに定義し、table 生成方法、解像度、補間方式、丸め規則、golden vector を同じ slice で固定してから tick で使う。将来、runtime state 自体を固定小数点へ移行する場合は、単位、丸め規則、content loader の変換、golden snapshot の比較対象を別 schema version として同時に固定する。
+Phase 1 の Simulation 座標は JavaScript の finite number として保持し、state hash では IEEE-754 binary64 の canonical encoding で比較する。斜め移動や sine offset によって小数座標が自然に発生するため、固定小数点へ変換できない値を不正扱いにしない。ただし tick 中の非線形関数は host `Math.sin` などの実装差へ依存させない。`offset.sine` のような機能を実装する slice では、core version に紐づく deterministic lookup table または決定的な近似関数を feature ごとに定義し、table 生成方法、解像度、補間方式、丸め規則、golden vector を同じ slice で固定してから tick で使う。Phase 2A-4 で固定した角度計算は design 10 の「決定的な角度計算」に置く。将来、runtime state 自体を固定小数点へ移行する場合は、単位、丸め規則、content loader の変換、golden snapshot の比較対象を別 schema version として同時に固定する。
 
 ### 9.9 Pickup 定義例
 
@@ -779,6 +779,13 @@ Affinity feature を有効にする Player は、`initialAffinity` と `availabl
 - `speed`
 - `accel`
 - `color` または `affinity`
+
+決定的な角度計算（Phase 2A-4）:
+
+- 角度は画面座標系で +x を 0°、+y（下）へ回る向きを正とし、1 周を 1,440 step（0.25°）に分ける。content の `angleDeg` / `spreadDeg` のような角度は 0.25° の倍数だけを受け付け、`angleStepsFromDegrees()` で整数 step に変換する（4 倍は 2 の冪の乗算なので丸めを伴わない）。
+- tick 中の sine / cosine は `simulation/sine-table.ts` の表だけから引き、host の `Math.sin` / `Math.cos` / `Math.atan2` を使わない。表は `packages/shooting-core/scripts/generate-sine-table.mjs`（`npm run generate-sine-table`）が 0〜90° の 361 entry を `round(sin(step * π / 720) * 2^30)` の整数として生成し、生成した整数 literal を正本として commit する。host の `Math.sin` は生成時にだけ使い、丸めは生成時の `Math.round` だけとする。tick は表を補間せずに引き、90° より先は対称性で広げる（sin 0° / 30° / 90° は 0 / 1/2 / 1 に一致し、180° は -0 にしない）。表の golden entry と checksum、対称性は test で固定する。
+- `aim: player` の向きは差分 vector を `Math.sqrt(dx * dx + dy * dy)` で割って正規化する。ECMAScript は `Math.sqrt` を正確な平方根の丸め（𝔽）と定めているが、`Math.hypot` と三角関数・指数関数は implementation-approximated なので使わない。目標と同じ位置からは真下を向く。fan は基準の向きを表の cos / sin で回転して作る。
+- `tests/deterministic-math.test.mjs` が Core の非 test source に implementation-approximated な `Math` function と `**` 演算子（`Number::exponentiate` も implementation-approximated）が現れないことを検査する。
 
 斑鳩系の属性切替を入れる場合は、弾と敵に `affinity` を持たせる。
 

@@ -31,6 +31,12 @@ export const MAX_PATH_SEGMENT_DURATION_TICKS = 3_600;
 /** path segment velocity の axis ごとの絶対値上限（px / tick）。 */
 export const MAX_PATH_SPEED_PER_AXIS = 16;
 
+/** path segment の sine offset の振幅の絶対値上限（px）。 */
+export const MAX_PATH_SINE_AMPLITUDE = 256;
+
+/** path segment の sine offset の周期 tick 上限。 */
+export const MAX_PATH_SINE_PERIOD_TICKS = 3_600;
+
 /**
  * path を終えた enemy を cleanup する playfield 外の余白（px）。
  *

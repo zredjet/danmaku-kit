@@ -92,3 +92,46 @@ test("restores enemies mid-path, after finishing and after cleanup and continues
     );
   }
 });
+
+test("moves an enemy along a sine offset path and restores it mid-wave", () => {
+  const definition = createEnemyPathDefinition();
+  const waveDefinition = {
+    ...definition,
+    content: {
+      ...definition.content,
+      paths: definition.content.paths.map((path) => path.id === "path.descend"
+        ? {
+          ...path,
+          segments: [{
+            type: "velocity" as const,
+            duration: 90,
+            velocity: { x: 0, y: 2 },
+            offset: { type: "sine" as const, axis: "x" as const, amplitude: 24, periodTicks: 60 },
+          }],
+        }
+        : path),
+    },
+  };
+  const loaded = createShootingCore("0.0.0").load(waveDefinition);
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    return;
+  }
+  const source = startStageFromLoadedGame(loaded.value);
+  const frames = Array.from({ length: 30 }, (_, tick) => assertTickOk(source.tick(createEmptyInputFrame(tick)), `tick ${tick}`));
+  // spawn tick から 15 tick 動いた tick 14 は位相 360 step（sin 1）で、x が振幅ぶん右にずれる。
+  assert.deepEqual(enemyPosition(frames[14]!, 2), [124, 14]);
+  assert.deepEqual(enemyPosition(frames[29]!, 2), [100, 44]);
+
+  const restored = loaded.value.restore(assertSerializeOk(source.serialize(), "serialize mid-wave"));
+  assert.equal(restored.ok, true, JSON.stringify(restored.ok ? null : restored.errors));
+  if (!restored.ok) {
+    return;
+  }
+  for (let tick = 30; tick < 100; tick += 1) {
+    assert.deepEqual(
+      assertTickOk(restored.value.tick(createEmptyInputFrame(tick)), `restored tick ${tick}`),
+      assertTickOk(source.tick(createEmptyInputFrame(tick)), `source tick ${tick}`),
+    );
+  }
+});
