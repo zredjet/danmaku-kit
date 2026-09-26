@@ -5,6 +5,7 @@ import type { CoreResult } from "../../result.ts";
 import { assertNever } from "../../shared/guards.ts";
 import { DEFAULT_PLAYER_START_POSITION } from "../../simulation/runtime-entity.ts";
 import type { PlayerRuntimeEntity, RuntimeEntityState } from "../../simulation/runtime-entity.ts";
+import { cloneRestorePlainRecord } from "../restore-plain-data.ts";
 import {
   consumeRestoreEnemyBulletBudget,
   consumeRestoreEnemySpawnBudget,
@@ -14,7 +15,6 @@ import {
   validateRestoreSameTickAllocationOrder,
 } from "./allocation-order.ts";
 import type { RestoreMatchedPlayerShot, RestoreMatchedSpawn } from "./allocation-order.ts";
-import { cloneRestorePlainRecord } from "./plain-data.ts";
 import {
   RESTORE_RUNTIME_ENTITY_ALL_KEYS,
   validateRestoreEnemyBulletRuntimeEntity,

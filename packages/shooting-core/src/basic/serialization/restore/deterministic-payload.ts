@@ -10,8 +10,8 @@ import { XorShift32 } from "../../simulation/prng.ts";
 import type { SerializedPrngState } from "../../simulation/prng.ts";
 import type { RuntimeEntityState } from "../../simulation/runtime-entity.ts";
 import type { CommittedPendingEvent } from "../../state/committed-state.ts";
+import { cloneRestoreArray, cloneRestorePlainRecord } from "../restore-plain-data.ts";
 import type { SerializedEnabledFeatureState, SerializedPatternRunnerState } from "../types.ts";
-import { cloneRestoreArray, cloneRestorePlainRecord } from "./plain-data.ts";
 import {
   createRestoreJsonBudget,
   isRestoreJsonStringWithinSingleValueBudget,

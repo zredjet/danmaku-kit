@@ -23,8 +23,8 @@ import type {
   PlayerRuntimeEntity,
   PlayerShotRuntimeEntity,
 } from "../../simulation/runtime-entity.ts";
+import { cloneRestorePlainRecord, isRestoreTopLevelString } from "../restore-plain-data.ts";
 import type { SerializedRuntimeEntityState } from "../types.ts";
-import { cloneRestorePlainRecord, isRestoreTopLevelString } from "./plain-data.ts";
 
 type SerializedRestorePlayerEntity = Extract<SerializedRuntimeEntityState, { kind: "player" }>;
 

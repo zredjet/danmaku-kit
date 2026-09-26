@@ -11,10 +11,10 @@ import {
   canonicalizeEnabledFeatures,
 } from "../metadata.ts";
 import type { StageSessionSerializationMetadata } from "../metadata.ts";
+import { cloneRestoreTopLevelPlainRecord } from "../restore-plain-data.ts";
 import type { SerializedGameState } from "../types.ts";
 import { parseRestoreDeterministicPayload, validateRestorePrngSnapshot } from "./deterministic-payload.ts";
 import type { ValidatedRestoreDeterministicPayload } from "./deterministic-payload.ts";
-import { cloneRestoreTopLevelPlainRecord } from "./plain-data.ts";
 import {
   parseRestoreCompatibilityMetadata,
   parseRestoreSchemaMetadata,

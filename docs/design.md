@@ -162,6 +162,7 @@ packages/shooting-core/src/
     serialization/
       types.ts                 SerializedGameState DTO
       metadata.ts              version 定数と serialization metadata
+      restore-plain-data.ts    restore 入力の plain data clone guard（restore 層の下に置く）
       restore/                 top-level metadata、deterministic payload、JSON payload guard、runtime entity、allocation order の restore validation
     hash/                      HashableGameState DTO / field order、canonical encoder、xxHash64、state hash
     replay/

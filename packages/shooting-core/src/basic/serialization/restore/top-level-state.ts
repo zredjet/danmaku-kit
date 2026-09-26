@@ -11,8 +11,8 @@ import {
   SERIALIZED_STATE_HASH_VERSION,
   canonicalizeEnabledFeatures,
 } from "../metadata.ts";
+import { MAX_RESTORE_TOP_LEVEL_STRING_LENGTH, cloneRestoreArray, isRestoreTopLevelString } from "../restore-plain-data.ts";
 import type { SerializedGameState } from "../types.ts";
-import { MAX_RESTORE_TOP_LEVEL_STRING_LENGTH, cloneRestoreArray, isRestoreTopLevelString } from "./plain-data.ts";
 
 const RESTORE_TOP_LEVEL_KEY_MAP = Object.freeze({
   coreVersion: true,
