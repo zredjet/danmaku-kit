@@ -41,6 +41,26 @@ const SHOOTING_CORE_LEAF_LAYER_RULES = Object.freeze([
 /** root export から runtime import で到達させない test / tooling 専用 module。state hash と debug dump は test 側で計算する。 */
 const SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES = Object.freeze(["hash/", "testing/"]);
 
+test("matches dependency rule paths by file, directory, and single-segment wildcard", () => {
+  const cases = [
+    ["core.ts", "core.ts", true],
+    ["core.test.ts", "core.ts", false],
+    ["state/committed-state.ts", "state/", true],
+    ["statefoo/committed-state.ts", "state/", false],
+    ["entities/player/restore.ts", "entities/*/restore.ts", true],
+    ["entities/restore.ts", "entities/*/restore.ts", false],
+    ["entities/player/nested/restore.ts", "entities/*/restore.ts", false],
+    ["entities/player/restore.test.ts", "entities/*/restore.ts", false],
+    ["entities/player/model.ts", "entities/*/", true],
+    ["entities/model-common.ts", "entities/*/", false],
+  ];
+
+  assert.deepEqual(
+    cases.map(([modulePath, rulePath]) => matchesModulePath(modulePath, rulePath)),
+    cases.map(([, , expected]) => expected),
+  );
+});
+
 test("keeps package source free of runtime import cycles", async () => {
   for (const sourceRoot of sourceRoots) {
     const graph = await collectRuntimeImportGraph(sourceRoot);
@@ -48,6 +68,13 @@ test("keeps package source free of runtime import cycles", async () => {
 
     assert.deepEqual(cycles, [], `${toRepositoryPath(sourceRoot)} has runtime import cycles`);
   }
+});
+
+test("keeps shooting-core source free of type-level import cycles", async () => {
+  const graph = await collectImportGraph(shootingCoreBasicRoot, { includeTypeOnly: true });
+  const cycles = findCycles(graph).map((cycle) => cycle.map((file) => toRepositoryPath(file)));
+
+  assert.deepEqual(cycles, [], "shooting-core has import cycles including type-only imports");
 });
 
 test("keeps package source from importing test code", async () => {
@@ -184,9 +211,17 @@ function collectRelativeSpecifiers(file, sourceText, { includeTypeOnly }) {
   return specifiers.filter((specifier) => specifier.startsWith("."));
 }
 
-/** layer rule の path（file、または末尾 `/` の directory）に module path が含まれるか判定する。 */
+/**
+ * layer rule の path（file、または末尾 `/` の directory）に module path が含まれるか判定する。
+ *
+ * `*` は `/` を含まない1 segment に一致し、entity kind ごとの directory をまとめて指定するのに使う。
+ */
 function matchesModulePath(modulePath, rulePath) {
-  return rulePath.endsWith("/") ? modulePath.startsWith(rulePath) : modulePath === rulePath;
+  if (!rulePath.includes("*")) {
+    return rulePath.endsWith("/") ? modulePath.startsWith(rulePath) : modulePath === rulePath;
+  }
+  const pattern = rulePath.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join("[^/]+");
+  return new RegExp(rulePath.endsWith("/") ? `^${pattern}` : `^${pattern}$`).test(modulePath);
 }
 
 function toBasicPath(file) {

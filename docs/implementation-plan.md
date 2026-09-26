@@ -445,7 +445,8 @@ Phase 1C-R で巨大ファイルは責務単位に分割したが、ディレク
    - Done: Phase 1C-S2: `runStageTick()` に直書きしていた timeline spawn を、他の system と同じく差分を返す純粋関数 `simulation/stage-timeline-system.ts` の `advanceStageTimeline()` へ抽出する。step ごとの採番、`entitySpawned` の順序と内容、cursor の進め方は変えず、pipeline が entity / event / cursor を working state へ反映する。`STAGE_TICK_SYSTEM_ORDER` は design 7.1 の記録として現状のまま残す
    - Done: Phase 1C-S2 review: pipeline に残っていた working mutation fault の消費も `instrumentation/` の `consumeWorkingMutationFailureForTesting()` へ寄せ、pipeline と session が hook の保持形式を知らない形にそろえる。`StageTickContent` の content map 型は `LoadedContentIndex` から導出する
 3. Phase 1C-S3: entity kind の縦割り
-   - Next: `matchesModulePath` を1 segment の `*` に対応させ、stale rule、basic 内の型 cycle、kind 間 import を検査する guardrail を先に追加する
+   - Done: Phase 1C-S3: `tests/module-graph.test.mjs` の `matchesModulePath` を `/` を含まない1 segment の `*` に対応させて matcher の単体 test を置き、shooting-core の非 test source で型 import も含めた import cycle を禁止する（現状 0 件）。stale rule の検査は Phase 1C-S1 review で追加済み
+   - Next: `entities/` 導入時に、kind directory 間の import を型 import も含めて禁止する検査を追加する
    - Next: field order 型 utility を `shared/field-order.ts`、restore の plain data guard を `serialization/restore-plain-data.ts` へ下げ、`entities/entity-kinds.ts` に canonical kind 一覧を置く
    - Next: `simulation/runtime-entity.ts`、`serialization/restore/runtime-entity-kinds.ts`、public DTO と serialize projection、hash DTO / field order と hash projection の kind 別部分を `entities/<kind>/` へ移す。union と dispatch は関心ごとに1箇所へ残し、fixedStruct 名の表と canonical adapter は変更しない
    - Next: `Restored*RuntimeEntityInput` を `Omit` で導出し、restore key 一覧と public DTO / runtime の key 集合一致を型で固定する。serialize / hash projection は契約が異なるため統合しない
