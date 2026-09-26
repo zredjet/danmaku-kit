@@ -19,22 +19,13 @@ import type {
   ValidateContentRunResult,
 } from "@shooting-sample/validate-content";
 
+import type { AssertTrue, IsExactly } from "./support/type-assertions.ts";
+
 // @ts-expect-error validate-content internal types are not importable through a deep package subpath.
 import type { ContentDiagnostic as DeepContentDiagnostic } from "@shooting-sample/validate-content/src/types.ts";
 
 // @ts-expect-error validate-content internal functions are not importable through a deep package subpath.
 import { createValidationRunResult as DeepCreateValidationRunResult } from "@shooting-sample/validate-content/src/output.ts";
-
-type IsExactly<Left, Right> =
-  (<Value>() => Value extends Left ? 1 : 2) extends
-  (<Value>() => Value extends Right ? 1 : 2)
-    ? (<Value>() => Value extends Right ? 1 : 2) extends
-      (<Value>() => Value extends Left ? 1 : 2)
-      ? true
-      : false
-    : false;
-
-type AssertTrue<Value extends true> = Value;
 
 type ExpectedBase = Readonly<{
   code: string;
