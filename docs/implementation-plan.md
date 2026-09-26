@@ -392,10 +392,11 @@ Done:
    - Done: R1 で移動した `HashableGameState` の deep import 確認を `hash/hashable-state.ts` へ更新し、refactoring で生まれた `CommittedStageState`、`StageTickOutcome`、`LoadedContentIndex`、`RestoredStageState` の root 非公開と、`session/stage-session.ts`、`state/committed-state.ts`、`serialization/restore/restore-stage-state.ts` の deep import 拒否を追加する
 8. Phase 1C-R8: 二次対象
    - Done: Phase 1C-R8: `content/validation.ts` を `validateGameDefinition()` だけの入口にし、root / content item の shape を `content/validation/shape.ts`、ID 一意性と参照解決を `references.ts`、schema path の付け替えを `schema-path.ts`、汎用 field validator を `fields.ts` へ本文そのままで移す。`content/validation.ts` の path は既存 import と deep import 確認のため維持する
-   - Next: Phase 1C-R8: validate-content の `content-loader.ts` から source index と Node filesystem adapter、重複した diagnostic 生成を `diagnostic-factory.ts` へ抽出し、`output.test.ts` を result・normalize・order と formatter に分ける
+   - Done: Phase 1C-R8: validate-content の collection directory map を `content-collections.ts`、filesystem port / Node adapter / file error を `content-file-system.ts`、schema path から source を引く index を `content-source-index.ts` へ移す。loader / YAML parser / Core adapter に同一内容で重複していた root parse diagnostic、schema diagnostic 生成、default span は `diagnostic-factory.ts` の1実装へ寄せた
+   - Done: Phase 1C-R8: `output.test.ts` を result 構築・正規化・順序・tool error の10 test と、JSON / human formatter の6 test（`output-format.test.ts`）へ本文そのままで分ける
    - Later: `canonical-encoder.ts`、`runtime-entity.ts`、`collision-system.ts`、`restore-json.ts`、`yaml-source.ts` は単一責務のため分割しない
 9. Phase 1C-R9: guardrail と docs
-   - Queued: Phase 1C-R9: module graph test に依存方向ルールを追加し、`AGENTS.md` にファイル規模と依存方向の方針、`docs/design.md` の directory 構成と対応表の path を実装へ合わせる
+   - Next: Phase 1C-R9: module graph test に依存方向ルールを追加し、`AGENTS.md` にファイル規模と依存方向の方針、`docs/design.md` の directory 構成と対応表の path を実装へ合わせる
 
 ## Phase 2A へ進む条件
 
