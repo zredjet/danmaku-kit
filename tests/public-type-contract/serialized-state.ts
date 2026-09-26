@@ -53,6 +53,7 @@ const serializedEnemyEntity: SerializedRuntimeEntityState = {
   scoreOnKill: 100,
   pathId: "path.none",
   patternId: "pattern.none",
+  pathRunnerState: { segmentIndex: 0, segmentStart: { x: 192, y: 80 }, segmentElapsedTicks: 0 },
 };
 const serializedEnemyBulletEntity: SerializedRuntimeEntityState = {
   id: 3,
@@ -97,7 +98,7 @@ const serializedGameState: SerializedGameState = {
   schemaVersion: "1",
   contentVersion: "1",
   inputFormatVersion: "1",
-  stateHashVersion: 1,
+  stateHashVersion: 2,
   enabledFeatures: [],
   stageId: "stage.stage_01",
   difficulty: "normal",
@@ -144,6 +145,7 @@ const invalidSerializedEnemyEntity: SerializedRuntimeEntityState = {
   hp: 10,
   scoreOnKill: 100,
   pathId: "path.none",
+  pathRunnerState: { segmentIndex: 0, segmentStart: { x: 192, y: 80 }, segmentElapsedTicks: 0 },
 };
 
 const invalidSerializedPlayerDefinition: SerializedPlayerEntityForContract = {
@@ -185,6 +187,7 @@ const invalidSerializedEnemyDefinition: SerializedEnemyEntityForContract = {
   scoreOnKill: 100,
   pathId: "path.none",
   patternId: "pattern.none",
+  pathRunnerState: { segmentIndex: 0, segmentStart: { x: 192, y: 80 }, segmentElapsedTicks: 0 },
 };
 
 const invalidSerializedEnemyPath: SerializedRuntimeEntityState = {
@@ -198,6 +201,7 @@ const invalidSerializedEnemyPath: SerializedRuntimeEntityState = {
   // @ts-expect-error serialized enemy state の path reference は PathId に限定する。
   pathId: "pattern.none",
   patternId: "pattern.none",
+  pathRunnerState: { segmentIndex: 0, segmentStart: { x: 192, y: 80 }, segmentElapsedTicks: 0 },
 };
 
 const invalidSerializedEnemyPattern: SerializedRuntimeEntityState = {
@@ -211,6 +215,7 @@ const invalidSerializedEnemyPattern: SerializedRuntimeEntityState = {
   pathId: "path.none",
   // @ts-expect-error serialized enemy state の pattern reference は PatternId に限定する。
   patternId: "path.none",
+  pathRunnerState: { segmentIndex: 0, segmentStart: { x: 192, y: 80 }, segmentElapsedTicks: 0 },
 };
 
 const invalidSerializedEnemyBulletDefinition: SerializedEnemyBulletEntityForContract = {
@@ -305,7 +310,7 @@ const invalidSerializedGameStateWithoutState: SerializedGameState = {
   schemaVersion: "1",
   contentVersion: "1",
   inputFormatVersion: "1",
-  stateHashVersion: 1,
+  stateHashVersion: 2,
   enabledFeatures: [],
   stageId: "stage.stage_01",
   difficulty: "normal",

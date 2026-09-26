@@ -4,6 +4,7 @@ import test from "node:test";
 import type { BulletDefinition, PatternDefinition } from "../content/types.ts";
 import { EntityAllocator } from "./entity.ts";
 import { spawnEnemyBulletsOnSpawn } from "./enemy-bullet-system.ts";
+import { createPathRunnerState } from "./path-runner.ts";
 import type { EnemyRuntimeEntity } from "../entities/enemy/model.ts";
 
 test("spawns enemy bullets from fireOnSpawn patterns in enemy order", () => {
@@ -232,6 +233,7 @@ function createEnemy(options: {
     collisionRadius: 12,
     hp: 10,
     scoreOnKill: 100,
+    pathRunnerState: createPathRunnerState(options.position),
   });
 }
 

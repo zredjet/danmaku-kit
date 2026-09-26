@@ -3,11 +3,13 @@ import { okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
 import { EntityAllocator } from "../../simulation/entity.ts";
 import type { EntityId } from "../../simulation/entity.ts";
+import { createPathRunnerState } from "../../simulation/path-runner.ts";
+import type { PathRunnerState } from "../../simulation/path-runner.ts";
 import type { Vector2 } from "../model-common.ts";
 
 type SpawnEnemyAction = Extract<StageTimelineAction, { type: "spawnEnemy" }>;
 
-/** 敵の runtime component。今後の movement / pattern / score 解決に必要な参照を保持する。 */
+/** 敵の runtime component。movement / pattern / score 解決に必要な参照と、path 上の進行状態を保持する。 */
 export type EnemyRuntimeEntity = Readonly<{
   id: EntityId;
   kind: "enemy";
@@ -18,12 +20,13 @@ export type EnemyRuntimeEntity = Readonly<{
   collisionRadius: number;
   hp: number;
   scoreOnKill: number;
+  pathRunnerState: PathRunnerState;
 }>;
 
 /** 検証済み snapshot から enemy runtime entity を復元するための入力。 */
 type RestoredEnemyRuntimeEntityInput = Omit<EnemyRuntimeEntity, "kind">;
 
-/** Stage timeline の spawnEnemy action から enemy runtime entity を作る。 */
+/** Stage timeline の spawnEnemy action から、spawn 位置で path を始める enemy runtime entity を作る。 */
 export function createEnemyRuntimeEntity(
   allocator: EntityAllocator,
   enemy: EnemyDefinition,
@@ -46,6 +49,7 @@ export function createEnemyRuntimeEntity(
     collisionRadius: enemy.collision.radius,
     hp: enemy.hp,
     scoreOnKill: enemy.score,
+    pathRunnerState: createPathRunnerState(action.position),
   }));
 }
 
@@ -61,5 +65,13 @@ export function createRestoredEnemyRuntimeEntity(input: RestoredEnemyRuntimeEnti
     collisionRadius: input.collisionRadius,
     hp: input.hp,
     scoreOnKill: input.scoreOnKill,
+    pathRunnerState: Object.freeze({
+      segmentIndex: input.pathRunnerState.segmentIndex,
+      segmentStart: Object.freeze({
+        x: input.pathRunnerState.segmentStart.x,
+        y: input.pathRunnerState.segmentStart.y,
+      }),
+      segmentElapsedTicks: input.pathRunnerState.segmentElapsedTicks,
+    }),
   });
 }

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import type { CoreErrorCode } from "../../result.ts";
 import { loadMinimumGame, serializeInitialStageState } from "../../test-support/stage-harness.ts";
+import { SERIALIZED_STATE_HASH_VERSION } from "../metadata.ts";
 import type { SerializedGameState } from "../types.ts";
 
 test("restore rejects malformed top-level serialized state without throwing", () => {
@@ -149,7 +150,7 @@ test("restore classifies top-level compatibility mismatches", () => {
   expectRestoreError({ ...validState, coreVersion: "other.core" }, "state.coreVersionMismatch");
   expectRestoreError({ ...validState, schemaVersion: "2" }, "state.schemaVersionMismatch");
   expectRestoreError({ ...validState, inputFormatVersion: "2" }, "state.inputFormatVersionMismatch");
-  expectRestoreError({ ...validState, stateHashVersion: 2 }, "state.stateHashVersionMismatch");
+  expectRestoreError({ ...validState, stateHashVersion: SERIALIZED_STATE_HASH_VERSION + 1 }, "state.stateHashVersionMismatch");
   expectRestoreError({ ...validState, contentVersion: "content.other" }, "state.contentMismatch");
   expectRestoreError({ ...validState, stageId: "stage.missing" }, "state.contentMismatch");
   expectRestoreError({ ...validState, difficulty: "hard" }, "state.contentMismatch");
@@ -164,8 +165,8 @@ test("restore classifies top-level compatibility mismatches", () => {
     [{ ...validState, schemaVersion: "2", prngState: null }, "state.schemaVersionMismatch"],
     [{ ...validState, inputFormatVersion: "2", state: { invalidNestedFuturePayload: Number.POSITIVE_INFINITY } }, "state.inputFormatVersionMismatch"],
     [{ ...validState, inputFormatVersion: "2", futureTopLevelField: true }, "state.inputFormatVersionMismatch"],
-    [{ ...validState, stateHashVersion: 2, state: { invalidNestedFuturePayload: Number.POSITIVE_INFINITY } }, "state.stateHashVersionMismatch"],
-    [{ ...validState, stateHashVersion: 2, futureTopLevelField: true }, "state.stateHashVersionMismatch"],
+    [{ ...validState, stateHashVersion: SERIALIZED_STATE_HASH_VERSION + 1, state: { invalidNestedFuturePayload: Number.POSITIVE_INFINITY } }, "state.stateHashVersionMismatch"],
+    [{ ...validState, stateHashVersion: SERIALIZED_STATE_HASH_VERSION + 1, futureTopLevelField: true }, "state.stateHashVersionMismatch"],
     [{ ...validState, contentVersion: "content.other", state: { invalidNestedFuturePayload: Number.POSITIVE_INFINITY } }, "state.contentMismatch"],
     [{ ...validState, contentVersion: "content.other", futureTopLevelField: true }, "state.contentMismatch"],
     [{ ...validState, stageId: "stage.missing", state: { invalidNestedFuturePayload: Number.POSITIVE_INFINITY } }, "state.contentMismatch"],

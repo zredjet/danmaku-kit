@@ -7,7 +7,7 @@ import { adaptHashableGameStateToCanonicalValue } from "./hashable-game-state-ad
 
 test("adapts hashable game state through the fixed schema tables", () => {
   const state: HashableGameState = {
-    stateHashVersion: 1,
+    stateHashVersion: 2,
     coreVersion: "core.test",
     schemaVersion: "1",
     expectedTick: 4,
@@ -43,6 +43,7 @@ test("adapts hashable game state through the fixed schema tables", () => {
         scoreOnKill: 200,
         pathId: "path.down",
         patternId: "pattern.basic",
+        pathRunnerState: { segmentIndex: 1, segmentStart: { x: 20, y: 5 }, segmentElapsedTicks: 7 },
       },
       {
         id: 1,
@@ -83,7 +84,7 @@ test("adapts hashable game state through the fixed schema tables", () => {
 
   const canonical = adaptHashableGameStateToCanonicalValue(state);
   const expected = fixedStruct("hashableGameState", [
-    1,
+    2,
     "core.test",
     "1",
     4,
@@ -114,6 +115,7 @@ test("adapts hashable game state through the fixed schema tables", () => {
         200,
         "path.down",
         "pattern.basic",
+        fixedStruct("enemyPathRunnerState", [1, fixedStruct("vector2", [20, 5]), 7]),
       ]),
       fixedStruct("enemyBulletRuntimeEntity", [
         3,

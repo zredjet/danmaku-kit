@@ -10,6 +10,7 @@ import type { ActiveStageSessionTestingHooks } from "../instrumentation/stage-se
 import type { CoreError, CoreResult } from "../result.ts";
 import { resolveCollisionAndScoring } from "../simulation/collision-system.ts";
 import { spawnEnemyBulletsOnSpawn } from "../simulation/enemy-bullet-system.ts";
+import { advanceEnemyPaths } from "../simulation/enemy-path-system.ts";
 import { advancePlayerMovement } from "../simulation/player-movement-system.ts";
 import { advancePlayerShotLifecycle } from "../simulation/player-shot-lifecycle-system.ts";
 import { spawnPlayerShotFromInput } from "../simulation/player-shot-system.ts";
@@ -21,7 +22,7 @@ import type { CommittedStageState, WorkingStageState } from "../state/committed-
 /** tick pipeline が参照する load 済み content と、session の stage / player。 */
 export type StageTickContent = Pick<
   LoadedContentIndex,
-  "bulletsById" | "enemiesById" | "patternsById" | "playerShotsById"
+  "bulletsById" | "enemiesById" | "pathsById" | "patternsById" | "playerShotsById"
 > & Readonly<{
   stage: StageDefinition;
   player: PlayerDefinition;
@@ -138,9 +139,13 @@ export function runStageTick(
     return Object.freeze({ kind: "rejected", result: injectedFailure });
   }
 
-  // system order の updateMovement / updateLifetime。player は入力で、player shot は projectile 定義で進める。
+  // system order の updateMovement / updateLifetime。player は入力で、enemy は path で、player shot は projectile 定義で進める。
   const movedEntities = advancePlayerMovement(working.activeEntities, input);
-  const advancedEntities = advancePlayerShotLifecycle(movedEntities, {
+  const pathMovedEntities = advanceEnemyPaths(movedEntities, content.pathsById);
+  if (!pathMovedEntities.ok) {
+    return fatalTickOutcome(pathMovedEntities.errors);
+  }
+  const advancedEntities = advancePlayerShotLifecycle(pathMovedEntities.value, {
     spawnedThisTickEntityIds: spawnedPlayerShotEntityIds,
   });
   const collision = resolveCollisionAndScoring(advancedEntities, {

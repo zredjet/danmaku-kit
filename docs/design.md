@@ -368,6 +368,8 @@ system order は replay determinism の一部として扱い、Core の major ve
 したがって同 tick に enemy spawn、enemy bullet、player shot が重なる場合の spawn substep 内 event order は `entitySpawned`、`enemyBulletsSpawnedBatch`、`playerShotsSpawnedBatch` とする。collision / scoring が発生する場合は、その後に `playerHit`、`entityDestroyed`、`scoreChanged` を collision resolution order で追加し、最後に `tickAdvanced` を出す。
 tick 0 の `stageStarted` は system order 外の pending lifecycle event として frame 先頭に drain される。
 
+`update movement` では player を入力で、enemy を path で、player shot を projectile 定義で進める。敵弾の生成位置は spawn substep で決まるため、spawn tick に path で動いた enemy でも `fireOnSpawn` は spawn 位置を基準にする。`update lifetime` では寿命の切れた player shot と、path を終えて cleanup 境界の外にいる enemy を event なしで取り除く。
+
 Rank feature が有効な場合だけ step 12 に rank update、Phase 2B の Pickup feature が有効な場合だけ step 6 に pickup spawn、step 12 に pickup score / collect processing を追加する。feature 追加分も登録順と entity id 昇順で安定化し、Core minimum の system order を暗黙に変更しない。
 
 Bomb が有効な title では、`resolve immediate player defensive actions` で bomb cost、無敵付与、弾消し予約を処理する。同 tick に bomb 入力と player hit が重なった場合、bomb の無敵付与と弾消しを player hit 判定より先に適用する。
@@ -661,6 +663,8 @@ segments:
 ```
 
 PathRunner は segment 開始位置を `p0`、segment 内経過 tick を `t` として、基本位置 `p0 + velocity * t` に `offset(t)` を足す。`offset.sine` は位置への相対変位であり、速度そのものは変更しない。segment が切り替わると、その時点の最終位置を次 segment の `p0` とする。
+
+Phase 2A-2 の Core は `type: velocity` の segment だけを受け付け、`offset` は Phase 2A-4 の決定的な角度計算と同時に追加する。`segments` は省略でき、省略時と空配列は動かない path になる（`path.none` 互換）。content validation は 1 path を 64 segment、1 segment の `duration` を 1〜3,600 tick、`velocity` を axis ごとに ±16 px/tick に制限する。enemy は spawn した tick から system order の update movement で path を進み、位置は毎 tick `p0 + velocity * t` として求め直して加算誤差を積まない。全 segment を終えた enemy は最終位置に止まり、中心が playfield を 64 px の余白より外れていれば update lifetime で event を出さずに取り除く。画面外から登場する enemy を消さないよう、path の途中では cleanup しない。
 
 Phase 1 の Simulation 座標は JavaScript の finite number として保持し、state hash では IEEE-754 binary64 の canonical encoding で比較する。斜め移動や sine offset によって小数座標が自然に発生するため、固定小数点へ変換できない値を不正扱いにしない。ただし tick 中の非線形関数は host `Math.sin` などの実装差へ依存させない。`offset.sine` のような機能を実装する slice では、core version に紐づく deterministic lookup table または決定的な近似関数を feature ごとに定義し、table 生成方法、解像度、補間方式、丸め規則、golden vector を同じ slice で固定してから tick で使う。将来、runtime state 自体を固定小数点へ移行する場合は、単位、丸め規則、content loader の変換、golden snapshot の比較対象を別 schema version として同時に固定する。
 
@@ -1407,6 +1411,11 @@ type SerializedRuntimeEntityState =
       scoreOnKill: number;
       pathId: PathId;
       patternId: PatternId;
+      pathRunnerState: Readonly<{
+        segmentIndex: number;
+        segmentStart: SerializedVector2;
+        segmentElapsedTicks: number;
+      }>;
     }>
   | Readonly<{
       id: SerializedEntityId;
@@ -1522,7 +1531,7 @@ Runtime は `tick()` の戻り値に含まれる `GameFrame.events` を読んで
 
 `SerializedDeterministicState.runtimeEntities` は serialize 時に entity id 昇順で出力する。entity id は正の safe integer とし、`runtimeEntities` 内では strict ascending / unique / `id < nextEntityId` を満たす必要がある。restore は 0、負数、小数、unsafe integer、重複、`nextEntityId` 以上、昇順でない `runtimeEntities`、到達不能な `nextEntityId` envelope、同 tick の system order から作れない ID 並びを `state.invalidShape` として拒否し、受け取った順序を暗黙に sort しない。これにより collision / event order の tie-breaker と state hash の入力順を同じ契約に固定する。Core minimum の `score` は fixed `scoreOnKill` の加算結果なので、restore では non-negative safe integer として検証する。restore 成功時に active state へ入る player は playfield 内座標、`lives <= initialLives`、`invincibleTicksRemaining <= invincibleTicksAfterHit`、`nextShotAllowedTick <= expectedTick - 1 + fire.intervalTicks` を要求し、active enemy は `hp > 0` を要求する。倒された enemy は collision cleanup 後の snapshot から消えている必要があり、`hp: 0` の active enemy として復元しない。
 
-Phase 1B の `SerializedRuntimeEntityState` は現行 runtime が正本を持つ state だけを含める。将来 PathRunner が segment index、segment start `p0`、segment 内経過 tick `t`、sine offset の phase などを runtime state として持つ slice では、enemy serialized payload に `pathRunnerState` を schema version 付きで追加する。現在座標、`pathId`、`patternId` だけから path movement を逆算して restore することは禁止する。
+`SerializedRuntimeEntityState` は現行 runtime が正本を持つ state だけを含める。Phase 2A-2 で PathRunner の segment index、segment start `p0`、segment 内経過 tick `t` を enemy の `pathRunnerState` として追加し、`stateHashVersion` を 2 に上げた（sine offset の phase などは、その state を持つ slice で同じく追加する）。現在座標、`pathId`、`patternId` だけから path movement を逆算して restore することは禁止する。restore は `pathRunnerState` の shape と segment 数に収まる範囲を検証したうえで、処理済み timeline の spawn 位置から spawn tick 〜 `expectedTick` の tick 数だけ path を進めた runner と位置を求め、restore した `pathRunnerState` と `position` が完全一致する spawn を選ぶ。一致する spawn がない enemy と、path を終えて cleanup 境界の外にいるはずの enemy は `state.invalidShape` として拒否する。
 
 `SerializedPatternRunnerState.runnerId` は `patternRunner.${string}` の namespace 付き ID とし、`patternRunner.` のような空 suffix は restore で拒否する。同一 snapshot 内で一意にし、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は top-level `enabledFeatures` と同じ canonical feature order で出力する。`runnerId` の比較に `localeCompare` や JavaScript の UTF-16 code unit order を使わない。canonical feature order は `["bomb", "graze", "affinity", "rank", "pickup", "advancedScoring"]` の順に固定し、実装はこの順序を `KNOWN_ENABLED_FEATURES` の正本として扱う。ただし package runtime の value export は `createShootingCore` に限定し、feature order は schema / type contract と test で固定する。restore は型、shape、top-level `enabledFeatures` の重複や canonical order 違反を `state.invalidShape`、loaded content との top-level feature 差分や unknown feature、feature state の extra / missing / wrong feature を `state.featureMismatch` として分類する。top-level `enabledFeatures` に含まれる feature の `enabledFeatureStates` 欠落可否は module ごとの serialized-state contract で宣言し、stateful feature は欠落を拒否する。
 
@@ -1627,7 +1636,7 @@ State hash は canonical encoding を固定する。hash input は `stateHashVer
 
 entity は id 昇順、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は canonical feature order で列挙する。state hash 用 DTO は public serialize DTO とは別の `HashableGameState` として定義し、`stateHashVersion`、`ShootingCore.coreVersion`、`schemaVersion`、`expectedTick`、`nextEntityId`、`timelineCursor`、`prngState`、`score`、runtime entities、pending events、pattern runner states、enabled feature states を持つ。runtime entity DTO には entity id と component values を一度だけ入れ、`entity ids` や `component values` を別配列として二重 encode しない。`lives` や `nextShotAllowedTick` は player runtime entity payload 内の field として encode する。
 
-固定 DTO は fixedStruct として encode する。fixedStruct は `0x07` tag、struct name の UTF-8 byte length u32 little-endian、struct name bytes、field count u32 little-endian、schema 定義順の field value bytes の順に出力し、object key bytes は出さない。type discriminant を持つ union DTO では `kind` などの discriminant field も schema 定義順の通常 field として encode する。nested field は flatten せず、`position` は `fixedStruct("vector2", [x, y])`、player `movement` は `fixedStruct("playerMovement", [speed, focusSpeed])` として encode する。たとえば player entity は現在の `HashableRuntimeEntityState` schema に合わせて `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`lives`、`invincibleTicksRemaining`、`nextShotAllowedTick`、`movement`、`shotDefinitionId` の順に encode する。
+固定 DTO は fixedStruct として encode する。fixedStruct は `0x07` tag、struct name の UTF-8 byte length u32 little-endian、struct name bytes、field count u32 little-endian、schema 定義順の field value bytes の順に出力し、object key bytes は出さない。type discriminant を持つ union DTO では `kind` などの discriminant field も schema 定義順の通常 field として encode する。nested field は flatten せず、`position` は `fixedStruct("vector2", [x, y])`、player `movement` は `fixedStruct("playerMovement", [speed, focusSpeed])`、enemy `pathRunnerState` は `fixedStruct("enemyPathRunnerState", [segmentIndex, fixedStruct("vector2", [x, y]), segmentElapsedTicks])` として encode する。たとえば player entity は現在の `HashableRuntimeEntityState` schema に合わせて `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`lives`、`invincibleTicksRemaining`、`nextShotAllowedTick`、`movement`、`shotDefinitionId` の順に、enemy entity は `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`hp`、`scoreOnKill`、`pathId`、`patternId`、`pathRunnerState` の順に encode する。
 
 fixedStruct name の実行時正本は `HASHABLE_FIXED_STRUCT_NAME_BY_DTO` とし、次の表はその内容を示す。
 
@@ -1637,6 +1646,7 @@ fixedStruct name の実行時正本は `HASHABLE_FIXED_STRUCT_NAME_BY_DTO` と�
 | PRNG state | `prngState` |
 | vector | `vector2` |
 | player movement | `playerMovement` |
+| enemy path runner state | `enemyPathRunnerState` |
 | player runtime entity | `playerRuntimeEntity` |
 | enemy runtime entity | `enemyRuntimeEntity` |
 | enemy bullet runtime entity | `enemyBulletRuntimeEntity` |

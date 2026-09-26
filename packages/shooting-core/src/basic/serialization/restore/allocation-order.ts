@@ -1,9 +1,12 @@
 import type { LoadedContentIndex } from "../../content/content-index.ts";
-import type { StageDefinition } from "../../content/types.ts";
+import type { PathSegmentDefinition, StageDefinition } from "../../content/types.ts";
+import type { EnemyRuntimeEntity } from "../../entities/enemy/model.ts";
 import { isSameRestorePosition } from "../../entities/restore-common.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
 import { resolveEnemyBulletSpawnPosition } from "../../simulation/enemy-bullet-system.ts";
+import { isOutsideEnemyCleanupBounds } from "../../simulation/enemy-path-system.ts";
+import { resolvePathRunnerAt } from "../../simulation/path-runner.ts";
 import type { RestoreTopLevelState } from "./top-level-state.ts";
 
 export type RestoreSpawnBudget = Readonly<{
@@ -103,31 +106,54 @@ export function validateRestoreAllocationEnvelope(
   return okResult(null);
 }
 
-/** active enemy が処理済み timeline の spawn と同じ参照・位置から来ていることを検証する。 */
+/**
+ * active enemy が処理済み timeline の spawn と同じ参照から来て、その spawn から path を進めた状態にあることを検証する。
+ *
+ * spawn tick から `expectedTick` までの tick 数だけ spawn 位置から path を進めた runner と位置を求め、restore した値と完全一致する
+ * spawn を選ぶ。現在座標から path を逆算しない。path を終えて cleanup 境界の外にいるはずの spawn は runtime に残らないため選ばない。
+ */
 export function consumeRestoreEnemySpawnBudget(
   candidates: RestoreEnemySpawnCandidate[],
-  entity: Record<string, unknown>,
-  position: Readonly<{ x: number; y: number }>,
+  enemy: EnemyRuntimeEntity,
+  segments: readonly PathSegmentDefinition[],
+  expectedTick: number,
 ): CoreResult<RestoreMatchedSpawn> {
   const index = candidates.findIndex((candidate) => (
-    candidate.definitionId === entity.definitionId
-    && candidate.pathId === entity.pathId
-    && candidate.patternId === entity.patternId
-    && isSameRestorePosition(candidate.position, position)
+    candidate.definitionId === enemy.definitionId
+    && candidate.pathId === enemy.pathId
+    && candidate.patternId === enemy.patternId
+    && isEnemyAtPathProgress(enemy, candidate.position, segments, expectedTick - candidate.tick)
   ));
   if (index === -1) {
-    return coreError("state.invalidShape", "enemy runtime entity must originate from a processed timeline spawn");
+    return coreError("state.invalidShape", "enemy runtime entity must follow its path from a processed timeline spawn");
   }
   const [candidate] = candidates.splice(index, 1);
   if (!candidate) {
-    return coreError("state.invalidShape", "enemy runtime entity must originate from a processed timeline spawn");
+    return coreError("state.invalidShape", "enemy runtime entity must follow its path from a processed timeline spawn");
   }
 
   return okResult(Object.freeze({
-    id: Number(entity.id),
+    id: enemy.id,
     tick: candidate.tick,
     allocationOrder: candidate.allocationOrder,
   }));
+}
+
+/** spawn 位置から `progressTicks` tick 進めた path runner と位置が enemy と一致し、cleanup されていないかを返す。 */
+function isEnemyAtPathProgress(
+  enemy: EnemyRuntimeEntity,
+  spawnPosition: Readonly<{ x: number; y: number }>,
+  segments: readonly PathSegmentDefinition[],
+  progressTicks: number,
+): boolean {
+  const expected = resolvePathRunnerAt(spawnPosition, segments, progressTicks);
+  if (expected.finished && isOutsideEnemyCleanupBounds(expected.position)) {
+    return false;
+  }
+  return expected.state.segmentIndex === enemy.pathRunnerState.segmentIndex
+    && expected.state.segmentElapsedTicks === enemy.pathRunnerState.segmentElapsedTicks
+    && isSameRestorePosition(expected.state.segmentStart, enemy.pathRunnerState.segmentStart)
+    && isSameRestorePosition(expected.position, enemy.position);
 }
 
 /** active enemyBullet が処理済み fireOnSpawn と同じ弾・位置から来ていることを検証する。 */

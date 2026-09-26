@@ -101,7 +101,12 @@ export function validateRestoreRuntimeEntities(
         if (!enemy.ok) {
           return enemy;
         }
-        const budget = consumeRestoreEnemySpawnBudget(spawnBudget.value.enemySpawnCandidates, entity.value, common.value.position);
+        const budget = consumeRestoreEnemySpawnBudget(
+          spawnBudget.value.enemySpawnCandidates,
+          enemy.value,
+          content.pathsById.get(enemy.value.pathId)?.segments ?? [],
+          state.expectedTick,
+        );
         if (!budget.ok) {
           return budget;
         }

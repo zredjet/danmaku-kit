@@ -6,7 +6,7 @@ import { hashHashableGameState, hashHashablePrngState } from "./state-hash.ts";
 
 function createHashableState(): HashableGameState {
   return {
-    stateHashVersion: 1,
+    stateHashVersion: 2,
     coreVersion: "core.test",
     schemaVersion: "1",
     expectedTick: 4,
@@ -34,7 +34,7 @@ function createHashableState(): HashableGameState {
 
 test("hashes canonical game state with the fixed xxHash64 seed", () => {
   const state = createHashableState();
-  assert.equal(hashHashableGameState(state), "8d915c8e859cc875");
+  assert.equal(hashHashableGameState(state), "852b747204bca530");
   assert.equal(hashHashableGameState({
     ...state,
     runtimeEntities: [{

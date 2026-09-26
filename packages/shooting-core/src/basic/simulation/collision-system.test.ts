@@ -7,6 +7,7 @@ import type { PlayerShotRuntimeEntity } from "../entities/player-shot/model.ts";
 import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import { resolveCollisionAndScoring } from "./collision-system.ts";
+import { createPathRunnerState } from "./path-runner.ts";
 
 test("resolves player hit by enemy bullet before player shot damage", () => {
   const result = resolveCollisionAndScoring(
@@ -370,6 +371,7 @@ function createEnemy(options: {
     collisionRadius: 12,
     hp: options.hp,
     scoreOnKill: 100,
+    pathRunnerState: createPathRunnerState(options.position),
   });
 }
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createPathRunnerState } from "./path-runner.ts";
 import { freezeEntitiesInIdOrder, STAGE_TICK_SYSTEM_ORDER } from "./system-order.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 
@@ -58,6 +59,7 @@ test("freezes runtime entities in id order without mutating the source order", (
       collisionRadius: 12,
       hp: 10,
       scoreOnKill: 100,
+      pathRunnerState: createPathRunnerState({ x: 192, y: -16 }),
     },
   ];
 

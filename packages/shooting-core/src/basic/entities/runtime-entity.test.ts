@@ -55,9 +55,11 @@ test("creates enemy runtime components from enemy content and spawn action", () 
     collisionRadius: 12,
     hp: 10,
     scoreOnKill: 100,
+    pathRunnerState: { segmentIndex: 0, segmentStart: { x: 192, y: -16 }, segmentElapsedTicks: 0 },
   });
   assert.equal(Object.isFrozen(entity.value), true);
   assert.equal(Object.isFrozen(entity.value.position), true);
+  assert.equal(Object.isFrozen(entity.value.pathRunnerState.segmentStart), true);
 });
 
 test("creates bullet and player shot runtime components from content hitboxes", () => {

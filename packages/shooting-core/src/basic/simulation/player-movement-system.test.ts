@@ -3,6 +3,7 @@ import test from "node:test";
 
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import type { InputFrame } from "../input/input-frame.ts";
+import { createPathRunnerState } from "./path-runner.ts";
 import { advancePlayerMovement } from "./player-movement-system.ts";
 
 test("moves player by content speed from input axes", () => {
@@ -73,6 +74,7 @@ test("leaves non-player entities untouched", () => {
     collisionRadius: 12,
     hp: 10,
     scoreOnKill: 100,
+    pathRunnerState: createPathRunnerState({ x: 192, y: -16 }),
   };
 
   const advanced = advancePlayerMovement([enemy], createInputFrame(0, 1, 0, []));

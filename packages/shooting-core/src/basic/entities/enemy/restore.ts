@@ -2,13 +2,15 @@ import type { LoadedContentIndex } from "../../content/content-index.ts";
 import { isNamespacedId } from "../../content/identifier.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
+import { cloneRestorePlainRecord } from "../../serialization/restore-plain-data.ts";
 import { defineFieldOrder } from "../../shared/field-order.ts";
 import { hasOnlyKeys, isNonNegativeSafeInteger, isPositiveFiniteNumber } from "../../shared/guards.ts";
-import { RESTORE_RUNTIME_ENTITY_COMMON_KEYS } from "../restore-common.ts";
+import type { PathRunnerState } from "../../simulation/path-runner.ts";
+import { RESTORE_RUNTIME_ENTITY_COMMON_KEYS, validateRestoreVector2 } from "../restore-common.ts";
 import type { RestoreRuntimeEntityCommon } from "../restore-common.ts";
 import { createRestoredEnemyRuntimeEntity } from "./model.ts";
 import type { EnemyRuntimeEntity } from "./model.ts";
-import type { SerializedEnemyRuntimeEntityState } from "./snapshot.ts";
+import type { SerializedEnemyPathRunnerState, SerializedEnemyRuntimeEntityState } from "./snapshot.ts";
 
 /** enemy runtime entity の restore で受け付ける key。public DTO と runtime component の field 集合に一致させる。 */
 export const RESTORE_RUNTIME_ENEMY_KEYS = defineFieldOrder<
@@ -20,6 +22,17 @@ export const RESTORE_RUNTIME_ENEMY_KEYS = defineFieldOrder<
   "scoreOnKill",
   "pathId",
   "patternId",
+  "pathRunnerState",
+]);
+
+/** enemy path runner state の restore で受け付ける key。public DTO と runtime state の field 集合に一致させる。 */
+const RESTORE_ENEMY_PATH_RUNNER_STATE_KEYS = defineFieldOrder<
+  SerializedEnemyPathRunnerState,
+  PathRunnerState
+>()([
+  "segmentIndex",
+  "segmentStart",
+  "segmentElapsedTicks",
 ]);
 
 /** enemy entity 固有 field と registry reference を検証する。 */
@@ -64,6 +77,10 @@ export function validateRestoreEnemyRuntimeEntity(
   if (entity.collisionRadius !== enemy.collision.radius || entity.scoreOnKill !== enemy.score || entity.hp > enemy.hp) {
     return coreError("state.invalidShape", "enemy runtime entity must match immutable enemy definition fields");
   }
+  const pathRunnerState = validateRestoreEnemyPathRunnerState(entity.pathRunnerState, path.segments?.length ?? 0);
+  if (!pathRunnerState.ok) {
+    return pathRunnerState;
+  }
 
   return okResult(createRestoredEnemyRuntimeEntity({
     id: common.id,
@@ -74,5 +91,35 @@ export function validateRestoreEnemyRuntimeEntity(
     collisionRadius: enemy.collision.radius,
     hp: entity.hp,
     scoreOnKill: enemy.score,
+    pathRunnerState: pathRunnerState.value,
+  }));
+}
+
+/**
+ * path runner state の shape と、path の segment 数に収まる範囲を検証する。
+ *
+ * spawn 位置と経過 tick から path を進めた結果との一致は、spawn を特定できる restore の allocation 検証で確かめる。
+ */
+function validateRestoreEnemyPathRunnerState(value: unknown, segmentCount: number): CoreResult<PathRunnerState> {
+  const state = cloneRestorePlainRecord(value, "enemy runtime pathRunnerState", RESTORE_ENEMY_PATH_RUNNER_STATE_KEYS);
+  if (!state.ok) {
+    return state;
+  }
+  if (
+    !isNonNegativeSafeInteger(state.value.segmentIndex)
+    || !isNonNegativeSafeInteger(state.value.segmentElapsedTicks)
+    || state.value.segmentIndex > segmentCount
+  ) {
+    return coreError("state.invalidShape", "enemy pathRunnerState counters must stay within the path segments");
+  }
+  const segmentStart = validateRestoreVector2(state.value.segmentStart, "enemy runtime pathRunnerState.segmentStart");
+  if (!segmentStart.ok) {
+    return segmentStart;
+  }
+
+  return okResult(Object.freeze({
+    segmentIndex: state.value.segmentIndex,
+    segmentStart: segmentStart.value,
+    segmentElapsedTicks: state.value.segmentElapsedTicks,
   }));
 }

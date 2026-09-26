@@ -10,6 +10,8 @@ import {
   HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND,
   HASHABLE_VECTOR2_FIELD_ORDER,
 } from "./hashable-state.ts";
+import { HASHABLE_ENEMY_PATH_RUNNER_STATE_FIELD_ORDER } from "../entities/enemy/snapshot.ts";
+import type { HashableEnemyPathRunnerState } from "../entities/enemy/snapshot.ts";
 import { HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER } from "../entities/player/snapshot.ts";
 import type {
   HashableEnabledFeatureState,
@@ -86,6 +88,18 @@ function adaptPlayerMovement(value: HashablePlayerMovement): CanonicalFixedStruc
   );
 }
 
+function adaptEnemyPathRunnerState(value: HashableEnemyPathRunnerState): CanonicalFixedStruct {
+  const canonicalState = {
+    ...value,
+    segmentStart: adaptVector2(value.segmentStart),
+  } satisfies Record<keyof HashableEnemyPathRunnerState, CanonicalEntityFieldValue>;
+  return fixedStructFromFieldOrder(
+    HASHABLE_FIXED_STRUCT_NAME_BY_DTO.enemyPathRunnerState,
+    HASHABLE_ENEMY_PATH_RUNNER_STATE_FIELD_ORDER,
+    canonicalState,
+  );
+}
+
 /**
  * runtime entity の field として canonical encode してよい値。
  *
@@ -112,6 +126,7 @@ function adaptRuntimeEntity(value: HashableRuntimeEntityState): CanonicalFixedSt
       const canonicalEntity = {
         ...value,
         position: adaptVector2(value.position),
+        pathRunnerState: adaptEnemyPathRunnerState(value.pathRunnerState),
       } satisfies Record<keyof typeof value, CanonicalEntityFieldValue>;
       return fixedStructFromFieldOrder(
         HASHABLE_FIXED_STRUCT_NAME_BY_DTO.enemyRuntimeEntity,

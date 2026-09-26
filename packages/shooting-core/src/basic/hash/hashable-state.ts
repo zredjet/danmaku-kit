@@ -86,6 +86,7 @@ type HashableFixedStructDtoKey =
   | "prngState"
   | "vector2"
   | "playerMovement"
+  | "enemyPathRunnerState"
   | "playerRuntimeEntity"
   | "enemyRuntimeEntity"
   | "enemyBulletRuntimeEntity"
@@ -100,6 +101,7 @@ export const HASHABLE_FIXED_STRUCT_NAME_BY_DTO = Object.freeze({
   prngState: "prngState",
   vector2: "vector2",
   playerMovement: "playerMovement",
+  enemyPathRunnerState: "enemyPathRunnerState",
   playerRuntimeEntity: "playerRuntimeEntity",
   enemyRuntimeEntity: "enemyRuntimeEntity",
   enemyBulletRuntimeEntity: "enemyBulletRuntimeEntity",

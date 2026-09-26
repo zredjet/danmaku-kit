@@ -35,7 +35,7 @@ test("serializes initial stage state with metadata and pending startup event", (
     schemaVersion: "1",
     contentVersion: "shooting-sample@content.0",
     inputFormatVersion: "1",
-    stateHashVersion: 1,
+    stateHashVersion: 2,
     enabledFeatures: [],
     stageId: "stage.stage_01",
     difficulty: "normal",
@@ -200,6 +200,7 @@ test("serializes enemy and enemy bullet runtime entities", () => {
       scoreOnKill: 100,
       pathId: "path.none",
       patternId: "pattern.spawn_bullet",
+      pathRunnerState: { segmentIndex: 0, segmentStart: { x: 192, y: 80 }, segmentElapsedTicks: 0 },
     },
     {
       id: 3,

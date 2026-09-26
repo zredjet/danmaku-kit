@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { HASHABLE_ENEMY_PATH_RUNNER_STATE_FIELD_ORDER } from "../entities/enemy/snapshot.ts";
 import { HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER } from "../entities/player/snapshot.ts";
 import {
   HASHABLE_ENABLED_FEATURE_STATE_FIELD_ORDER,
@@ -18,6 +19,7 @@ test("fixes and freezes hashable canonical schema tables", () => {
   assert.equal(Object.isFrozen(HASHABLE_PRNG_STATE_FIELD_ORDER), true);
   assert.equal(Object.isFrozen(HASHABLE_VECTOR2_FIELD_ORDER), true);
   assert.equal(Object.isFrozen(HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER), true);
+  assert.equal(Object.isFrozen(HASHABLE_ENEMY_PATH_RUNNER_STATE_FIELD_ORDER), true);
   assert.equal(Object.isFrozen(HASHABLE_GAME_STATE_FIELD_ORDER), true);
   assert.equal(Object.isFrozen(HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND), true);
   assert.equal(Object.isFrozen(HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND.player), true);
@@ -33,6 +35,7 @@ test("fixes and freezes hashable canonical schema tables", () => {
     prng: HASHABLE_PRNG_STATE_FIELD_ORDER,
     vector2: HASHABLE_VECTOR2_FIELD_ORDER,
     playerMovement: HASHABLE_PLAYER_MOVEMENT_FIELD_ORDER,
+    enemyPathRunnerState: HASHABLE_ENEMY_PATH_RUNNER_STATE_FIELD_ORDER,
     gameState: HASHABLE_GAME_STATE_FIELD_ORDER,
     runtimeEntities: HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND,
     pendingEvent: HASHABLE_PENDING_EVENT_FIELD_ORDER,
@@ -44,6 +47,7 @@ test("fixes and freezes hashable canonical schema tables", () => {
       prngState: "prngState",
       vector2: "vector2",
       playerMovement: "playerMovement",
+      enemyPathRunnerState: "enemyPathRunnerState",
       playerRuntimeEntity: "playerRuntimeEntity",
       enemyRuntimeEntity: "enemyRuntimeEntity",
       enemyBulletRuntimeEntity: "enemyBulletRuntimeEntity",
@@ -55,6 +59,7 @@ test("fixes and freezes hashable canonical schema tables", () => {
     prng: ["state"],
     vector2: ["x", "y"],
     playerMovement: ["speed", "focusSpeed"],
+    enemyPathRunnerState: ["segmentIndex", "segmentStart", "segmentElapsedTicks"],
     gameState: [
       "stateHashVersion",
       "coreVersion",
@@ -92,6 +97,7 @@ test("fixes and freezes hashable canonical schema tables", () => {
         "scoreOnKill",
         "pathId",
         "patternId",
+        "pathRunnerState",
       ],
       enemyBullet: ["id", "kind", "definitionId", "position", "collisionRadius"],
       playerShot: [

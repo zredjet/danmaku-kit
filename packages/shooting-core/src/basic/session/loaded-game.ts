@@ -125,6 +125,7 @@ function createStageSessionFromContent(
     content: {
       bulletsById: content.bulletsById,
       enemiesById: content.enemiesById,
+      pathsById: content.pathsById,
       patternsById: content.patternsById,
       playerShotsById: content.playerShotsById,
       stage,
