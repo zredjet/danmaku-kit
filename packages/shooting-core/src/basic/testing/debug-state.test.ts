@@ -14,6 +14,7 @@ import {
   formatHeadlessDebugStateJsonForTest,
   serializeDebugStateForTest,
 } from "./debug-state.ts";
+import { createEnemyBulletHitDefinition } from "../test-support/definitions.ts";
 import { enableInternalTestHooksForTestFile } from "../test-support/internal-test-hooks.ts";
 import { createMinimumDefinition } from "../../../../../tests/fixtures/minimum-game-definition.ts";
 
@@ -249,6 +250,27 @@ test("records collision candidates only after a successful core tick commit", ()
     stageCleared: 0,
     gameOver: 0,
   });
+});
+
+test("records the broad phase candidates of each committed tick", () => {
+  const loaded = createShootingCoreWithTestingHooksForTest("core.test", {}).load(createEnemyBulletHitDefinition());
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const started = loaded.value.startStage({ stageId: "stage.stage_01", difficulty: "normal", seed: "broad-phase-metrics" });
+  assert.equal(started.ok, true);
+  if (!started.ok) {
+    assert.fail("expected stage session");
+  }
+
+  const candidates = [0, 1].map((tick) => {
+    assert.equal(started.value.tick(createEmptyInputFrame(tick)).ok, true, `tick ${tick}`);
+    return assertDebugDumpOk(serializeDebugStateForTest(started.value)).collisionCandidates;
+  });
+
+  // tick 0 は自機と重なる敵弾が enemy bullet grid の候補に入る。被弾後の無敵中の tick 1 は自機の問い合わせをしない。
+  assert.deepEqual(candidates, [1, 0]);
 });
 
 test("returns a test-only result error when debug hash encoding fails", () => {

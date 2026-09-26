@@ -6,6 +6,7 @@ import type { EnemyRuntimeEntity } from "../entities/enemy/model.ts";
 import type { PlayerShotRuntimeEntity } from "../entities/player-shot/model.ts";
 import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
+import { circlesOverlap } from "../test-support/geometry.ts";
 import { resolveCollisionAndScoring } from "./collision-system.ts";
 import { createPathRunnerState } from "./path-runner.ts";
 import { XorShift32 } from "./prng.ts";
@@ -385,21 +386,15 @@ function resolveByFullScan(
   bullets: readonly EnemyBulletRuntimeEntity[],
   shots: readonly PlayerShotRuntimeEntity[],
 ) {
-  const overlaps = (left: RuntimeEntityState, right: RuntimeEntityState) => {
-    const dx = left.position.x - right.position.x;
-    const dy = left.position.y - right.position.y;
-    const radius = left.collisionRadius + right.collisionRadius;
-    return dx * dx + dy * dy <= radius * radius;
-  };
   const byId = <T extends RuntimeEntityState>(entities: readonly T[]) => [...entities].sort((left, right) => left.id - right.id);
-  const hitSourceId = byId(bullets).find((bullet) => overlaps(player, bullet))?.id
-    ?? byId(enemies).find((enemy) => overlaps(player, enemy))?.id
+  const hitSourceId = byId(bullets).find((bullet) => circlesOverlap(player, bullet))?.id
+    ?? byId(enemies).find((enemy) => circlesOverlap(player, enemy))?.id
     ?? null;
   const hp = new Map(enemies.map((enemy) => [enemy.id, enemy.hp]));
   const destroyedShotIds: number[] = [];
   const defeatedEnemyIds: number[] = [];
   for (const shot of byId(shots)) {
-    const enemy = byId(enemies).find((candidate) => hp.get(candidate.id)! > 0 && overlaps(shot, candidate));
+    const enemy = byId(enemies).find((candidate) => hp.get(candidate.id)! > 0 && circlesOverlap(shot, candidate));
     if (!enemy) {
       continue;
     }

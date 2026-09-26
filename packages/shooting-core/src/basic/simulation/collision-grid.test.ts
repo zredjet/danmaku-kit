@@ -1,20 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { circlesOverlap } from "../test-support/geometry.ts";
 import { COLLISION_GRID_CELL_SIZE, CollisionGrid } from "./collision-grid.ts";
 import type { CollisionGridCollider } from "./collision-grid.ts";
 import { XorShift32 } from "./prng.ts";
 
 function collider(id: number, x: number, y: number, collisionRadius = 4): CollisionGridCollider {
   return { id, position: { x, y }, collisionRadius };
-}
-
-/** collision system の narrow phase と同じ円判定。 */
-function circlesOverlap(left: CollisionGridCollider, right: CollisionGridCollider): boolean {
-  const dx = left.position.x - right.position.x;
-  const dy = left.position.y - right.position.y;
-  const radius = left.collisionRadius + right.collisionRadius;
-  return dx * dx + dy * dy <= radius * radius;
 }
 
 test("returns nearby colliders in entity id order and skips distant cells", () => {

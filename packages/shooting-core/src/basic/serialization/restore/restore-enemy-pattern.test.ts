@@ -3,17 +3,21 @@ import test from "node:test";
 
 import type { LoadedGame } from "../../api-types.ts";
 import type { CoreErrorCode } from "../../result.ts";
-import type { GameDefinition } from "../../content/types.ts";
-import { createShootingCore } from "../../core.ts";
 import { createEmptyInputFrame } from "../../input/input-frame.ts";
 import type { InputFrame } from "../../input/input-frame.ts";
-import { unitVectorAtAngleSteps } from "../../simulation/deterministic-trig.ts";
 import {
   createDestroyedPatternEnemyDefinition,
   createEnemyPatternDefinition,
   createExitingPatternEnemyDefinition,
 } from "../../test-support/definitions.ts";
+import { tableVelocity } from "../../test-support/geometry.ts";
 import { createMoveInputFrame, createShotInputFrame } from "../../test-support/input-frames.ts";
+import {
+  expectRestoreInvalidShape,
+  loadGameFromDefinition,
+  serializeAfterInputs,
+  withRuntimeEntity,
+} from "../../test-support/restore-harness.ts";
 import {
   assertSerializeOk,
   assertTickOk,
@@ -47,15 +51,6 @@ function createInitialStateHarness() {
   return { validState, expectRestoreError };
 }
 
-function loadGame(definition: GameDefinition): LoadedGame {
-  const loaded = createShootingCore("0.0.0").load(definition);
-  assert.equal(loaded.ok, true);
-  if (!loaded.ok) {
-    assert.fail("expected loaded game");
-  }
-  return loaded.value;
-}
-
 /** 自機を左右上下に動かし、aim の向きが tick ごとに変わる入力列。 */
 function wanderingInputs(ticks: number): InputFrame[] {
   return Array.from({ length: ticks }, (_, tick) => createMoveInputFrame(
@@ -64,14 +59,6 @@ function wanderingInputs(ticks: number): InputFrame[] {
     tick % 5 === 0 ? -1 : 0,
     [],
   ));
-}
-
-function serializeAfter(game: LoadedGame, inputs: readonly InputFrame[]): SerializedGameState {
-  const session = startStageFromLoadedGame(game);
-  for (const input of inputs) {
-    assertTickOk(session.tick(input), `tick ${input.tick}`);
-  }
-  return assertSerializeOk(session.serialize(), `serialize after ${inputs.length} ticks`);
 }
 
 /** restore した session と元の session が後続 tick と最後の serialize で一致することを確かめる。 */
@@ -102,18 +89,6 @@ function assertRestoresAndContinues(game: LoadedGame, inputs: readonly InputFram
   }
 }
 
-function withBullet(state: SerializedGameState, id: number, change: (bullet: SerializedEnemyBullet) => unknown): unknown {
-  return {
-    ...state,
-    state: {
-      ...state.state,
-      runtimeEntities: state.state.runtimeEntities.map((entity) => (
-        entity.kind === "enemyBullet" && entity.id === id ? change(entity) : entity
-      )),
-    },
-  };
-}
-
 /** 速度と経過 tick を差し替え、位置は生成位置からの等速直線運動と矛盾しないようにそろえる。 */
 function movedBullet(
   bullet: SerializedEnemyBullet,
@@ -136,35 +111,23 @@ function withRunners(
   return { ...state, state: { ...state.state, patternRunnerStates: change(state.state.patternRunnerStates) } };
 }
 
-function expectRestoreError(game: LoadedGame, state: unknown, message: RegExp): void {
-  const restored = game.restore(state as SerializedGameState);
-  assert.equal(restored.ok, false);
-  assert.equal(!restored.ok && restored.errors[0]?.code, "state.invalidShape");
-  assert.match(!restored.ok ? restored.errors[0]?.message ?? "" : "", message);
-}
-
-const tableVelocity = (steps: number, speed: number) => {
-  const direction = unitVectorAtAngleSteps(steps);
-  return { x: direction.x * speed, y: direction.y * speed };
-};
-
 test("restores pattern runners and aimed or fixed-angle pattern bullets at any tick and continues identically", () => {
-  assertRestoresAndContinues(loadGame(createEnemyPatternDefinition()), wanderingInputs(24), [1, 2, 3, 4, 5, 6, 9, 13, 17]);
+  assertRestoresAndContinues(loadGameFromDefinition(createEnemyPatternDefinition()), wanderingInputs(24), [1, 2, 3, 4, 5, 6, 9, 13, 17]);
 });
 
 test("restores the bullets of enemies that were destroyed or left the playfield", () => {
-  const destroyed = loadGame(createDestroyedPatternEnemyDefinition());
+  const destroyed = loadGameFromDefinition(createDestroyedPatternEnemyDefinition());
   const destroyedInputs = [createShotInputFrame(0), ...Array.from({ length: 5 }, (_, index) => createEmptyInputFrame(index + 1))];
-  assert.deepEqual(serializeAfter(destroyed, destroyedInputs.slice(0, 3)).state.patternRunnerStates, []);
+  assert.deepEqual(serializeAfterInputs(destroyed, destroyedInputs.slice(0, 3)).state.patternRunnerStates, []);
   assertRestoresAndContinues(destroyed, destroyedInputs, [1, 2, 3]);
 
-  const exiting = loadGame(createExitingPatternEnemyDefinition());
+  const exiting = loadGameFromDefinition(createExitingPatternEnemyDefinition());
   assertRestoresAndContinues(exiting, Array.from({ length: 10 }, (_, tick) => createEmptyInputFrame(tick)), [1, 3, 5, 6, 7, 9]);
 });
 
 test("rejects pattern runner states that do not follow the enemy's pattern from spawn", () => {
-  const game = loadGame(createEnemyPatternDefinition());
-  const state = serializeAfter(game, Array.from({ length: 6 }, (_, tick) => createEmptyInputFrame(tick)));
+  const game = loadGameFromDefinition(createEnemyPatternDefinition());
+  const state = serializeAfterInputs(game, Array.from({ length: 6 }, (_, tick) => createEmptyInputFrame(tick)));
   const progress = /must match its enemy's pattern progress from spawn/;
   const oneRunnerEach = /one runner for each enemy running pattern steps/;
   const aimedRunner = (change: (runner: SerializedPatternRunnerState) => unknown) => withRunners(state, (runners) => (
@@ -176,38 +139,38 @@ test("rejects pattern runner states that do not follow the enemy's pattern from 
     "patternRunner.enemy.2",
     "patternRunner.enemy.3",
   ]);
-  expectRestoreError(game, aimedRunner((runner) => ({ ...runner, payload: { cursor: 3, waitRemaining: 2 } })), progress);
-  expectRestoreError(game, aimedRunner((runner) => ({ ...runner, payload: { cursor: 1, waitRemaining: 3 } })), progress);
-  expectRestoreError(game, aimedRunner((runner) => ({ ...runner, patternId: "pattern.ring" })), progress);
-  expectRestoreError(game, withRunners(state, (runners) => runners.map((runner) => (
+  expectRestoreInvalidShape(game, aimedRunner((runner) => ({ ...runner, payload: { cursor: 3, waitRemaining: 2 } })), progress);
+  expectRestoreInvalidShape(game, aimedRunner((runner) => ({ ...runner, payload: { cursor: 1, waitRemaining: 3 } })), progress);
+  expectRestoreInvalidShape(game, aimedRunner((runner) => ({ ...runner, patternId: "pattern.ring" })), progress);
+  expectRestoreInvalidShape(game, withRunners(state, (runners) => runners.map((runner) => (
     runner.runnerId === "patternRunner.enemy.3" ? { ...runner, runnerId: "patternRunner.enemy.4" } : runner
   ))), progress);
-  expectRestoreError(game, withRunners(state, (runners) => runners.slice(0, 2)), oneRunnerEach);
-  expectRestoreError(game, withRunners(state, (runners) => [
+  expectRestoreInvalidShape(game, withRunners(state, (runners) => runners.slice(0, 2)), oneRunnerEach);
+  expectRestoreInvalidShape(game, withRunners(state, (runners) => [
     { ...runners[0]!, runnerId: "patternRunner.enemy.11", patternId: "pattern.spawn_down" },
     ...runners,
   ]), oneRunnerEach);
 });
 
 test("rejects pattern bullets that the enemy's pattern could not have fired", () => {
-  const game = loadGame(createEnemyPatternDefinition());
-  const state = serializeAfter(game, Array.from({ length: 6 }, (_, tick) => createEmptyInputFrame(tick)));
+  const game = loadGameFromDefinition(createEnemyPatternDefinition());
+  const state = serializeAfterInputs(game, Array.from({ length: 6 }, (_, tick) => createEmptyInputFrame(tick)));
   const bullet9 = state.state.runtimeEntities.find((entity) => entity.id === 9);
   assert.equal(bullet9?.kind, "enemyBullet");
 
   // aim の弾は表の向きに speed を掛けた速度でなければならない。
-  expectRestoreError(game, withBullet(state, 8, (bullet) => movedBullet(bullet, {
+  expectRestoreInvalidShape(game, withRuntimeEntity(state, "enemyBullet", 8, (bullet) => movedBullet(bullet, {
     velocity: { x: 0.1, y: Math.sqrt(4 - 0.01) },
   })), moveFromFire);
-  expectRestoreError(game, withBullet(state, 8, (bullet) => movedBullet(bullet, { velocity: tableVelocity(312, 3) })), moveFromFire);
+  expectRestoreInvalidShape(game, withRuntimeEntity(state, "enemyBullet", 8, (bullet) => movedBullet(bullet, { velocity: tableVelocity(312, 3) })), moveFromFire);
   // 固定角度の弾は fan の何発目かまで速度が決まる。
-  expectRestoreError(game, withBullet(state, 4, (bullet) => movedBullet(bullet, { velocity: tableVelocity(181, 1) })), moveFromFire);
-  expectRestoreError(game, withBullet(state, 4, (bullet) => movedBullet(bullet, { velocity: tableVelocity(300, 1) })), moveFromFire);
+  expectRestoreInvalidShape(game, withRuntimeEntity(state, "enemyBullet", 4, (bullet) => movedBullet(bullet, { velocity: tableVelocity(181, 1) })), moveFromFire);
+  expectRestoreInvalidShape(game, withRuntimeEntity(state, "enemyBullet", 4, (bullet) => movedBullet(bullet, { velocity: tableVelocity(300, 1) })), moveFromFire);
   // tick 3 は aimed_three_way が撃たない tick で、(193, 100) はその enemy の位置ではない。
-  expectRestoreError(game, withBullet(state, 9, (bullet) => movedBullet(bullet, { ageTicks: 3 })), moveFromFire);
-  expectRestoreError(game, withBullet(state, 9, (bullet) => movedBullet(bullet, { spawnPosition: { x: 193, y: 100 } })), moveFromFire);
+  expectRestoreInvalidShape(game, withRuntimeEntity(state, "enemyBullet", 9, (bullet) => movedBullet(bullet, { ageTicks: 3 })), moveFromFire);
+  expectRestoreInvalidShape(game, withRuntimeEntity(state, "enemyBullet", 9, (bullet) => movedBullet(bullet, { spawnPosition: { x: 193, y: 100 } })), moveFromFire);
   // fan の 3 発を使い切った後の 4 発目は受け付けない。
-  expectRestoreError(game, {
+  expectRestoreInvalidShape(game, {
     ...state,
     nextEntityId: state.nextEntityId + 1,
     state: {
@@ -218,23 +181,23 @@ test("rejects pattern bullets that the enemy's pattern could not have fired", ()
 });
 
 test("accepts any table direction for aimed bullets because the player's past positions are not in the snapshot", () => {
-  const game = loadGame(createEnemyPatternDefinition());
-  const state = serializeAfter(game, Array.from({ length: 6 }, (_, tick) => createEmptyInputFrame(tick)));
+  const game = loadGameFromDefinition(createEnemyPatternDefinition());
+  const state = serializeAfterInputs(game, Array.from({ length: 6 }, (_, tick) => createEmptyInputFrame(tick)));
 
-  const restored = game.restore(withBullet(state, 9, (bullet) => movedBullet(bullet, {
+  const restored = game.restore(withRuntimeEntity(state, "enemyBullet", 9, (bullet) => movedBullet(bullet, {
     velocity: tableVelocity(340, 2),
   })) as SerializedGameState);
   assert.equal(restored.ok, true, JSON.stringify(restored.ok ? null : restored.errors));
 });
 
 test("counts pattern fires in the reachable nextEntityId envelope", () => {
-  const game = loadGame(createEnemyPatternDefinition());
-  const state = serializeAfter(game, Array.from({ length: 6 }, (_, tick) => createEmptyInputFrame(tick)));
+  const game = loadGameFromDefinition(createEnemyPatternDefinition());
+  const state = serializeAfterInputs(game, Array.from({ length: 6 }, (_, tick) => createEmptyInputFrame(tick)));
 
   // 2 + enemy 4 体 + fireOnSpawn 1 発 + pattern 18 発（aim 3 発 × 2 回、ring 4 発 × 3 回）+ shot 6 tick = 31。
   assert.equal(state.nextEntityId, 25);
   assert.equal(game.restore({ ...state, nextEntityId: 31 }).ok, true);
-  expectRestoreError(game, { ...state, nextEntityId: 32 }, /allocation envelope/);
+  expectRestoreInvalidShape(game, { ...state, nextEntityId: 32 }, /allocation envelope/);
 });
 
 test("restore rejects malformed, unordered or unsupported pattern runner states", () => {

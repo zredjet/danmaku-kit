@@ -7,23 +7,15 @@ import type { GameDefinition } from "../content/types.ts";
 import { createShootingCore } from "../core.ts";
 import { createEmptyInputFrame } from "../input/input-frame.ts";
 import type { InputFrame } from "../input/input-frame.ts";
-import { angleStepsOfVector, unitVectorAtAngleSteps } from "../simulation/deterministic-trig.ts";
+import { angleStepsOfVector } from "../simulation/deterministic-trig.ts";
 import {
   createDestroyedPatternEnemyDefinition,
   createEnemyPatternDefinition,
   createExitingPatternEnemyDefinition,
 } from "../test-support/definitions.ts";
+import { tableVelocity } from "../test-support/geometry.ts";
 import { createMoveInputFrame, createShotInputFrame } from "../test-support/input-frames.ts";
-import {
-  assertSerializeOk,
-  assertTickOk,
-  startStageFromDefinition,
-} from "../test-support/stage-harness.ts";
-
-const tableVelocity = (steps: number, speed: number) => {
-  const direction = unitVectorAtAngleSteps(steps);
-  return { x: direction.x * speed, y: direction.y * speed };
-};
+import { assertSerializeOk, assertTickOk, startStageFromDefinition } from "../test-support/stage-harness.ts";
 
 function spawnedBatches(frames: readonly GameFrame[]) {
   return frames.map((frame) => frame.events.flatMap((event) => event.type === "enemyBulletsSpawnedBatch"
