@@ -69,7 +69,7 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 ### sample app（`apps/sample-title/`）
 
 - `src/` は browser bundle に入る。非 test source は `src/` 内の module を相対 path で import し、package は `tests/module-graph.test.mjs` の `SAMPLE_TITLE_PACKAGE_IMPORT_RULES` に載せたものだけを型 import も含めて import する。Core は package root（`@shooting-sample/shooting-core`）からだけ import し、deep import、`node:`、validate-content は使わない。新しい package が必要なら rule に足す。
-- `phaser` を import してよいのは entry の `src/main.ts` と Phaser adapter の `src/runtime/phaser/` だけにする。それ以外の runtime module は Phaser なしで node:test から検査できる形に保つ。
+- `phaser` を import してよいのは entry の `src/main.ts` と Phaser adapter の `src/runtime/phaser/` だけにする。それ以外の runtime module は Phaser なしで node:test から検査できる形に保つ。`src/runtime/` のうち `src/runtime/phaser/` 以外は `tsconfig.runtime.json`（DOM lib と Vite の型なし）でも型検査するため、DOM global を使わず、`KeyboardEvent` のような DOM の値は必要な field だけの入力型で受ける。
 - `import.meta`（`import.meta.env` など Vite 固有の値）と Vite の virtual module（`virtual:sample-title/game-definition`）を読むのは `src/main.ts` だけにし、他の module へは引数で渡す。
 - Vite config と content plugin のように Node で動く code は `src/` の外（`vite.config.ts`、`vite/`）に置き、`tsconfig.node.json` で型検査する。`vite/**/*.test.ts` も `npm test` の対象にする。
 - content は build / dev server 時に `vite/content-plugin.ts` が validate-content の `loadValidatedGameDefinition()` で検証する。browser へ YAML parser や filesystem access を持ち込まない。

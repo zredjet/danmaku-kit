@@ -1,0 +1,12 @@
+{
+  // src/runtime/ のうち Phaser adapter 以外を DOM lib と Vite の型なしで検査し、node:test で動かせる形に保つ。
+  "extends": "../../tsconfig.json",
+  "include": [
+    "src/runtime/**/*.ts"
+  ],
+  "exclude": [
+    "src/runtime/phaser/**",
+    "src/**/*.test.ts",
+    "src/**/test-support/**"
+  ]
+}
