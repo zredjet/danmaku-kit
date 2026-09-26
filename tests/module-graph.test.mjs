@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+
+import { collectTypeScriptFiles, isTestCodeFile } from "./support/source-files.mjs";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const sourceRoots = [
@@ -23,6 +25,9 @@ const SHOOTING_CORE_LAYER_RULES = Object.freeze([
   { target: "serialization/restore/", allowedImporters: ["session/"] },
   { target: "state/", allowedImporters: ["session/", "serialization/restore/", "internal/"] },
 ]);
+
+/** root export から runtime import で到達させない test / tooling 専用 module。state hash と debug dump は test 側で計算する。 */
+const SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES = Object.freeze(["hash/", "testing/"]);
 
 test("keeps package source free of runtime import cycles", async () => {
   for (const sourceRoot of sourceRoots) {
@@ -54,6 +59,31 @@ test("keeps shooting-core modules inside their dependency layers", async () => {
   assert.deepEqual(violations, [], "shooting-core imports cross a dependency layer rule");
 });
 
+test("keeps test-only diagnostics out of the shooting-core runtime import graph", async () => {
+  const graph = await collectImportGraph(shootingCoreBasicRoot, { includeTypeOnly: false });
+  const reachable = collectReachableFiles(graph, path.join(shootingCoreBasicRoot, "index.ts"));
+  const leaked = reachable
+    .map(toBasicPath)
+    .filter((modulePath) => SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES.some((excluded) => matchesModulePath(modulePath, excluded)));
+
+  assert.deepEqual(leaked, [], "root export loads test-only modules at runtime");
+});
+
+/** entry から graph の edge をたどって到達できる file を path 順に返す。 */
+function collectReachableFiles(graph, entry) {
+  const reachable = new Set([entry]);
+  const pending = [entry];
+  while (pending.length > 0) {
+    for (const target of graph.get(pending.pop()) ?? []) {
+      if (!reachable.has(target)) {
+        reachable.add(target);
+        pending.push(target);
+      }
+    }
+  }
+  return [...reachable].sort();
+}
+
 /**
  * test 以外の source から、実行時に module 読み込みを発生させる相対 import だけの graph を作る。
  *
@@ -66,7 +96,7 @@ async function collectRuntimeImportGraph(sourceRoot) {
 
 /** test 以外の source の相対 import graph を作る。`includeTypeOnly` で型だけの依存も含める。 */
 async function collectImportGraph(sourceRoot, { includeTypeOnly }) {
-  const files = (await collectTypeScriptFiles(sourceRoot)).filter((file) => !isTestCodeFile(file));
+  const files = (await collectTypeScriptFiles(sourceRoot)).filter((file) => !isTestCodeFile(sourceRoot, file));
   const graph = new Map();
 
   for (const file of files) {
@@ -158,27 +188,6 @@ function findCycles(graph) {
   return components.sort((left, right) => left[0].localeCompare(right[0]));
 }
 
-/** `*.test.ts` と test 専用 helper の `test-support/` は package runtime source から除く。 */
-function isTestCodeFile(file) {
-  return file.endsWith(".test.ts") || file.split(path.sep).includes("test-support");
-}
-
 function toRepositoryPath(file) {
   return path.relative(repositoryRoot, file).split(path.sep).join("/");
-}
-
-async function collectTypeScriptFiles(directory) {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const files = [];
-
-  for (const entry of entries) {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...await collectTypeScriptFiles(entryPath));
-    } else if (entry.isFile() && entry.name.endsWith(".ts")) {
-      files.push(entryPath);
-    }
-  }
-
-  return files.sort();
 }

@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+
+import { collectTypeScriptFiles, isTestCodeFile } from "./support/source-files.mjs";
 
 const packageRoot = fileURLToPath(new URL("../tools/validate-content", import.meta.url));
 const corePackageRoot = fileURLToPath(new URL("../packages/shooting-core", import.meta.url));
@@ -125,24 +127,6 @@ test("keeps Core and validate-content package dependencies pointing in the allow
   );
 });
 
-async function collectTypeScriptFiles(directory) {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const files = [];
-
-  for (const entry of entries) {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...await collectTypeScriptFiles(entryPath));
-      continue;
-    }
-    if (entry.isFile() && entry.name.endsWith(".ts")) {
-      files.push(entryPath);
-    }
-  }
-
-  return files;
-}
-
 async function assertPackageDependencies(root, allowedDependencies) {
   const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
   const declaredDependencies = [
@@ -160,7 +144,7 @@ async function assertPackageDependencies(root, allowedDependencies) {
 
 async function assertSourceImports(root, allowedImports, declaredDependencies) {
   const sourceFiles = (await collectTypeScriptFiles(path.join(root, "src")))
-    .filter((file) => !isTestCodeFile(file));
+    .filter((file) => !isTestCodeFile(root, file));
   const violations = [];
 
   for (const file of sourceFiles) {
@@ -250,11 +234,6 @@ function collectModuleSpecifiers(file, sourceText) {
 
   visit(sourceFile);
   return specifiers;
-}
-
-/** `*.test.ts` と test 専用 helper の `test-support/` は package runtime source から除く。 */
-function isTestCodeFile(file) {
-  return file.endsWith(".test.ts") || file.split(path.sep).includes("test-support");
 }
 
 function isPathInside(root, candidate) {

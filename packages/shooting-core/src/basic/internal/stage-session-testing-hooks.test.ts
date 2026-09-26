@@ -6,9 +6,9 @@ import { createShootingCoreWithTestingHooksForInternalTest } from "../core.ts";
 import { createEmptyInputFrame } from "../input/input-frame.ts";
 import { enableInternalTestHooksForTestFile } from "../test-support/internal-test-hooks.ts";
 import { startStageFromCoreAndDefinition, startStageFromLoadedGame } from "../test-support/stage-harness.ts";
+import { INTERNAL_TEST_HOOKS_ENV } from "./test-hooks-guard.ts";
 import { createShootingCoreWithTestingHooksForTest } from "./testing-hooks.ts";
 
-const testEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
 enableInternalTestHooksForTestFile();
 
 test("keeps testing hooks scoped to each created stage session", () => {
@@ -53,12 +53,8 @@ test("rejects duplicate testing hook override ticks", () => {
 });
 
 test("rejects hook-enabled core creation without the internal test environment flag", () => {
-  if (!testEnv) {
-    assert.fail("expected node test environment");
-  }
-
-  const previousFlag = testEnv.SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS;
-  delete testEnv.SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS;
+  const previousFlag = process.env[INTERNAL_TEST_HOOKS_ENV];
+  delete process.env[INTERNAL_TEST_HOOKS_ENV];
   try {
     assert.throws(
       () => createShootingCoreWithTestingHooksForInternalTest("0.0.0", {
@@ -67,6 +63,11 @@ test("rejects hook-enabled core creation without the internal test environment f
       /SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS=1/,
     );
   } finally {
-    testEnv.SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS = previousFlag;
+    // 未設定だった値を代入すると文字列 "undefined" になるため、元の有無ごと戻す。
+    if (previousFlag === undefined) {
+      delete process.env[INTERNAL_TEST_HOOKS_ENV];
+    } else {
+      process.env[INTERNAL_TEST_HOOKS_ENV] = previousFlag;
+    }
   }
 });

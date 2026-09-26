@@ -10,6 +10,7 @@ import type {
 } from "./runtime-entity.ts";
 
 type CollisionResolutionOptions = Readonly<{
+  /** debug serializer を登録した test session だけ true にする。省略時は計測せず hot path に counter を作らない。 */
   collectMetrics?: boolean;
   playerInvincibleTicksAfterHit: number;
   score: number;
@@ -45,7 +46,7 @@ export function resolveCollisionAndScoring(
   let workingEntities = entities;
   const destroyedEntityIds = new Set<number>();
   const events: GameEvent[] = [];
-  const metrics: CollisionMetrics | null = options.collectMetrics === false ? null : { candidates: 0 };
+  const metrics: CollisionMetrics | null = options.collectMetrics === true ? { candidates: 0 } : null;
   let score = options.score;
 
   const player = findPlayer(workingEntities);

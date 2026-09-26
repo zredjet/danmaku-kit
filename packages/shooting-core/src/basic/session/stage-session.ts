@@ -1,6 +1,6 @@
 import type { StageSession } from "../api-types.ts";
 import { parseInputFrame } from "../input/parse-input-frame.ts";
-import { createHeadlessDebugTickMetrics, serializeHeadlessDebugState } from "../internal/debug-state.ts";
+import { createHeadlessDebugCheckpoint, createHeadlessDebugTickMetrics } from "../internal/debug-state.ts";
 import type { HeadlessDebugTickMetrics } from "../internal/debug-state.ts";
 import { deepFreezeClone, deepFreezePlainData } from "../internal/immutable.ts";
 import { createSerializeSourceState } from "../internal/stage-session-testing-hooks.ts";
@@ -119,7 +119,7 @@ export function createStageSession(options: StageSessionContext): StageSession {
     session,
     () => fatalErrors
       ? errorResult(fatalErrors)
-      : serializeHeadlessDebugState(
+      : createHeadlessDebugCheckpoint(
         options.serializationMetadata,
         committedState,
         options.debugSeed,

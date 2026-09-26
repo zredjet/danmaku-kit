@@ -1,8 +1,8 @@
 import type { StageSession } from "../api-types.ts";
 import type { GameEvent } from "../events/game-event.ts";
-import { hashHashableGameState, hashHashablePrngState } from "../hash/state-hash.ts";
+import type { HashableGameState } from "../hash/hashable-state.ts";
 import { errorResult, okResult } from "../result.ts";
-import type { CoreError, CoreWarning } from "../result.ts";
+import type { CoreError, CoreResult, CoreWarning } from "../result.ts";
 import type { StageSessionSerializationMetadata } from "../serialization/metadata.ts";
 import type { RuntimeEntityState } from "../simulation/runtime-entity.ts";
 import type { CommittedStageState } from "../state/committed-state.ts";
@@ -56,8 +56,21 @@ export type HeadlessDebugStateResult =
     errors: readonly HeadlessDebugStateError[];
   }>;
 
-/** session 内部の committed state を進めずに headless dump へ変換する関数。 */
-export type HeadlessDebugStateSerializer = () => HeadlessDebugStateResult;
+/**
+ * session から test helper へ渡す、digest 計算前の headless checkpoint。
+ *
+ * hash encoder / digest は test helper 側で計算し、通常 session の runtime module graph へ含めない。
+ */
+export type HeadlessDebugCheckpoint = Readonly<{
+  hashableState: HashableGameState;
+  seed: string | null;
+  entityCounts: HeadlessDebugEntityCounts;
+  metrics: HeadlessDebugTickMetrics | null;
+  forceHashFailure: boolean;
+}>;
+
+/** session 内部の committed state を進めずに digest 計算前の checkpoint を返す関数。 */
+export type HeadlessDebugStateSerializer = () => CoreResult<HeadlessDebugCheckpoint>;
 
 /** test helper が session と内部 serializer を対応付ける callback。 */
 export type RegisterHeadlessDebugStateSerializer = (
@@ -65,53 +78,25 @@ export type RegisterHeadlessDebugStateSerializer = (
   serializer: HeadlessDebugStateSerializer,
 ) => void;
 
-/** committed state と process-local metrics から test-only headless dump を作る。 */
-export function serializeHeadlessDebugState(
+/** committed state と process-local metrics から、digest 計算前の test-only checkpoint を作る。 */
+export function createHeadlessDebugCheckpoint(
   metadata: StageSessionSerializationMetadata,
   committedState: CommittedStageState,
   seed: string | null,
   metrics: HeadlessDebugTickMetrics | null,
   forceHashFailure: boolean,
-): HeadlessDebugStateResult {
+): CoreResult<HeadlessDebugCheckpoint> {
   const hashableState = createHashableGameState(metadata, committedState);
   if (!hashableState.ok) {
     return errorResult(hashableState.errors);
   }
-  let stateHash: string;
-  let prngHash: string;
-  try {
-    if (forceHashFailure) {
-      throw new Error("injected headless debug state hash failure");
-    }
-    stateHash = hashHashableGameState(hashableState.value);
-    prngHash = hashHashablePrngState(hashableState.value.prngState);
-  } catch {
-    return createHeadlessDebugStateHashError();
-  }
   return okResult(Object.freeze({
-    schemaVersion: "1",
-    kind: "headless",
-    tick: committedState.expectedTick,
+    hashableState: hashableState.value,
     seed,
-    stateHash,
-    prngHash,
     entityCounts: countHeadlessDebugEntities(committedState.activeEntities),
-    collisionCandidates: metrics?.collisionCandidates ?? null,
-    eventCounts: metrics?.eventCounts ?? null,
+    metrics,
+    forceHashFailure,
   }));
-}
-
-/** test-only hash failure を public CoreErrorCode へ漏らさず immutable result にする。 */
-function createHeadlessDebugStateHashError(): HeadlessDebugStateResult {
-  return Object.freeze({
-    ok: false,
-    errors: Object.freeze([
-      Object.freeze({
-        code: "debugState.hashFailed" as const,
-        message: "headless debug state hash could not be encoded",
-      }),
-    ]),
-  });
 }
 
 /** committed entity を固定 kind ごとの件数へ集計する。 */

@@ -178,7 +178,7 @@ packages/shooting-core/src/
       register.ts
 ```
 
-依存方向は `core.ts` → `session/` → `serialization/restore/` / `state/` → 下位 module（`content/`、`simulation/`、`hash/` など）とし、下位 module から上位 layer を import しない。`core.ts`、`session/`、`serialization/restore/`、`state/` を import してよい module と runtime import cycle の禁止は `tests/module-graph.test.mjs` が型 import も含めて検査する。
+依存方向は `core.ts` → `session/` → `serialization/restore/` / `state/` → 下位 module（`content/`、`simulation/`、`hash/` など）とし、下位 module から上位 layer を import しない。非 test source について、`core.ts`、`session/`、`serialization/restore/`、`state/` を import してよい module は型 import も含めて、runtime import cycle と `index.ts` から `hash/` / `testing/` へ実行時に到達しないことは実行時 import で、`tests/module-graph.test.mjs` が検査する。state hash と headless debug dump の digest は test helper 側で計算する。
 
 ## 5. レイヤー責務
 

@@ -52,11 +52,13 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 
 ### 依存方向（`packages/shooting-core/src/basic/`）
 
+- 以下の import 制約は非 test source（`*.test.ts` と `test-support/` 以外）に適用する。
 - `core.ts` は `createShootingCore()` / `load()` の facade とし、import してよいのは `index.ts` と `internal/testing-hooks.ts` だけにする。公開型は `api-types.ts` に置く。
 - `session/`（stage session、tick pipeline、loaded game）を import してよいのは `core.ts` だけ。
 - `serialization/restore/` を import してよいのは `session/` だけ。
 - `state/`（committed state と serialize / hash projection）を import してよいのは `session/`、`serialization/restore/`、`internal/` だけ。`hash/` は DTO、encoder、digest だけを持ち、上位 layer を import しない。
-- runtime import cycle を作らない。上記の layer rule と cycle は `tests/module-graph.test.mjs` が型 import も含めて検査する。
+- `index.ts` から実行時 import で到達する範囲に test / tooling 専用の `hash/` と `testing/` を含めない。state hash と headless debug dump の digest は test helper 側で計算する。
+- runtime import cycle を作らない。`tests/module-graph.test.mjs` が layer rule は型 import も含めて、cycle と到達範囲は実行時 import（`import type` を除く）で検査する。
 
 ### 分割時の注意
 
@@ -64,3 +66,4 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 - 統合するのは完全に同一の helper だけにする。似ているが契約が異なる helper（例: boolean を返す `hasOnlyKeys` と error を積む `validateAllowedKeys`、lone surrogate の扱いが異なる UTF-8 encoder）は統合しない。
 - 複数 test file で使う test helper は `src/basic/test-support/` に置く。Core 内部 test hook を使う test file は `enableInternalTestHooksForTestFile()` で環境変数を設定する。
 - `@ts-expect-error` を含む型契約 file を分割・移動するときは、directive を無効化した状態の diagnostic が変わらないことを確認し、import 漏れなど別の error を握りつぶさないようにする。
+- 型契約の deep import 確認は exports map で常に error になり path の stale を検出できないため、`tests/package-boundary.test.mjs` が対象 file と export 名の実在を検査する。module を移動したら型契約の path も更新する。
