@@ -283,6 +283,29 @@ test("rejects empty asset keys and duplicate difficulties", () => {
   ]);
 });
 
+test("rejects unknown stage difficulties", () => {
+  const definition = createMinimumDefinition();
+  const loaded = loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [
+        {
+          ...definition.content.stages[0],
+          difficulties: ["normal", "lunatic", "Hard", 1],
+        },
+      ],
+    },
+  });
+
+  assert.equal(loaded.ok, false);
+  assert.deepEqual(!loaded.ok && loaded.errors.map((error) => [error.code, error.message]), [
+    ["definition.invalidShape", "stage.difficulties must contain supported difficulties"],
+    ["definition.invalidShape", "stage.difficulties must contain supported difficulties"],
+    ["definition.invalidShape", "stage.difficulties must contain supported difficulties"],
+  ]);
+});
+
 test("rejects stages that cannot be started because no difficulty is supported", () => {
   const definition = createMinimumDefinition();
   const loaded = loadUnknown({

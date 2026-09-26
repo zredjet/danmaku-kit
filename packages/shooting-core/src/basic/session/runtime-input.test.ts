@@ -107,6 +107,26 @@ test("rejects malformed startStage ids before content lookup", () => {
   assert.equal(!invalidPlayerId.ok && invalidPlayerId.errors[0]?.code, "startStage.invalidShape");
 });
 
+test("rejects unknown startStage difficulties before content lookup", () => {
+  const loaded = loadUnknown(createMinimumDefinition());
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+
+  for (const options of [
+    ...["lunatic", "Normal", "", 1, null].map((difficulty) => ({ stageId: "stage.stage_01", difficulty, seed: "seed-1" })),
+    { stageId: "stage.stage_01", seed: "seed-1" },
+  ]) {
+    const started = loaded.value.startStage(options as never);
+    assert.equal(started.ok, false);
+    assert.deepEqual(
+      !started.ok && started.errors.map((error) => [error.code, error.message]),
+      [["startStage.invalidShape", "difficulty must be normal or hard"]],
+    );
+  }
+});
+
 test("rejects valid startStage ids that are not available in loaded content", () => {
   const loaded = loadUnknown(createMinimumDefinition());
   assert.equal(loaded.ok, true);

@@ -50,6 +50,14 @@ test("rejects replay metadata that is not canonical without reordering it", () =
     );
   }
 
+  for (const difficulty of ["lunatic", "Normal", 1]) {
+    const result = validateReplayMetadataForComparison({ ...validMetadata, difficulty }, "actual");
+    assert.deepEqual(
+      result.ok ? [] : result.diagnostics.map((diagnostic) => diagnostic.message),
+      ["difficulty must be normal or hard"],
+    );
+  }
+
   const { seed: _seed, ...withoutSeed } = validMetadata;
   assert.deepEqual(fieldsOf(validateReplayMetadataForComparison(withoutSeed, "expected")), ["seed"]);
   assert.deepEqual(fieldsOf(validateReplayMetadataForComparison({ ...validMetadata, extra: true }, "expected")), [null]);

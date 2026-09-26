@@ -29,7 +29,8 @@ test("restore rejects malformed top-level serialized state without throwing", ()
   expectInvalidShape({ ...validState, stateHashVersion: "1" }, /stateHashVersion/);
   expectInvalidShape({ ...validState, stateHashVersion: Number.NaN }, /stateHashVersion/);
   expectInvalidShape({ ...validState, stageId: "enemy.scout" }, /stageId/);
-  expectInvalidShape({ ...validState, difficulty: "lunatic" }, /difficulty/);
+  expectInvalidShape({ ...validState, difficulty: "lunatic" }, /^difficulty must be normal or hard$/);
+  expectInvalidShape({ ...validState, difficulty: 1 }, /^difficulty must be normal or hard$/);
   expectInvalidShape({ ...validState, playerId: "enemy.scout" }, /playerId/);
   expectInvalidShape({ ...validState, expectedTick: -1 }, /expectedTick/);
   expectInvalidShape({ ...validState, expectedTick: 1.5 }, /expectedTick/);
