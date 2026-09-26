@@ -1,9 +1,5 @@
-import {
-  createToolErrorRunResult,
-  createValidationRunResult,
-  formatValidateContentHuman,
-  formatValidateContentJson,
-} from "./output.ts";
+import { formatValidateContentHuman, formatValidateContentJson } from "./output-format.ts";
+import { createToolErrorRunResult, createValidationRunResult } from "./output.ts";
 import { createNodeContentFileSystem, type ContentFileSystem } from "./content-file-system.ts";
 import { loadContentSource, type LoadContentSourceResult } from "./content-loader.ts";
 import { validateContentDefinition } from "./core-diagnostic-adapter.ts";

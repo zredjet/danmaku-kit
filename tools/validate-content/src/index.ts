@@ -1,9 +1,5 @@
-export {
-  createToolErrorRunResult,
-  createValidationRunResult,
-  formatValidateContentHuman,
-  formatValidateContentJson,
-} from "./output.ts";
+export { formatValidateContentHuman, formatValidateContentJson } from "./output-format.ts";
+export { createToolErrorRunResult, createValidationRunResult } from "./output.ts";
 export type {
   ContentDiagnostic,
   ContentDiagnosticKind,
