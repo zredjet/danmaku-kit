@@ -10,4 +10,4 @@ projectile:
   velocity:
     x: 0
     y: -8
-  lifetimeTicks: 3
+  lifetimeTicks: 60

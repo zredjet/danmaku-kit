@@ -41,7 +41,7 @@ test("builds a module that default-exports the sample title definition Core load
   assert.equal(module.code.startsWith(prefix), true);
   assert.equal(module.code.endsWith(";\n"), true);
   const definition = JSON.parse(module.code.slice(prefix.length, -";\n".length)) as GameDefinition;
-  assert.equal(definition.content.version, "sample-title@content.1");
+  assert.equal(definition.content.version, "sample-title@content.2");
   assert.equal(createShootingCore().load(definition).ok, true);
 });
 
