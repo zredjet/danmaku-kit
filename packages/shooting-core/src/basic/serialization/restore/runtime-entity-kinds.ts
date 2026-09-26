@@ -8,6 +8,7 @@ import {
   PLAYFIELD_HEIGHT,
   PLAYFIELD_WIDTH,
 } from "../../content/runtime-budgets.ts";
+import { RUNTIME_ENTITY_KINDS } from "../../entities/entity-kinds.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
 import { hasOnlyKeys, isNonNegativeSafeInteger, isPositiveFiniteNumber } from "../../shared/guards.ts";
@@ -77,13 +78,6 @@ export const RESTORE_RUNTIME_ENTITY_ALL_KEYS = Object.freeze([
   ]),
 ]);
 
-const RESTORE_RUNTIME_ENTITY_KINDS = Object.freeze([
-  "player",
-  "enemy",
-  "enemyBullet",
-  "playerShot",
-] as const satisfies ReadonlyArray<SerializedRuntimeEntityState["kind"]>);
-
 export type RestoreRuntimeEntityCommon = Readonly<{
   id: number;
   kind: SerializedRuntimeEntityState["kind"];
@@ -133,7 +127,7 @@ export function validateRestoreRuntimeEntityCommon(
 }
 
 function isRestoreRuntimeEntityKind(value: unknown): value is SerializedRuntimeEntityState["kind"] {
-  return typeof value === "string" && (RESTORE_RUNTIME_ENTITY_KINDS as readonly string[]).includes(value);
+  return typeof value === "string" && (RUNTIME_ENTITY_KINDS as readonly string[]).includes(value);
 }
 
 /** player entity 固有 field と registry reference を検証する。 */

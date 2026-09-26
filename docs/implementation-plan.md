@@ -449,7 +449,7 @@ Phase 1C-R で巨大ファイルは責務単位に分割したが、ディレク
    - Next: `entities/` 導入時に、kind directory 間の import を型 import も含めて禁止する検査を追加する
    - Done: Phase 1C-S3: `defineFieldOrder` と field 順・field 集合の型 utility を本文そのままで `hash/hashable-state.ts` から `shared/field-order.ts` へ移し、hash DTO 以外の key 一覧でも使える最下層 helper にする
    - Done: Phase 1C-S3: restore の top-level / nested plain data clone guard を本文そのままで `serialization/restore/plain-data.ts` から restore 層の下の `serialization/restore-plain-data.ts` へ移し、import してよい module を `serialization/restore/` に固定する。kind 別 restore validator を `entities/` へ移すときに、restore orchestrator を import せずに使えるようにする
-   - Next: `entities/entity-kinds.ts` に canonical kind 一覧を置く
+   - Done: Phase 1C-S3: canonical な runtime entity kind 一覧 `RUNTIME_ENTITY_KINDS` と `RuntimeEntityKind` を `entities/entity-kinds.ts` に置き、restore の kind 判定をこの一覧へ寄せる。runtime / 公開 snapshot / serialize DTO / hash DTO の union の kind が一覧と過不足なく一致することを型 test で固定する
    - Next: `simulation/runtime-entity.ts`、`serialization/restore/runtime-entity-kinds.ts`、public DTO と serialize projection、hash DTO / field order と hash projection の kind 別部分を `entities/<kind>/` へ移す。union と dispatch は関心ごとに1箇所へ残し、fixedStruct 名の表と canonical adapter は変更しない
    - Next: `Restored*RuntimeEntityInput` を `Omit` で導出し、restore key 一覧と public DTO / runtime の key 集合一致を型で固定する。serialize / hash projection は契約が異なるため統合しない
    - Next: canonical adapter の entity field 値型を絞って nested field の fixedStruct 化漏れを型エラーにし、`AGENTS.md` に field 追加 / kind 追加の checklist を置く
