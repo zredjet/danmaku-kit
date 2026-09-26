@@ -6,8 +6,8 @@ import { createShootingCoreWithTestingHooksForInternalTest } from "../core.ts";
 import { createEmptyInputFrame } from "../input/input-frame.ts";
 import { enableInternalTestHooksForTestFile } from "../test-support/internal-test-hooks.ts";
 import { startStageFromCoreAndDefinition, startStageFromLoadedGame } from "../test-support/stage-harness.ts";
+import { createShootingCoreWithTestingHooksForTest } from "../testing/testing-hooks.ts";
 import { INTERNAL_TEST_HOOKS_ENV } from "./test-hooks-guard.ts";
-import { createShootingCoreWithTestingHooksForTest } from "./testing-hooks.ts";
 
 enableInternalTestHooksForTestFile();
 

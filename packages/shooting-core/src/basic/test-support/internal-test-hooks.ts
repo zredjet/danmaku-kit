@@ -1,6 +1,6 @@
 import { after } from "node:test";
 
-import { INTERNAL_TEST_HOOKS_ENV } from "../internal/test-hooks-guard.ts";
+import { INTERNAL_TEST_HOOKS_ENV } from "../instrumentation/test-hooks-guard.ts";
 
 /**
  * この test file の実行中だけ Core 内部 test hook を有効化し、file の test 完了後に元の値へ戻す。

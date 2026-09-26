@@ -1,8 +1,8 @@
 import type { StageSession } from "../api-types.ts";
 import { parseInputFrame } from "../input/parse-input-frame.ts";
-import { createHeadlessDebugCheckpoint, createHeadlessDebugTickMetrics } from "../internal/debug-state.ts";
-import type { HeadlessDebugTickMetrics } from "../internal/debug-state.ts";
-import { createSerializeSourceState } from "../internal/stage-session-testing-hooks.ts";
+import { createHeadlessDebugCheckpoint, createHeadlessDebugTickMetrics } from "../instrumentation/debug-state.ts";
+import type { HeadlessDebugTickMetrics } from "../instrumentation/debug-state.ts";
+import { createSerializeSourceState } from "../instrumentation/stage-session-testing-hooks.ts";
 import { coreError, errorResult, okResult } from "../result.ts";
 import type { CoreError, CoreResult } from "../result.ts";
 import type { StageSessionSerializationMetadata } from "../serialization/metadata.ts";

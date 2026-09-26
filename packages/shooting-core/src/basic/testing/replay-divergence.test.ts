@@ -6,7 +6,6 @@ import type { LoadedGame } from "../api-types.ts";
 import type { GameDefinition } from "../content/types.ts";
 import { createEmptyInputFrame } from "../input/input-frame.ts";
 import type { InputFrame } from "../input/input-frame.ts";
-import { createShootingCoreWithTestingHooksForTest } from "../internal/testing-hooks.ts";
 import { createPressedShotInputFrame } from "../test-support/input-frames.ts";
 import { enableInternalTestHooksForTestFile } from "../test-support/internal-test-hooks.ts";
 import {
@@ -17,6 +16,7 @@ import {
 import type { ReplayComparisonResult, ReplayDivergenceReport } from "./replay-divergence.ts";
 import { recordReplayTraceForTest } from "./replay-trace.ts";
 import type { ReplayTrace } from "./replay-trace.ts";
+import { createShootingCoreWithTestingHooksForTest } from "./testing-hooks.ts";
 
 enableInternalTestHooksForTestFile();
 

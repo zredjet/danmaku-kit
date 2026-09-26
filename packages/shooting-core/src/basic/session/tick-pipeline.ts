@@ -9,8 +9,8 @@ import type {
   StageDefinition,
 } from "../content/types.ts";
 import type { InputFrame } from "../input/input-frame.ts";
-import { failAfterWorkingMutationForTesting } from "../internal/stage-session-testing-hooks.ts";
-import type { ActiveStageSessionTestingHooks } from "../internal/stage-session-testing-hooks.ts";
+import { failAfterWorkingMutationForTesting } from "../instrumentation/stage-session-testing-hooks.ts";
+import type { ActiveStageSessionTestingHooks } from "../instrumentation/stage-session-testing-hooks.ts";
 import type { CoreError, CoreResult } from "../result.ts";
 import { resolveCollisionAndScoring } from "../simulation/collision-system.ts";
 import { spawnEnemyBulletsOnSpawn } from "../simulation/enemy-bullet-system.ts";

@@ -7,8 +7,8 @@ import type {
   HeadlessDebugStateError,
   HeadlessDebugStateResult,
   HeadlessDebugStateSerializer,
-} from "../internal/debug-state.ts";
-import { assertInternalTestHooksEnabled } from "../internal/test-hooks-guard.ts";
+} from "../instrumentation/debug-state.ts";
+import { assertInternalTestHooksEnabled } from "../instrumentation/test-hooks-guard.ts";
 import { okResult } from "../result.ts";
 import type { CoreWarning } from "../result.ts";
 import { createTickArtifactPath } from "./artifact-path.ts";

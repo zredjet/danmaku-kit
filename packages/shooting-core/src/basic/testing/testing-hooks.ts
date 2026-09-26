@@ -1,7 +1,7 @@
 import { createShootingCoreWithTestingHooksForInternalTest } from "../core.ts";
 import type { ShootingCore } from "../api-types.ts";
-import { registerHeadlessDebugStateSerializerForTest } from "../testing/debug-state.ts";
-import { assertInternalTestHooksEnabled } from "./test-hooks-guard.ts";
+import { registerHeadlessDebugStateSerializerForTest } from "./debug-state.ts";
+import { assertInternalTestHooksEnabled } from "../instrumentation/test-hooks-guard.ts";
 
 type InternalStageSessionTestingHooks = NonNullable<
   Parameters<typeof createShootingCoreWithTestingHooksForInternalTest>[1]

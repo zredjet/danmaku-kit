@@ -7,8 +7,8 @@ import type { GameDefinition } from "../content/types.ts";
 import { hashHashableGameState, hashHashablePrngState } from "../hash/state-hash.ts";
 import { createEmptyInputFrame } from "../input/input-frame.ts";
 import type { InputFrame } from "../input/input-frame.ts";
-import type { HeadlessDebugStateDump, HeadlessDebugStateResult } from "../internal/debug-state.ts";
-import { createShootingCoreWithTestingHooksForTest } from "../internal/testing-hooks.ts";
+import type { HeadlessDebugStateDump, HeadlessDebugStateResult } from "../instrumentation/debug-state.ts";
+import { createShootingCoreWithTestingHooksForTest } from "./testing-hooks.ts";
 import {
   createHeadlessDebugStateArtifactPathForTest,
   formatHeadlessDebugStateJsonForTest,

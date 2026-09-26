@@ -3,7 +3,7 @@ import type { GameEvent } from "../events/game-event.ts";
 import type { HashableGameState } from "../hash/hashable-state.ts";
 import type { InputFrame } from "../input/input-frame.ts";
 import { parseInputFrame } from "../input/parse-input-frame.ts";
-import type { HeadlessDebugStateDump, HeadlessDebugStateError } from "../internal/debug-state.ts";
+import type { HeadlessDebugStateDump, HeadlessDebugStateError } from "../instrumentation/debug-state.ts";
 import { deepFreezePlainData } from "../shared/immutable.ts";
 import type { CoreError } from "../result.ts";
 import type { ReplayMetadata } from "../replay/metadata.ts";

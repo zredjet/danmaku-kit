@@ -5,7 +5,6 @@ import { createMinimumDefinition } from "../../../../../tests/fixtures/minimum-g
 import type { GameDefinition } from "../content/types.ts";
 import { createShootingCoreWithTestingHooksForInternalTest } from "../core.ts";
 import { createEmptyInputFrame } from "../input/input-frame.ts";
-import { createShootingCoreWithTestingHooksForTest } from "../internal/testing-hooks.ts";
 import { createFireOnSpawnAtZeroDefinition } from "../test-support/definitions.ts";
 import { createPressedShotInputFrame, createShotInputFrame } from "../test-support/input-frames.ts";
 import { enableInternalTestHooksForTestFile } from "../test-support/internal-test-hooks.ts";
@@ -15,6 +14,7 @@ import {
   startStageFromDefinition,
   tickUnknown,
 } from "../test-support/stage-harness.ts";
+import { createShootingCoreWithTestingHooksForTest } from "../testing/testing-hooks.ts";
 
 enableInternalTestHooksForTestFile();
 

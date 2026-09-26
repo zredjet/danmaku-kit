@@ -20,10 +20,11 @@ const shootingCoreBasicRoot = path.join(repositoryRoot, "packages/shooting-core/
  * 型 import も依存方向に含める。path は `src/basic/` からの相対で、末尾 `/` は directory 全体を表す。
  */
 const SHOOTING_CORE_LAYER_RULES = Object.freeze([
-  { target: "core.ts", allowedImporters: ["index.ts", "internal/testing-hooks.ts"] },
+  { target: "core.ts", allowedImporters: ["index.ts", "testing/testing-hooks.ts"] },
   { target: "session/", allowedImporters: ["core.ts"] },
   { target: "serialization/restore/", allowedImporters: ["session/"] },
-  { target: "state/", allowedImporters: ["session/", "serialization/restore/", "internal/"] },
+  { target: "state/", allowedImporters: ["session/", "serialization/restore/", "instrumentation/"] },
+  { target: "instrumentation/", allowedImporters: ["core.ts", "session/", "testing/"] },
 ]);
 
 /**

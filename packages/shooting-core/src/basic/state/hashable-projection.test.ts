@@ -8,7 +8,6 @@ import type { HashableGameState } from "../hash/hashable-state.ts";
 import { hashHashableGameState } from "../hash/state-hash.ts";
 import { createEmptyInputFrame } from "../input/input-frame.ts";
 import type { InputFrame } from "../input/input-frame.ts";
-import { createShootingCoreWithTestingHooksForTest } from "../internal/testing-hooks.ts";
 import type { SerializedGameState } from "../serialization/types.ts";
 import {
   createCollisionScoreDefinition,
@@ -19,6 +18,7 @@ import { createShotInputFrame } from "../test-support/input-frames.ts";
 import { enableInternalTestHooksForTestFile } from "../test-support/internal-test-hooks.ts";
 import { assertSerializeOk, assertTickOk, startStageFromLoadedGame } from "../test-support/stage-harness.ts";
 import { findFirstStateHashDivergence } from "../testing/state-hash-comparison.ts";
+import { createShootingCoreWithTestingHooksForTest } from "../testing/testing-hooks.ts";
 
 enableInternalTestHooksForTestFile();
 

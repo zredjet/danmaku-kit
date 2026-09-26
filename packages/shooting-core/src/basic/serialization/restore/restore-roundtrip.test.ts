@@ -6,7 +6,6 @@ import type { StageSession } from "../../api-types.ts";
 import type { GameDefinition } from "../../content/types.ts";
 import { createEmptyInputFrame } from "../../input/input-frame.ts";
 import type { InputFrame } from "../../input/input-frame.ts";
-import { createShootingCoreWithTestingHooksForTest } from "../../internal/testing-hooks.ts";
 import {
   createCollisionScoreDefinition,
   createFireOnSpawnAtZeroDefinition,
@@ -20,6 +19,7 @@ import {
   serializeInitialStageState,
   startStageFromLoadedGame,
 } from "../../test-support/stage-harness.ts";
+import { createShootingCoreWithTestingHooksForTest } from "../../testing/testing-hooks.ts";
 import type { SerializedGameState } from "../types.ts";
 
 enableInternalTestHooksForTestFile();
