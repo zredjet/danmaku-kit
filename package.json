@@ -16,6 +16,7 @@
     "build": "npm run build -w @shooting-sample/sample-title",
     "check": "npm run typecheck && npm test && npm run validate-content:sample && npm run build",
     "dev": "npm run dev -w @shooting-sample/sample-title",
+    "generate-sine-table": "node packages/shooting-core/scripts/generate-sine-table.mjs",
     "test": "node --experimental-strip-types --test \"packages/*/src/**/*.test.ts\" \"tools/*/src/**/*.test.ts\" \"apps/*/src/**/*.test.ts\" \"apps/*/vite/**/*.test.ts\" \"tests/**/*.test.ts\" \"tests/**/*.test.mjs\"",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tools/validate-content/tsconfig.json && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p apps/sample-title/tsconfig.json && tsc --noEmit -p apps/sample-title/tsconfig.runtime.json && tsc --noEmit -p apps/sample-title/tsconfig.node.json",
     "validate-content": "node --experimental-strip-types tools/validate-content/src/cli-entry.ts",
