@@ -53,11 +53,13 @@ const SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES = Object.freeze(["hash/", "testing/
  *
  * `src/` は browser bundle に入るため、ここに無い package、`node:`、Core の deep import、validate-content は型 import も含めて
  * import しない。`phaser` は Phaser adapter と entry に閉じ込め、それ以外の runtime module を node:test で検査できるようにする。
+ * Vite の virtual module は `import.meta` と同じく entry だけが読み、他の module へは引数で渡す。
  * path は `apps/sample-title/src/` からの相対で、表記は `SHOOTING_CORE_LAYER_RULES` と同じ。
  */
 const SAMPLE_TITLE_PACKAGE_IMPORT_RULES = Object.freeze([
-  { specifier: "@shooting-sample/shooting-core", allowedImporters: ["main.ts", "runtime/"] },
+  { specifier: "@shooting-sample/shooting-core", allowedImporters: ["main.ts", "runtime/", "virtual-modules.d.ts"] },
   { specifier: "phaser", allowedImporters: ["main.ts", "runtime/phaser/"] },
+  { specifier: "virtual:sample-title/game-definition", allowedImporters: ["main.ts"] },
 ]);
 
 /** `import.meta`（Vite 固有の `import.meta.env` など）を読んでよい sample app の module。他の module へは引数で渡す。 */

@@ -1,0 +1,7 @@
+id: enemy.scout
+version: 1
+asset: enemy.scout
+collision:
+  radius: 12
+hp: 10
+score: 100

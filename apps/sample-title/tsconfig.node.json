@@ -6,7 +6,10 @@
     ]
   },
   "include": [
-    "vite.config.ts"
+    "vite.config.ts",
+    "vite/**/*.ts"
   ],
-  "exclude": []
+  "exclude": [
+    "vite/**/*.test.ts"
+  ]
 }

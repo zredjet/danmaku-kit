@@ -29,7 +29,7 @@ npm install
 npm run check
 ```
 
-`npm run check` は型検査、test、sample app の production build を順に実行する。sample app（`apps/sample-title`、Vite + Phaser）は次で起動する。
+`npm run check` は型検査、test、sample app の content 検証、sample app の production build を順に実行する。sample app（`apps/sample-title`、Vite + Phaser）は次で起動する。content は `apps/sample-title/config/game-definition.yaml` と `apps/sample-title/content/` にあり、dev server は変更を検証して page を再読み込みする。
 
 ```sh
 npm run dev

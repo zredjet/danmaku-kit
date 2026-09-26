@@ -7,13 +7,14 @@ const LOGICAL_HEIGHT = 448;
 export type SampleTitleGameOptions = Readonly<{
   parent: HTMLElement;
   coreVersion: string;
+  contentVersion: string;
 }>;
 
 /**
  * playfield を表示する Phaser game を起動する。
  *
- * Core の stage session と固定 tick loop の接続は Phase 2A-1d で行い、ここでは Vite が Core の source を
- * bundle でき、Phaser が内部解像度の canvas を描けることだけを確認する。
+ * Core の stage session と固定 tick loop の接続は Phase 2A-1d で行い、ここでは Core が load した content の
+ * version と、Phaser が内部解像度の canvas を描けることだけを表示する。
  */
 export function startSampleTitleGame(options: SampleTitleGameOptions): Game {
   return new Game({
@@ -23,20 +24,20 @@ export function startSampleTitleGame(options: SampleTitleGameOptions): Game {
     height: LOGICAL_HEIGHT,
     backgroundColor: "#0b0d1a",
     scale: { mode: Scale.NONE },
-    scene: new PlayfieldScene(options.coreVersion),
+    scene: new PlayfieldScene(`shooting-core ${options.coreVersion} / content ${options.contentVersion}`),
   });
 }
 
 class PlayfieldScene extends Scene {
-  readonly #coreVersion: string;
+  readonly #versionLabel: string;
 
-  constructor(coreVersion: string) {
+  constructor(versionLabel: string) {
     super("playfield");
-    this.#coreVersion = coreVersion;
+    this.#versionLabel = versionLabel;
   }
 
   create(): void {
-    this.add.text(8, 8, `shooting-core ${this.#coreVersion}`, {
+    this.add.text(8, 8, this.#versionLabel, {
       color: "#9aa4c7",
       fontFamily: "monospace",
       fontSize: "12px",
