@@ -2,21 +2,21 @@ version: 1
 assets:
   player.default:
     type: sprite
-    path: player.png
+    path: assets/sprites/player.svg
     required: true
     usage: gameplay
   enemy.scout:
     type: sprite
-    path: enemy.png
+    path: assets/sprites/enemy-scout.svg
     required: true
     usage: gameplay
   bullet.red_small:
     type: sprite
-    path: bullet.png
+    path: assets/sprites/bullet-red-small.svg
     required: true
     usage: gameplay
   shot.player_basic:
     type: sprite
-    path: shot.png
+    path: assets/sprites/shot-player-basic.svg
     required: true
     usage: gameplay

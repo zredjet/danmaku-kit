@@ -8,7 +8,9 @@ import {
 } from "@shooting-sample/validate-content";
 import type { Plugin, ViteDevServer } from "vite";
 
-/** browser source が検証済み `GameDefinition` を default import する virtual module の ID。 */
+import type { AssetManifest as RuntimeAssetManifest } from "../src/runtime/assets/asset-manifest.ts";
+
+/** browser source が検証済み `GameDefinition` を default import し、asset manifest を `assetManifest` として import する virtual module の ID。 */
 export const GAME_DEFINITION_MODULE_ID = "virtual:sample-title/game-definition";
 const RESOLVED_GAME_DEFINITION_MODULE_ID = `\0${GAME_DEFINITION_MODULE_ID}`;
 
@@ -68,16 +70,20 @@ export function sampleTitleContentPlugin(paths: ValidateContentSourcePaths): Plu
   };
 }
 
-/** content を検証し、成功時は `GameDefinition` を default export する module source を返す。 */
+/**
+ * content を検証し、成功時は `GameDefinition` を default export、検証済みの asset manifest を `assetManifest` として export する
+ * module source を返す。manifest は runtime の型へ代入して、validate-content と app の型のずれを型検査で検出する。
+ */
 export async function createGameDefinitionModule(paths: ValidateContentSourcePaths): Promise<GameDefinitionModule> {
   const loaded = await loadValidatedGameDefinition(paths);
   const report = formatValidateContentHuman(loaded.runResult.output);
   if (!loaded.ok) {
     return Object.freeze({ ok: false, error: report });
   }
+  const assetManifest: RuntimeAssetManifest = loaded.assetManifest;
   return Object.freeze({
     ok: true,
-    code: `export default ${JSON.stringify(loaded.definition)};\n`,
+    code: `export default ${JSON.stringify(loaded.definition)};\nexport const assetManifest = ${JSON.stringify(assetManifest)};\n`,
     warning: loaded.runResult.output.diagnostics.length > 0 ? report : null,
   });
 }

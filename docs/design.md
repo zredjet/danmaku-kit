@@ -256,6 +256,12 @@ Phaser adapter の view lifecycle:
 - drop や集約を許可するのは particle、afterimage、hit spark などの render-only effect だけとする。
 - render-only view state は replay/state hash に含めない。
 
+Phase 2A-8 の sample app の実装:
+
+- loading（`BootScene`）は manifest の sprite を `import.meta.env.BASE_URL` と合成した URL で preload し（`.svg` は SVG として）、design 17 の規則で開始できるかを決めてから stage scene を始める。Phaser は取得の失敗だけを `FILE_LOAD_ERROR` で知らせ、decode できなかった file（dev server が存在しない path に `index.html` を返す場合を含む）は texture に加えずに捨てるため、読み込み後に texture ができていない asset も失敗として扱う。
+- view pool の capacity は stage start 前に kind ごとに見積もる（`src/runtime/view/view-pool-plan.ts`）。player は 1、player shot は 1 回の発射で 1 発なので `floor(lifetimeTicks / intervalTicks) + 1`（budget 300 を超える content は load error）、enemy は timeline の spawn 数と budget 100 の小さい方、enemy bullet は timeline の pattern が `steps` を持てば Core の active 上限 2,000、`fireOnSpawn` だけならその spawn 数とする。enemy の退場は path から静的に見積もらないため、spawn 数が 100 を超える stage では同時数が 100 を超えた時点で枯渇する。
+- stage scene は pool を 1 render frame あたり 256 個までに抑えて作り終えてから stage を始め、stage 中は image を生成・破棄せずに使い回す。消えた entity の view はその frame で隠して pool へ戻す。pool を使い切ったら `RuntimeEvent.viewPoolExhausted` を log と画面に出して stage を止める（Phase 2A は dev と本番を区別しない）。`RuntimeEvent`（`src/runtime/runtime-event.ts`）は app の型で、`GameEvent` や replay / state hash には含めない。
+
 ### 5.5 `ui`
 
 DOM overlay として HUD、メニュー、設定、リザルトを担当する。
@@ -1080,6 +1086,8 @@ Asset load failure は lifecycle の `loading` で処理する。missing、decod
 | `audio` | 無音 degrade を許可し、`RuntimeEvent.assetLoadSkipped` を記録する |
 | `particle` / `effect` | render-only effect を省略できる |
 | `sprite` / `atlas` / `tilemap` | `usage: gameplay` なら load error、`ui` / `decorative` なら省略可 |
+
+Phase 2A-8 の sample app は sprite だけを画像として読み込む。audio は Phase 2A の対象外なので `required` にかかわらず読まずに `assetLoadSkipped` とし、atlas / tilemap / particle / effect は未対応として読み込み失敗と同じ規則に回す。fallback の使用は log と debug HUD に出す。gameplay entity の definition が参照する asset が省略された場合も、view を欠かせないため load error にする。
 
 ## 18. Audio adapter
 

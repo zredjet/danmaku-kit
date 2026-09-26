@@ -72,7 +72,8 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 - `phaser` を import してよいのは entry の `src/main.ts` と Phaser adapter の `src/runtime/phaser/` だけにする。それ以外の runtime module は Phaser なしで node:test から検査できる形に保つ。`src/runtime/` のうち `src/runtime/phaser/` 以外は `tsconfig.runtime.json`（DOM lib と Vite の型なし）でも型検査するため、DOM global を使わず、`KeyboardEvent` のような DOM の値は必要な field だけの入力型で受ける。
 - `import.meta`（`import.meta.env` など Vite 固有の値）と Vite の virtual module（`virtual:sample-title/game-definition`）を読むのは `src/main.ts` だけにし、他の module へは引数で渡す。
 - Vite config と content plugin のように Node で動く code は `src/` の外（`vite.config.ts`、`vite/`）に置き、`tsconfig.node.json` で型検査する。`vite/**/*.test.ts` も `npm test` の対象にする。
-- content は build / dev server 時に `vite/content-plugin.ts` が validate-content の `loadValidatedGameDefinition()` で検証する。browser へ YAML parser や filesystem access を持ち込まない。
+- content は build / dev server 時に `vite/content-plugin.ts` が validate-content の `loadValidatedGameDefinition()` で検証する。browser へ YAML parser や filesystem access を持ち込まない。virtual module は `GameDefinition` を default export、検証済みの asset manifest を `assetManifest` として export する。app は validate-content を import しないため、manifest の型は `src/runtime/assets/asset-manifest.ts` に同じ形で置き、content plugin が validate-content の値をこの型へ代入して形のずれを型検査で検出する。
+- asset は `public/assets/` に置き、manifest の path は base URL からの相対 path にする。Phaser に依存しない loading の判断（`src/runtime/assets/`）と view pool の見積もり・使い回し（`src/runtime/view/`）は node:test で検査し、Phaser の scene はそれを呼ぶだけにする。
 
 ### 決定性（`packages/shooting-core/src/`）
 

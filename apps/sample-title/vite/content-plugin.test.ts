@@ -31,7 +31,7 @@ test("resolves only the game definition virtual module id", () => {
   assert.equal(resolveId("./game-definition.ts"), null);
 });
 
-test("builds a module that default-exports the validated sample title definition", async () => {
+test("builds a module that exports the validated sample title definition and asset manifest", async () => {
   const module = await createGameDefinitionModule(sampleTitlePaths);
   const expected = await loadValidatedGameDefinition(sampleTitlePaths);
 
@@ -41,11 +41,14 @@ test("builds a module that default-exports the validated sample title definition
     return;
   }
   assert.equal(module.warning, null);
-  const prefix = "export default ";
-  assert.equal(module.code.startsWith(prefix), true);
-  assert.equal(module.code.endsWith(";\n"), true);
-  const definition = JSON.parse(module.code.slice(prefix.length, -";\n".length)) as GameDefinition;
+  const lines = module.code.split("\n");
+  const [definitionLine, manifestLine, rest] = [lines[0]!, lines[1]!, lines.slice(2)];
+  assert.deepEqual(rest, [""]);
+  assert.equal(definitionLine.startsWith("export default ") && definitionLine.endsWith(";"), true);
+  assert.equal(manifestLine.startsWith("export const assetManifest = ") && manifestLine.endsWith(";"), true);
+  const definition = JSON.parse(definitionLine.slice("export default ".length, -1)) as GameDefinition;
   assert.deepEqual(definition, expected.definition);
+  assert.deepEqual(JSON.parse(manifestLine.slice("export const assetManifest = ".length, -1)), expected.assetManifest);
   assert.equal(createShootingCore().load(definition).ok, true);
 });
 

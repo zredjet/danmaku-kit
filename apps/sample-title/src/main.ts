@@ -1,8 +1,10 @@
 import { createShootingCore } from "@shooting-sample/shooting-core";
-import gameDefinition from "virtual:sample-title/game-definition";
+import gameDefinition, { assetManifest } from "virtual:sample-title/game-definition";
 
 import { startSampleTitleGame } from "./runtime/phaser/sample-title-game.ts";
 import { collectCollisionRadii } from "./runtime/view/collision-radii.ts";
+import { collectDefinitionAssets } from "./runtime/view/definition-assets.ts";
+import { planViewPoolCapacities } from "./runtime/view/view-pool-plan.ts";
 
 const parent = document.getElementById("game");
 if (!parent) {
@@ -25,10 +27,18 @@ if (!stage || !difficulty) {
 
 startSampleTitleGame({
   parent,
-  loadedGame: loaded.value,
-  stage: { stageId: stage.id, difficulty, seed: readSeed() },
-  collisionRadii: collectCollisionRadii(gameDefinition),
-  versionLabel: `shooting-core ${core.coreVersion} / content ${gameDefinition.content.version}`,
+  boot: {
+    assetManifest,
+    baseUrl: import.meta.env.BASE_URL,
+    definitionAssets: collectDefinitionAssets(gameDefinition),
+    viewPoolPlan: planViewPoolCapacities(gameDefinition, stage.id, gameDefinition.defaultPlayerId),
+  },
+  stage: {
+    loadedGame: loaded.value,
+    stage: { stageId: stage.id, difficulty, seed: readSeed() },
+    collisionRadii: collectCollisionRadii(gameDefinition),
+    versionLabel: `shooting-core ${core.coreVersion} / content ${gameDefinition.content.version}`,
+  },
 });
 
 /** `?seed=` があればその seed で、なければ起動ごとの乱数で stage を始める。seed は画面に出し、同じ入力の再現に使う。 */
