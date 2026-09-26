@@ -1,15 +1,8 @@
 import type { GameFrame, ReadonlyGameState, ReadonlyPlayerState } from "../api-types.ts";
-import type {
-  BulletDefinition,
-  EnemyDefinition,
-  PatternDefinition,
-  PlayerDefinition,
-  PlayerId,
-  PlayerShotDefinition,
-  StageDefinition,
-} from "../content/types.ts";
+import type { LoadedContentIndex } from "../content/content-index.ts";
+import type { PlayerDefinition, PlayerId, StageDefinition } from "../content/types.ts";
 import type { InputFrame } from "../input/input-frame.ts";
-import { failAfterWorkingMutationForTesting } from "../instrumentation/stage-session-testing-hooks.ts";
+import { consumeWorkingMutationFailureForTesting } from "../instrumentation/stage-session-testing-hooks.ts";
 import type { ActiveStageSessionTestingHooks } from "../instrumentation/stage-session-testing-hooks.ts";
 import type { CoreError, CoreResult } from "../result.ts";
 import { resolveCollisionAndScoring } from "../simulation/collision-system.ts";
@@ -25,11 +18,10 @@ import { createCommittedStageState } from "../state/committed-state.ts";
 import type { CommittedStageState, WorkingStageState } from "../state/committed-state.ts";
 
 /** tick pipeline が参照する load 済み content と、session の stage / player。 */
-export type StageTickContent = Readonly<{
-  bulletsById: ReadonlyMap<string, BulletDefinition>;
-  enemiesById: ReadonlyMap<string, EnemyDefinition>;
-  patternsById: ReadonlyMap<string, PatternDefinition>;
-  playerShotsById: ReadonlyMap<string, PlayerShotDefinition>;
+export type StageTickContent = Pick<
+  LoadedContentIndex,
+  "bulletsById" | "enemiesById" | "patternsById" | "playerShotsById"
+> & Readonly<{
   stage: StageDefinition;
   player: PlayerDefinition;
 }>;
@@ -74,27 +66,27 @@ export function runStageTick(
   instrumentation: StageTickInstrumentation,
 ): StageTickOutcome {
   // system order の updateStageTimeline。timeline 順に spawn event を生成する。
-  const timeline = advanceStageTimeline(
+  const timelineSpawn = advanceStageTimeline(
     working.entityAllocator,
     working.expectedTick,
     content.stage.timeline,
     working.timelineCursor,
     content.enemiesById,
   );
-  if (!timeline.ok) {
-    return fatalTickOutcome(timeline.errors);
+  if (!timelineSpawn.ok) {
+    return fatalTickOutcome(timelineSpawn.errors);
   }
-  working.activeEntities.push(...timeline.value.entities);
-  for (const event of timeline.value.events) {
+  working.activeEntities.push(...timelineSpawn.value.entities);
+  for (const event of timelineSpawn.value.events) {
     working.eventLog.push(event);
   }
-  working.timelineCursor = timeline.value.timelineCursor;
+  working.timelineCursor = timelineSpawn.value.timelineCursor;
 
   // system order の spawnBulletsPlayerShots。enemy pattern の弾生成を player shot より先に確定する。
   const enemyBulletSpawn = spawnEnemyBulletsOnSpawn(
     working.entityAllocator,
     working.expectedTick,
-    timeline.value.entities,
+    timelineSpawn.value.entities,
     content.patternsById,
     content.bulletsById,
   );
@@ -140,8 +132,9 @@ export function runStageTick(
     working.eventLog.push(playerShotSpawn.value.event);
   }
 
-  if (instrumentation.testingHooks.failAfterWorkingMutationTicks.delete(working.expectedTick)) {
-    return Object.freeze({ kind: "rejected", result: failAfterWorkingMutationForTesting(working) });
+  const injectedFailure = consumeWorkingMutationFailureForTesting(instrumentation.testingHooks, working);
+  if (injectedFailure) {
+    return Object.freeze({ kind: "rejected", result: injectedFailure });
   }
 
   // system order の updateMovement / updateLifetime。player は入力で、player shot は projectile 定義で進める。

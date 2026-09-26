@@ -443,6 +443,7 @@ Phase 1C-R で巨大ファイルは責務単位に分割したが、ディレク
    - Done: Phase 1C-S2: `loaded-game.ts` の restore / startStage で重複していた `createStageSession()` の context 構築を private helper `createStageSessionFromContent()` へ寄せる。testing hook の消費状態は従来どおり session ごとに、検証と restore snapshot 記録の後で作る
    - Done: Phase 1C-S2: `StageTickContext` を、load 済み content lookup と stage / player の `StageTickContent` と、debug metrics 収集 flag と testing hook の `StageTickInstrumentation` に分け、`runStageTick(working, input, content, instrumentation)` とする。instrumentation は session ごとに1回だけ作り、system 本文は参照元の置き換え以外を変えない
    - Done: Phase 1C-S2: `runStageTick()` に直書きしていた timeline spawn を、他の system と同じく差分を返す純粋関数 `simulation/stage-timeline-system.ts` の `advanceStageTimeline()` へ抽出する。step ごとの採番、`entitySpawned` の順序と内容、cursor の進め方は変えず、pipeline が entity / event / cursor を working state へ反映する。`STAGE_TICK_SYSTEM_ORDER` は design 7.1 の記録として現状のまま残す
+   - Done: Phase 1C-S2 review: pipeline に残っていた working mutation fault の消費も `instrumentation/` の `consumeWorkingMutationFailureForTesting()` へ寄せ、pipeline と session が hook の保持形式を知らない形にそろえる。`StageTickContent` の content map 型は `LoadedContentIndex` から導出する
 3. Phase 1C-S3: entity kind の縦割り
    - Next: `matchesModulePath` を1 segment の `*` に対応させ、stale rule、basic 内の型 cycle、kind 間 import を検査する guardrail を先に追加する
    - Next: field order 型 utility を `shared/field-order.ts`、restore の plain data guard を `serialization/restore-plain-data.ts` へ下げ、`entities/entity-kinds.ts` に canonical kind 一覧を置く

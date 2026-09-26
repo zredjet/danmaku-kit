@@ -140,8 +140,22 @@ export function createSerializeSourceState(
   };
 }
 
+/**
+ * working state 変更後の fault injection を tick ごとに1回だけ消費する。
+ *
+ * hook がこの tick を指していれば working state を実際に汚した上で失敗 result を返し、指していなければ `null` を返す。
+ */
+export function consumeWorkingMutationFailureForTesting(
+  testingHooks: ActiveStageSessionTestingHooks,
+  working: WorkingStageState,
+): CoreResult<never> | null {
+  return testingHooks.failAfterWorkingMutationTicks.delete(working.expectedTick)
+    ? failAfterWorkingMutationForTesting(working)
+    : null;
+}
+
 /** rollback regression 用に、working state を実際に汚してから失敗させる。 */
-export function failAfterWorkingMutationForTesting(working: WorkingStageState): CoreResult<never> {
+function failAfterWorkingMutationForTesting(working: WorkingStageState): CoreResult<never> {
   const beforeEntityCount = working.activeEntities.length;
   const beforeExpectedTick = working.expectedTick;
   const beforeNextEntityId = working.entityAllocator.snapshot();
