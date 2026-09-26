@@ -339,6 +339,8 @@ Done:
 
 `core.ts`（3327行）は公開 API 型、hash DTO / field order、stage session / tick pipeline、serialize / hashable projection、restore validation、input parse、testing hook、headless debug を1ファイルに持ち、`core.ts` → `hash/state-hash.ts` → `hash/hashable-game-state-adapter.ts` → `core.ts` の runtime import cycle も抱えている。`core.test.ts`（5350行、108 test）と `tests/public-type-contract.ts`（1449行）も同じく肥大化している。Phase 1C-R では gameplay、public API、state hash、CLI output を一切変えずに、これらを責務単位の module へ分割する。
 
+この節の共通ルールの依存方向と module 表は Phase 1C-R 完了時点の記録である。`internal/` は Phase 1C-S1 で `shared/`、`instrumentation/`、`testing/testing-hooks.ts` へ分解したため、現行の構成と依存方向は Phase 1C-S の節、`AGENTS.md`、`tests/module-graph.test.mjs` を正とする。
+
 共通ルール:
 
 - 1 slice 1 commit とし、各 slice で `npm run check` が通り、state hash golden と validate-content golden が無変更であることを確認する。移動部分は `git diff --color-moved=zebra` で本文不変を確認する
@@ -433,7 +435,7 @@ Phase 1C-R で巨大ファイルは責務単位に分割したが、ディレク
    - Done: Phase 1C-S1: startStage option、stage content、restore top-level、replay metadata の4箇所で difficulty の error code と message を test で固定してから、`content/types.ts` の `KNOWN_DIFFICULTIES` と型 guard `isKnownDifficulty()` へ列挙を寄せる。各 error message は literal のまま残し、公開型 `Difficulty` は表示名を保つため literal union のまま残し、一覧との一致を型 test で固定する。両者は root export に含めないことを型契約で固定する
    - Done: Phase 1C-S1: validate-content の `output.ts`（537行）を本文そのままで、診断の投影・正規化・順序比較と plain data snapshot（`diagnostic-normalization.ts`、286行）、result 構築と集計（`output.ts`、111行）、JSON / human formatter と `normalizeOutputForFormatting()`（`output-format.ts`、153行）へ分ける。依存は `output-format.ts` → `output.ts` → `diagnostic-normalization.ts` の一方向で、public export と型契約の `src/output.ts` deep import 確認は変えない
    - Done: Phase 1C-S1: hash adapter のコメントが指す versioned table を `hash/hashable-state.ts` に直し、`instrumentation/` が export する内部型 `StageSessionTestingHookOptions`、`ActiveStageSessionTestingHooks`、`HeadlessDebugCheckpoint` の root 非公開を型契約へ追加し、参照のない `containsLoneSurrogate` を削除する。それぞれ個別 commit とする
-   - Done: Phase 1C-S1 review: `CommittedPendingEvent` を独立定義したことで失われた DTO との field 集合一致を、serialize / hash projection の `satisfies Required<CommittedPendingEvent>` と戻り値型で型検査に戻す。`tests/module-graph.test.mjs` に rule の path が実在する module を指すことの検査と、`testing/` を非 test source から import させない rule を追加する
+   - Done: Phase 1C-S1 review: `CommittedPendingEvent` を独立定義したことで失われた DTO との field 集合一致を、serialize / hash projection の `satisfies Required<CommittedPendingEvent>` と戻り値型で型検査に戻す。`tests/module-graph.test.mjs` に rule の path が実在する module を指すことの検査と、`testing/` を非 test source から import させない rule を追加する。さらに shooting-core / validate-content の非 test source が `*.test.ts` と `test-support/` を型 import も含めて import しないことを検査し、1C-R 節の依存方向と module 表が 1C-R 完了時点の記録であることを明記する
    - Done: Phase 1C-S1: `AGENTS.md` の依存方向に `shared/`、`instrumentation/`、`hash/` の rule を加え、`docs/design.md` の directory 構成、Core module 構成、依存方向の段落と、この文書の対応表を新 path へ更新する。1C-4 で追加した replay trace / divergence artifact も `testing/` の説明へ反映する
 2. Phase 1C-S2: session / tick pipeline の整理
    - Next: pending event 上書きが working state だけに効くこと、input 拒否 tick で hook を消費しないこと、同一 tick の複数 fault の適用順を test で固定する

@@ -50,6 +50,25 @@ test("keeps package source free of runtime import cycles", async () => {
   }
 });
 
+test("keeps package source from importing test code", async () => {
+  const violations = [];
+
+  for (const sourceRoot of sourceRoots) {
+    const files = (await collectTypeScriptFiles(sourceRoot)).filter((file) => !isTestCodeFile(sourceRoot, file));
+    for (const file of files) {
+      const sourceText = await readFile(file, "utf8");
+      for (const specifier of collectRelativeSpecifiers(file, sourceText, { includeTypeOnly: true })) {
+        const target = path.resolve(path.dirname(file), specifier);
+        if (isTestCodeFile(sourceRoot, target)) {
+          violations.push(`${toRepositoryPath(file)} -> ${toRepositoryPath(target)}`);
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(violations, [], "package source imports test-only code");
+});
+
 test("keeps shooting-core modules inside their dependency layers", async () => {
   const graph = await collectImportGraph(shootingCoreBasicRoot, { includeTypeOnly: true });
   const violations = [];

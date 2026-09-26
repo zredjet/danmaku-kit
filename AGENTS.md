@@ -52,7 +52,7 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 
 ### 依存方向（`packages/shooting-core/src/basic/`）
 
-- 以下の import 制約は非 test source（`*.test.ts` と `test-support/` 以外）に適用する。
+- 以下の import 制約は非 test source（`*.test.ts` と `test-support/` 以外）に適用する。非 test source は `*.test.ts` と `test-support/` を型 import も含めて import しない（validate-content も同じ）。
 - `core.ts` は `createShootingCore()` / `load()` の facade とし、import してよいのは `index.ts` と `testing/testing-hooks.ts` だけにする。公開型は `api-types.ts` に置く。
 - `session/`（stage session、tick pipeline、loaded game）を import してよいのは `core.ts` だけ。
 - `serialization/restore/` を import してよいのは `session/` だけ。
