@@ -469,3 +469,21 @@ test("rejects external input that exceeds plain-data clone budgets", () => {
   assert.equal(loaded.ok, false);
   assert.equal(!loaded.ok && loaded.errors[0]?.code, "definition.invalidShape");
 });
+
+test("requires at least one initial life because the stage ends when lives reach zero", () => {
+  const definition = createMinimumDefinition();
+  for (const [initialLives, ok] of [[0, false], [1, true], [1.5, false]] as const) {
+    const loaded = loadUnknown({
+      ...definition,
+      content: {
+        ...definition.content,
+        players: [{ ...definition.content.players[0], life: { initialLives, invincibleTicksAfterHit: 120 } }],
+      },
+    });
+
+    assert.equal(loaded.ok, ok, `initialLives ${initialLives}`);
+    assert.deepEqual(loaded.ok ? [] : loaded.errors.map((error) => [error.schemaPath, error.message]), ok ? [] : [
+      ["content.players[0].life.initialLives", "player.life.initialLives must be a positive integer"],
+    ]);
+  }
+});

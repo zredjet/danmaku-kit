@@ -479,7 +479,7 @@ shot:
   definition: playerShot.basic
 ```
 
-MVP の basic `PlayerDefinition` は `graze` と `bomb` field を持たない。Basic core validator は未知 field として拒否し、feature module schema 導入後だけ `graze.radius` / `graze.oncePerBullet` や `bomb.definition` を許可する。Bomb module 有効時でも bomb 未所持の自機を表したい場合は feature schema 側で `bomb.definition: null` を許可するが、この null 契約は basic schema へ持ち込まない。
+`life.initialLives` は開始時の残機で 1 以上の整数とし、無敵中でない被弾ごとに 1 減る。残機が 0 になった tick で stage は gameOver として終わる（Phase 2A-6、design 7.1）。MVP の basic `PlayerDefinition` は `graze` と `bomb` field を持たない。Basic core validator は未知 field として拒否し、feature module schema 導入後だけ `graze.radius` / `graze.oncePerBullet` や `bomb.definition` を許可する。Bomb module 有効時でも bomb 未所持の自機を表したい場合は feature schema 側で `bomb.definition: null` を許可するが、この null 契約は basic schema へ持ち込まない。
 
 Player movement は `InputFrame.axes` を intent として扱い、`focus` held 中は `focusSpeed`、それ以外は `speed` を使う。低速移動の意味を守るため `focusSpeed <= speed` を content validation で要求し、MVP では `speed` / `focusSpeed` ともに `16` 以下に制限する。斜め入力は通常移動より速くならないよう正規化し、自機中心は playfield の `x=0..384`、`y=0..448` 内へ clamp する。Shot 生成は system order に従って movement 前の player position を使い、同じ tick の `GameFrame.state` では player が movement 後の position になる。
 

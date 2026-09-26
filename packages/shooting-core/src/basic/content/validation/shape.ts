@@ -276,7 +276,7 @@ function validatePlayerShape(player: Record<string, unknown>, errors: CoreError[
     errors.push({ code: "definition.invalidShape", message: "player.life must be an object" });
   } else {
     validateAllowedKeys("player.life", life, ["initialLives", "invincibleTicksAfterHit"], errors);
-    validateNonNegativeInteger("player.life.initialLives", life.initialLives, errors);
+    validatePositiveInteger("player.life.initialLives", life.initialLives, errors);
     validateNonNegativeInteger("player.life.invincibleTicksAfterHit", life.invincibleTicksAfterHit, errors);
   }
 
