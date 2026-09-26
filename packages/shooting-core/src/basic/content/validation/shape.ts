@@ -1,7 +1,6 @@
 import type { CoreError } from "../../result.ts";
 import { asRecord } from "../../shared/guards.ts";
 import {
-  MAX_ENEMY_BULLET_SPEED_PER_AXIS,
   MAX_PLAYER_MOVEMENT_SPEED,
   MAX_PLAYER_SHOT_FIRE_INTERVAL_TICKS,
   MAX_PLAYER_SHOT_LIFETIME_TICKS,
@@ -26,6 +25,7 @@ import {
   validatePositiveNumber,
 } from "./fields.ts";
 import { validatePathShape } from "./path-shape.ts";
+import { validatePatternShape } from "./pattern-shape.ts";
 import { addSchemaContext, validateContentItem } from "./schema-path.ts";
 
 const SUPPORTED_SCHEMA_VERSION = "1";
@@ -169,14 +169,7 @@ export function validateDefinitionShape(definition: unknown, errors: CoreError[]
   ));
   patterns.items.forEach(({ record: pattern, index }) => validateContentItem(
     `content.patterns[${index}]`, "pattern", pattern, errors,
-    () => {
-      validateAllowedKeys("pattern", pattern, ["id", "version", "fireOnSpawn"], errors);
-      validateNonEmptyString("pattern.id", pattern.id, errors);
-      validatePositiveInteger("pattern.version", pattern.version, errors);
-      if (pattern.fireOnSpawn !== undefined) {
-        validatePatternFireOnSpawnShape(pattern.fireOnSpawn, errors);
-      }
-    },
+    () => validatePatternShape(pattern, errors),
   ));
   paths.items.forEach(({ record: path, index }) => validateContentItem(
     `content.paths[${index}]`, "path", path, errors,
@@ -250,38 +243,6 @@ function validatePlayerShotProjectileShape(value: unknown, errors: CoreError[]):
     MAX_PLAYER_SHOT_LIFETIME_TICKS,
     errors,
   );
-}
-
-/** pattern.fireOnSpawn の最小弾生成定義を検証する。 */
-function validatePatternFireOnSpawnShape(value: unknown, errors: CoreError[]): void {
-  const fireOnSpawn = asRecord(value);
-  if (!fireOnSpawn) {
-    errors.push({ code: "definition.invalidShape", message: "pattern.fireOnSpawn must be an object" });
-    return;
-  }
-  validateAllowedKeys("pattern.fireOnSpawn", fireOnSpawn, ["bullet", "offset", "velocity"], errors);
-  validateNonEmptyString("pattern.fireOnSpawn.bullet", fireOnSpawn.bullet, errors);
-
-  const offset = asRecord(fireOnSpawn.offset);
-  if (!offset) {
-    errors.push({ code: "definition.invalidShape", message: "pattern.fireOnSpawn.offset must be an object" });
-  } else {
-    validateAllowedKeys("pattern.fireOnSpawn.offset", offset, ["x", "y"], errors);
-    validateFiniteNumber("pattern.fireOnSpawn.offset.x", offset.x, errors);
-    validateFiniteNumber("pattern.fireOnSpawn.offset.y", offset.y, errors);
-  }
-
-  if (fireOnSpawn.velocity === undefined) {
-    return;
-  }
-  const velocity = asRecord(fireOnSpawn.velocity);
-  if (!velocity) {
-    errors.push({ code: "definition.invalidShape", message: "pattern.fireOnSpawn.velocity must be an object" });
-    return;
-  }
-  validateAllowedKeys("pattern.fireOnSpawn.velocity", velocity, ["x", "y"], errors);
-  validateFiniteNumberWithinAbs("pattern.fireOnSpawn.velocity.x", velocity.x, MAX_ENEMY_BULLET_SPEED_PER_AXIS, errors);
-  validateFiniteNumberWithinAbs("pattern.fireOnSpawn.velocity.y", velocity.y, MAX_ENEMY_BULLET_SPEED_PER_AXIS, errors);
 }
 
 /** PlayerDefinition の shape validation。 */
