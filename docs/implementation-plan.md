@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump foundation も完了し、次の実装スライスは state / ordered event / side別input / side statusを比較する first divergent checkpoint の field-level diff artifact とする。
+Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump foundation も完了した。次の実装スライスは振る舞いを変えない module 分割リファクタリング Phase 1C-R とし、その完了後に state / ordered event / side別input / side statusを比較する first divergent checkpoint の field-level diff artifact へ戻る。
 
 Done:
 
@@ -86,6 +86,10 @@ Done:
 - debug state 1C-4 foundation で test-only headless schema、state / PRNG hash、entity count、test sessionだけで収集するnullable event / collision metrics、portable artifact path / schema-order JSON formatter、public `CoreErrorCode` を拡張しない内部 hash failure result 境界を追加する
 
 Next:
+
+- Phase 1C-R として `core.ts`、`core.test.ts`、`tests/public-type-contract.ts`、`content/validation.ts` などの巨大ファイルを責務単位の module へ振る舞いを変えずに分割し、runtime import cycle を解消する。詳細は「Phase 1C-R タスク分割」に置く
+
+Queued: Phase 1C-4（1C-R 完了後）
 
 - 検証済み replay compatibility metadata と expected / actual の `ok | missing | error` sideを比較し、state hashが同じevent-only差分、side別input差分、早期終了、tick失敗を含む first divergent checkpoint の entity / component / event / PRNG artifactを構築する。`ok` sideにはsummary dumpを添付する
 
@@ -325,9 +329,62 @@ Done:
    - Done: root package へ公開しない test helper から取得する `HeadlessDebugStateDump` schema を実装する。`tick` は次の input tick、start session の `seed` は文字列、restore session は `null`、entity count は current committed state、event / collision metrics は直前の成功 tick とし、start / restore 直後は未計測の `null`、非fatalな失敗 tickでは直前値を保持し、fatal後はdumpを拒否する
    - Done: collision / event metrics は test serializer 登録sessionでだけ収集し、通常runtimeのtick hot pathではcounter更新とcount object生成を省略する
    - Done: state hash、PRNG hash、固定 key の entity / event count、narrow-phase collision candidate count、portable artifact slug / path、schema 固定順 + 2-space indent + LF の JSON formatter、public `CoreErrorCode` を拡張しない hash encoding failure result を実装する
-   - Next: raw replay metadataを検証して比較可能性を固定し、expected / actualの`ok | missing | error` sideごとにparse後inputを保持する。`ok` sideの`HashableGameState`、順序付き`GameFrame.events`、summaryを比較し、state hashが同じevent-only差分もfirst divergenceとして検出する
-   - Next: `frameTick: null` / `checkpointTick: 0`の初期比較と、tick後の`checkpointTick === frameTick + 1`を検証し、artifact pathのtickをcheckpoint tickに固定する
+   - Queued: Phase 1C-R 完了後に、raw replay metadataを検証して比較可能性を固定し、expected / actualの`ok | missing | error` sideごとにparse後inputを保持する。`ok` sideの`HashableGameState`、順序付き`GameFrame.events`、summaryを比較し、state hashが同じevent-only差分もfirst divergenceとして検出する
+   - Queued: Phase 1C-R 完了後に、`frameTick: null` / `checkpointTick: 0`の初期比較と、tick後の`checkpointTick === frameTick + 1`を検証し、artifact pathのtickをcheckpoint tickに固定する
    - Queued: browser runtime dump は`apps/sample-title`がpublic `GameFrame`とruntime adapter stateから作る別schemaとしてPhase 2Aへ分離し、Core内部hash/metricsやdeep importへ依存させない
+
+## Phase 1C-R タスク分割（module 分割リファクタリング）
+
+`core.ts`（3327行）は公開 API 型、hash DTO / field order、stage session / tick pipeline、serialize / hashable projection、restore validation、input parse、testing hook、headless debug を1ファイルに持ち、`core.ts` → `hash/state-hash.ts` → `hash/hashable-game-state-adapter.ts` → `core.ts` の runtime import cycle も抱えている。`core.test.ts`（5350行、108 test）と `tests/public-type-contract.ts`（1449行）も同じく肥大化している。Phase 1C-R では gameplay、public API、state hash、CLI output を一切変えずに、これらを責務単位の module へ分割する。
+
+共通ルール:
+
+- 1 slice 1 commit とし、各 slice で `npm run check` が通り、state hash golden と validate-content golden が無変更であることを確認する。移動部分は `git diff --color-moved=zebra` で本文不変を確認する
+- `index.ts` の value / type export、package boundary test、public type contract の意味を変えない
+- 移動した内部 API を `core.ts` から re-export せず、import 元を新 path へ更新する
+- 完全に同一の helper だけを統合する。`hasOnlyKeys` と `validateAllowedKeys`、shallow / dense array clone 群、lone surrogate の扱いが異なる UTF-8 encoder、entity id 以外でも絞り込む `findPlayerEntity` と collision の `findPlayer`、package をまたぐ重複は統合しない
+- 目安は非 test source 約400行、test 約600行とする。超える場合は責務の混在を確認して分割を検討する
+- 依存方向: `core.ts` を import してよいのは `index.ts` と `internal/testing-hooks.ts` だけとし、`hash/` は `session/` / `serialization/restore/` を import しない。runtime import cycle を作らない
+
+分割後の shooting-core `src/basic/` 構成:
+
+| Module | 内容 |
+| --- | --- |
+| `core.ts` | `createShootingCore()` と load facade、内部 test factory |
+| `api-types.ts` | `StartStageOptions`、`ReadonlyGameState`、`ReadonlyPlayerState`、`GameFrame`、`ShootingCore`、`LoadedGame`、`StageSession` |
+| `session/loaded-game.ts`, `session/start-stage-options.ts` | `startStage()` と `restore()` の委譲、start option parse |
+| `session/stage-session.ts`, `session/tick-pipeline.ts` | fatal latch / commit / serialize / debug 登録と、system order に沿った 1 tick pipeline |
+| `session/committed-state.ts` | committed / working state、entity / pending event invariant |
+| `content/content-index.ts` | `LoadedContentIndex` |
+| `input/parse-input-frame.ts` | `InputFrame` の runtime parse |
+| `serialization/metadata.ts`, `serialization/serialize-state.ts` | version 定数、serialization metadata、feature canonical order、serialize projection |
+| `serialization/restore/*.ts` | restore orchestration、top-level metadata / compatibility、deterministic payload、runtime entity、kind 別 validator、allocation order、plain data clone guard |
+| `hash/hashable-state.ts`, `hash/hashable-projection.ts` | `Hashable*` DTO / field order と committed state からの projection |
+| `internal/guards.ts`, `internal/test-hooks-guard.ts`, `internal/stage-session-testing-hooks.ts`, `internal/debug-state.ts` | 共通 guard、test hook 有効化 guard、session testing hook、headless debug serializer |
+
+1. Phase 1C-R1: hashable state 分離と cycle 解消
+   - Next: `Hashable*` 型、field order 型 utility、`HASHABLE_*` 定数を `hash/hashable-state.ts` へ移し、hash module から `core.ts` への import をなくす
+   - Next: shooting-core source の runtime import cycle を検出する module graph test を追加する
+2. Phase 1C-R2: leaf module 抽出
+   - Queued: Phase 1C-R2: `internal/guards.ts`、3箇所の test hook 有効化 guard を message を保ったまま統合する `internal/test-hooks-guard.ts`、`input/parse-input-frame.ts`、`session/start-stage-options.ts`、`serialization/metadata.ts` を抽出し、同一実装の `isPlainObjectContainer` を1つにする
+3. Phase 1C-R3: state model 層
+   - Queued: Phase 1C-R3: `api-types.ts`、`session/committed-state.ts`、`content/content-index.ts`、`serialization/serialize-state.ts`、`hash/hashable-projection.ts`、`internal/stage-session-testing-hooks.ts`、headless debug serializer を抽出する
+4. Phase 1C-R4: restore validation 分割
+   - Queued: Phase 1C-R4: restore validation を `serialization/restore/` へ移し、`LoadedGame.restore()` 内の検証手順を orchestration 関数として抽出する
+5. Phase 1C-R5: session 分割
+   - Queued: Phase 1C-R5a: `createStageSession` と `createLoadedGame` を `session/` へ移し、`core.ts` を facade にする
+   - Queued: Phase 1C-R5b: tick 内 system step を `session/tick-pipeline.ts` の関数へ抽出する。移動ではなく構造変更なので別 commit とし、system order と golden の不変を確認する
+6. Phase 1C-R6: core test 分割
+   - Queued: Phase 1C-R6: `core.test.ts` を content load / runtime input / player tick / enemy・timeline tick / transactional tick / serialize / hashable state / restore shape・payload・entity・roundtrip / testing hook / facade smoke の test file へ分ける。582行の restore payload test は複数 test に分ける
+   - Queued: Phase 1C-R6: assert を使う共通 helper と definition / input factory は `src/basic/test-support/` に置き、root `tsconfig.json` から除外、`tsconfig.test.json` に追加し、package boundary test でも test code として扱う。hook を使う test file はそれぞれ `SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS` を設定し、`after` で復元する
+7. Phase 1C-R7: public type contract 分割
+   - Queued: Phase 1C-R7: `tests/public-type-contract.ts` を `tests/public-type-contract/` の root export exclusion / replay metadata / content definition / core API / serialized state / view state・event へ分け、`IsExactly` / `AssertTrue` を `tests/support/type-assertions.ts` に置いて validate-content 側と共有する。deep import の `@ts-expect-error` は移動後の module path へ更新する
+8. Phase 1C-R8: 二次対象
+   - Queued: Phase 1C-R8: `content/validation.ts` を facade と `content/validation/` の shape / references / schema-path / fields へ分ける
+   - Queued: Phase 1C-R8: validate-content の `content-loader.ts` から source index と Node filesystem adapter、重複した diagnostic 生成を `diagnostic-factory.ts` へ抽出し、`output.test.ts` を result・normalize・order と formatter に分ける
+   - Later: `canonical-encoder.ts`、`runtime-entity.ts`、`collision-system.ts`、`restore-json.ts`、`yaml-source.ts` は単一責務のため分割しない
+9. Phase 1C-R9: guardrail と docs
+   - Queued: Phase 1C-R9: module graph test に依存方向ルールを追加し、`AGENTS.md` にファイル規模と依存方向の方針、`docs/design.md` の directory 構成と対応表の path を実装へ合わせる
 
 ## Phase 2A へ進む条件
 
