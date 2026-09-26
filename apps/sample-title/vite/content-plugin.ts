@@ -1,3 +1,4 @@
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -22,16 +23,27 @@ export type GameDefinitionModule =
  * validation error は build を失敗させ、dev server では error overlay に出す。warning / info は Vite の warning にする。
  * browser へ YAML parser と filesystem access を持ち込まないよう、検証済みの plain data だけを module にする。
  * dev server では game-definition と content root の変更で module を無効化し、page を再読み込みして stage を最初から始める。
+ * build では同じ file を watch 対象に登録し、`vite build --watch` が content の変更で再 build するようにする。
  */
 export function sampleTitleContentPlugin(paths: ValidateContentSourcePaths): Plugin {
+  let isBuild = false;
   return {
     name: "sample-title-content",
+    configResolved(config) {
+      isBuild = config.command === "build";
+    },
     resolveId(id) {
       return id === GAME_DEFINITION_MODULE_ID ? RESOLVED_GAME_DEFINITION_MODULE_ID : null;
     },
     async load(id) {
       if (id !== RESOLVED_GAME_DEFINITION_MODULE_ID) {
         return null;
+      }
+      if (isBuild) {
+        // validation error で build が止まっても、content を直したときに watch mode が再 build できるよう先に登録する。
+        for (const file of await listContentSourcePaths(paths)) {
+          this.addWatchFile(file);
+        }
       }
       const module = await createGameDefinitionModule(paths);
       if (!module.ok) {
@@ -76,7 +88,27 @@ export function isContentSourceFile(paths: ValidateContentSourcePaths, file: str
     return true;
   }
   const relative = path.relative(paths.contentRoot, file);
-  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+  // `..notes.yaml` のように `..` で始まる名前は content root の中なので、親 directory を指す `..` の segment だけを外と判定する。
+  return relative !== ""
+    && relative !== ".."
+    && !relative.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(relative);
+}
+
+/**
+ * build の watch mode に登録する path を返す。game-definition file、content root、その配下の全 file と directory を含む。
+ *
+ * content root を読めない場合は game-definition file だけを返し、読めない理由は validation の diagnostic に任せる。
+ */
+export async function listContentSourcePaths(paths: ValidateContentSourcePaths): Promise<readonly string[]> {
+  let contentPaths: string[];
+  try {
+    const entries = await readdir(paths.contentRoot, { recursive: true, withFileTypes: true });
+    contentPaths = [paths.contentRoot, ...entries.map((entry) => path.join(entry.parentPath, entry.name))];
+  } catch {
+    contentPaths = [];
+  }
+  return Object.freeze([paths.gameDefinitionPath, ...contentPaths.sort()]);
 }
 
 function reloadGameDefinitionModule(server: ViteDevServer): void {

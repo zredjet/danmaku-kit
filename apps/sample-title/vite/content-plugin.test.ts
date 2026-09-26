@@ -6,11 +6,13 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { createShootingCore, type GameDefinition } from "@shooting-sample/shooting-core";
+import { loadValidatedGameDefinition } from "@shooting-sample/validate-content";
 
 import {
   GAME_DEFINITION_MODULE_ID,
   createGameDefinitionModule,
   isContentSourceFile,
+  listContentSourcePaths,
   sampleTitleContentPlugin,
 } from "./content-plugin.ts";
 
@@ -29,11 +31,13 @@ test("resolves only the game definition virtual module id", () => {
   assert.equal(resolveId("./game-definition.ts"), null);
 });
 
-test("builds a module that default-exports the sample title definition Core loads", async () => {
+test("builds a module that default-exports the validated sample title definition", async () => {
   const module = await createGameDefinitionModule(sampleTitlePaths);
+  const expected = await loadValidatedGameDefinition(sampleTitlePaths);
 
   assert.equal(module.ok, true);
-  if (!module.ok) {
+  assert.equal(expected.ok, true);
+  if (!module.ok || !expected.ok) {
     return;
   }
   assert.equal(module.warning, null);
@@ -41,8 +45,28 @@ test("builds a module that default-exports the sample title definition Core load
   assert.equal(module.code.startsWith(prefix), true);
   assert.equal(module.code.endsWith(";\n"), true);
   const definition = JSON.parse(module.code.slice(prefix.length, -";\n".length)) as GameDefinition;
-  assert.equal(definition.content.version, "sample-title@content.2");
+  assert.deepEqual(definition, expected.definition);
   assert.equal(createShootingCore().load(definition).ok, true);
+});
+
+test("lists the game definition, the content root and everything under it for build watch mode", async (context) => {
+  const root = await mkdtemp(path.join(tmpdir(), "sample-title-content-watch-"));
+  context.after(async () => rm(root, { recursive: true, force: true }));
+  const contentRoot = path.join(root, "content");
+  const gameDefinitionPath = path.join(root, "game-definition.yaml");
+  await mkdir(path.join(contentRoot, "stages"), { recursive: true });
+  await writeFile(path.join(contentRoot, "stages", "stage_01.yaml"), "id: stage.stage_01\n", "utf8");
+
+  assert.deepEqual(await listContentSourcePaths({ gameDefinitionPath, contentRoot }), [
+    gameDefinitionPath,
+    contentRoot,
+    path.join(contentRoot, "stages"),
+    path.join(contentRoot, "stages", "stage_01.yaml"),
+  ]);
+  assert.deepEqual(
+    await listContentSourcePaths({ gameDefinitionPath, contentRoot: path.join(root, "missing") }),
+    [gameDefinitionPath],
+  );
 });
 
 test("reports content that fails validation as a human diagnostic error", async (context) => {
@@ -77,7 +101,9 @@ test("treats the game definition file and files under the content root as conten
     [path.join(sampleTitlePaths.contentRoot, "assets/manifest.yaml"), true],
     [sampleTitlePaths.contentRoot, false],
     [path.join(sampleTitleRoot, "config/other.yaml"), false],
+    [path.join(sampleTitlePaths.contentRoot, "..notes.yaml"), true],
     [path.join(sampleTitleRoot, "content-backup/stages/stage_01.yaml"), false],
+    [sampleTitleRoot, false],
     [path.join(sampleTitleRoot, "src/main.ts"), false],
   ];
 
