@@ -20,6 +20,7 @@ import type { CoreResult } from "../result.ts";
 import type { StageSessionSerializationMetadata } from "../serialization/metadata.ts";
 import { assertNever } from "../shared/guards.ts";
 import { deepFreezeClone } from "../shared/immutable.ts";
+import { compareUtf8Lexicographic } from "../shared/utf8-order.ts";
 import { XorShift32 } from "../simulation/prng.ts";
 import { validateCommittedEntityInvariants, validateCommittedPendingEventInvariants } from "./committed-state.ts";
 import type { CommittedPendingEvent, CommittedStageState } from "./committed-state.ts";
@@ -54,7 +55,9 @@ export function createHashableGameState(
     score: committedState.score,
     runtimeEntities: committedState.activeEntities.map((entity) => projectRuntimeEntityForHashableState(entity)),
     pendingEvents: pendingEvents.value.map((event) => projectPendingEventForHashableState(event)),
-    patternRunnerStates: committedState.patternRunners.map((runner) => projectPatternRunnerForHashableState(runner)),
+    patternRunnerStates: committedState.patternRunners
+      .map((runner) => projectPatternRunnerForHashableState(runner))
+      .sort((left, right) => compareUtf8Lexicographic(left.runnerId, right.runnerId)),
     enabledFeatureStates: [],
   }));
 }
@@ -73,7 +76,7 @@ function projectRuntimeEntityForHashableState(entity: RuntimeEntityState): Hasha
   }
 }
 
-/** enemy の pattern runner から hash 専用 DTO へ写す。canonical order への並べ替えは hash adapter が行う。 */
+/** enemy の pattern runner から hash 専用 DTO へ写す。 */
 function projectPatternRunnerForHashableState(runner: EnemyPatternRunner): HashablePatternRunnerState {
   return {
     runnerId: patternRunnerIdOfEnemy(runner.enemyId),

@@ -210,6 +210,29 @@ test("fixes pattern runner and pattern bullet state-hash digest goldens", () => 
   );
 });
 
+test("lists pattern runner states in the same UTF-8 runnerId order as the serialized snapshot", () => {
+  const states: HashableGameState[] = [];
+  const loaded = createShootingCoreWithTestingHooksForTest("core.test", {
+    recordHashableStateOnSerialize: (state) => states.push(state),
+  }).load(createEnemyPatternDefinition());
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) {
+    assert.fail("expected loaded game");
+  }
+  const session = startStageFromLoadedGame(loaded.value);
+  for (let tick = 0; tick < 6; tick += 1) {
+    assertTickOk(session.tick(createEmptyInputFrame(tick)), `pattern tick ${tick}`);
+  }
+  const { snapshot } = serializeAndCaptureStateHash(session, states, "pattern runner order");
+
+  assert.deepEqual(states[0]!.patternRunnerStates.map((runner) => runner.runnerId), [
+    "patternRunner.enemy.12",
+    "patternRunner.enemy.2",
+    "patternRunner.enemy.3",
+  ]);
+  assert.deepEqual(states[0]!.patternRunnerStates, snapshot.state.patternRunnerStates);
+});
+
 test("keeps state-hash digests equal after restore across later ticks", () => {
   const states: HashableGameState[] = [];
   const loaded = createShootingCoreWithTestingHooksForTest("core.test", {
