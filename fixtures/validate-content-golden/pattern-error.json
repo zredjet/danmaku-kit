@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1",
+  "contentRoot": "<content-root>",
+  "ok": false,
+  "diagnostics": [
+    {
+      "kind": "schema",
+      "code": "definition.invalidShape",
+      "severity": "error",
+      "message": "pattern.steps[].fire.fan.spreadDeg must be a multiple of 0.25",
+      "path": "<content-root>/patterns/scout_three_way.yaml",
+      "line": 11,
+      "column": 20,
+      "endLine": 11,
+      "endColumn": 24,
+      "schemaPath": "content.patterns[1].steps[1].fire.fan.spreadDeg",
+      "sourceId": "pattern.scout_three_way"
+    }
+  ],
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "infos": 0
+  }
+}
