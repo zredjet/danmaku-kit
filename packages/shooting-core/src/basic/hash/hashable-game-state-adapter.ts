@@ -86,6 +86,14 @@ function adaptPlayerMovement(value: HashablePlayerMovement): CanonicalFixedStruc
   );
 }
 
+/**
+ * runtime entity の field として canonical encode してよい値。
+ *
+ * position / velocity / movement のような nested struct は fixedStruct へ変換してから渡す。変換し忘れた object や
+ * array は canonical object として別の byte 列になるため、型エラーにする。
+ */
+type CanonicalEntityFieldValue = null | boolean | number | string | CanonicalFixedStruct;
+
 function adaptRuntimeEntity(value: HashableRuntimeEntityState): CanonicalFixedStruct {
   switch (value.kind) {
     case "player": {
@@ -93,7 +101,7 @@ function adaptRuntimeEntity(value: HashableRuntimeEntityState): CanonicalFixedSt
         ...value,
         position: adaptVector2(value.position),
         movement: adaptPlayerMovement(value.movement),
-      } satisfies Record<keyof typeof value, CanonicalValue>;
+      } satisfies Record<keyof typeof value, CanonicalEntityFieldValue>;
       return fixedStructFromFieldOrder(
         HASHABLE_FIXED_STRUCT_NAME_BY_DTO.playerRuntimeEntity,
         HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND.player,
@@ -104,7 +112,7 @@ function adaptRuntimeEntity(value: HashableRuntimeEntityState): CanonicalFixedSt
       const canonicalEntity = {
         ...value,
         position: adaptVector2(value.position),
-      } satisfies Record<keyof typeof value, CanonicalValue>;
+      } satisfies Record<keyof typeof value, CanonicalEntityFieldValue>;
       return fixedStructFromFieldOrder(
         HASHABLE_FIXED_STRUCT_NAME_BY_DTO.enemyRuntimeEntity,
         HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND.enemy,
@@ -115,7 +123,7 @@ function adaptRuntimeEntity(value: HashableRuntimeEntityState): CanonicalFixedSt
       const canonicalEntity = {
         ...value,
         position: adaptVector2(value.position),
-      } satisfies Record<keyof typeof value, CanonicalValue>;
+      } satisfies Record<keyof typeof value, CanonicalEntityFieldValue>;
       return fixedStructFromFieldOrder(
         HASHABLE_FIXED_STRUCT_NAME_BY_DTO.enemyBulletRuntimeEntity,
         HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND.enemyBullet,
@@ -127,7 +135,7 @@ function adaptRuntimeEntity(value: HashableRuntimeEntityState): CanonicalFixedSt
         ...value,
         position: adaptVector2(value.position),
         velocity: adaptVector2(value.velocity),
-      } satisfies Record<keyof typeof value, CanonicalValue>;
+      } satisfies Record<keyof typeof value, CanonicalEntityFieldValue>;
       return fixedStructFromFieldOrder(
         HASHABLE_FIXED_STRUCT_NAME_BY_DTO.playerShotRuntimeEntity,
         HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND.playerShot,

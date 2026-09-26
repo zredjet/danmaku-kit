@@ -102,6 +102,18 @@ import { HASHABLE_PATTERN_RUNNER_STATE_FIELD_ORDER } from "@shooting-sample/shoo
 // @ts-expect-error 内部 hash feature state order table は root public contract に含めない。
 import { HASHABLE_ENABLED_FEATURE_STATE_FIELD_ORDER } from "@shooting-sample/shooting-core";
 
+// @ts-expect-error 内部 hash player runtime entity field order は root public contract に含めない。
+import { HASHABLE_PLAYER_RUNTIME_ENTITY_FIELD_ORDER } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash enemy runtime entity field order は root public contract に含めない。
+import { HASHABLE_ENEMY_RUNTIME_ENTITY_FIELD_ORDER } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash enemy bullet runtime entity field order は root public contract に含めない。
+import { HASHABLE_ENEMY_BULLET_RUNTIME_ENTITY_FIELD_ORDER } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error 内部 hash player shot runtime entity field order は root public contract に含めない。
+import { HASHABLE_PLAYER_SHOT_RUNTIME_ENTITY_FIELD_ORDER } from "@shooting-sample/shooting-core";
+
 // @ts-expect-error 内部 PRNG snapshot は root public contract に含めない。
 import type { SerializedPrngState } from "@shooting-sample/shooting-core";
 
@@ -116,6 +128,24 @@ import { isKnownDifficulty } from "@shooting-sample/shooting-core";
 
 // @ts-expect-error serialized runner id helper は root public contract に含めない。
 import type { SerializedPatternRunnerId } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error serialized runtime entity の共通部分は root public contract に含めない。
+import type { SerializedRuntimeEntityBase } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error serialized vector2 helper は root public contract に含めない。
+import type { SerializedVector2 } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error kind 別 serialized DTO は union だけを root public contract に含める。
+import type { SerializedPlayerRuntimeEntityState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error kind 別 serialized DTO は union だけを root public contract に含める。
+import type { SerializedEnemyRuntimeEntityState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error kind 別 serialized DTO は union だけを root public contract に含める。
+import type { SerializedEnemyBulletRuntimeEntityState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error kind 別 serialized DTO は union だけを root public contract に含める。
+import type { SerializedPlayerShotRuntimeEntityState } from "@shooting-sample/shooting-core";
 
 // @ts-expect-error test-only hook factory is not part of the root public contract.
 import { createShootingCoreWithTestingHooksForTest } from "@shooting-sample/shooting-core";
@@ -152,6 +182,12 @@ import type { EnemyBulletRuntimeEntity } from "@shooting-sample/shooting-core";
 
 // @ts-expect-error internal runtime state is not part of the root public contract.
 import type { RuntimeEntityState } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error internal runtime entity kind list is not part of the root public contract.
+import { RUNTIME_ENTITY_KINDS } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error internal runtime entity kind union is not part of the root public contract.
+import type { RuntimeEntityKind } from "@shooting-sample/shooting-core";
 
 // @ts-expect-error internal player shot system result is not part of the root public contract.
 import type { PlayerShotSpawnResult } from "@shooting-sample/shooting-core";
@@ -249,8 +285,20 @@ void HASHABLE_RUNTIME_ENTITY_FIELD_ORDER_BY_KIND;
 void HASHABLE_PENDING_EVENT_FIELD_ORDER;
 void HASHABLE_PATTERN_RUNNER_STATE_FIELD_ORDER;
 void HASHABLE_ENABLED_FEATURE_STATE_FIELD_ORDER;
+void HASHABLE_PLAYER_RUNTIME_ENTITY_FIELD_ORDER;
+void HASHABLE_ENEMY_RUNTIME_ENTITY_FIELD_ORDER;
+void HASHABLE_ENEMY_BULLET_RUNTIME_ENTITY_FIELD_ORDER;
+void HASHABLE_PLAYER_SHOT_RUNTIME_ENTITY_FIELD_ORDER;
 void (undefined as unknown as SerializedPrngState);
 void (undefined as unknown as SerializedPatternRunnerId);
+void (undefined as unknown as SerializedRuntimeEntityBase);
+void (undefined as unknown as SerializedVector2);
+void (undefined as unknown as SerializedPlayerRuntimeEntityState);
+void (undefined as unknown as SerializedEnemyRuntimeEntityState);
+void (undefined as unknown as SerializedEnemyBulletRuntimeEntityState);
+void (undefined as unknown as SerializedPlayerShotRuntimeEntityState);
+void RUNTIME_ENTITY_KINDS;
+void (undefined as unknown as RuntimeEntityKind);
 void (undefined as unknown as ReplayPlayback);
 void (undefined as unknown as RuntimeDroppedTicks);
 void (undefined as unknown as EnemyRuntimeEntity);
