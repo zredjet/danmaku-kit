@@ -166,6 +166,30 @@ const invalidFireOnSpawnPatternOffsetY: PatternDefinition = {
   },
 };
 const pathDefinition: PathDefinition = definition.content.paths[0]!;
+const velocityPathDefinition: PathDefinition = {
+  id: "path.down",
+  version: 1,
+  segments: [
+    { type: "velocity", duration: 60, velocity: { x: 0, y: 2 } },
+    { type: "velocity", duration: 30, velocity: { x: 1.5, y: 0 } },
+  ],
+};
+const invalidPathSegmentType: PathDefinition = {
+  id: "path.sine",
+  version: 1,
+  segments: [
+    // @ts-expect-error path segments support only velocity segments.
+    { type: "sine", duration: 60, velocity: { x: 0, y: 2 } },
+  ],
+};
+const invalidPathSegmentDuration: PathDefinition = {
+  id: "path.down",
+  version: 1,
+  segments: [
+    // @ts-expect-error path segment duration must be numeric.
+    { type: "velocity", duration: "60", velocity: { x: 0, y: 2 } },
+  ],
+};
 const contentRegistry: ContentRegistry = definition.content;
 
 void difficulty;
@@ -193,4 +217,7 @@ void invalidFireOnSpawnPatternWithoutOffset;
 void invalidFireOnSpawnPatternOffsetX;
 void invalidFireOnSpawnPatternOffsetY;
 void pathDefinition;
+void velocityPathDefinition;
+void invalidPathSegmentType;
+void invalidPathSegmentDuration;
 void contentRegistry;

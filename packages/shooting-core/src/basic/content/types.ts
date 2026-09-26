@@ -163,10 +163,27 @@ export type PatternDefinition = {
   };
 };
 
-/** enemy spawn 時に使う path の参照先。path 本体は後続スライスで追加する。 */
+/**
+ * enemy の移動 path。
+ *
+ * `segments` を先頭から順に実行し、各 segment は `duration` tick の間 `velocity` で等速移動する。segment 内の位置は
+ * segment 開始位置 `p0` と経過 tick `t` から `p0 + velocity * t` として求める。`segments` を省略するか空にした path は
+ * 動かない。sine offset など等速以外の segment は後続スライスで追加する。
+ */
 export type PathDefinition = {
   id: PathId;
   version: number;
+  segments?: readonly PathSegmentDefinition[];
+};
+
+/** path の 1 区間。 */
+export type PathSegmentDefinition = {
+  type: "velocity";
+  duration: number;
+  velocity: {
+    x: number;
+    y: number;
+  };
 };
 
 /**

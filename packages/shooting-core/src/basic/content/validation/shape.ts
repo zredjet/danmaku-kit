@@ -24,6 +24,7 @@ import {
   validatePositiveIntegerAtMost,
   validatePositiveNumber,
 } from "./fields.ts";
+import { validatePathShape } from "./path-shape.ts";
 import { addSchemaContext, validateContentItem } from "./schema-path.ts";
 
 const SUPPORTED_SCHEMA_VERSION = "1";
@@ -178,11 +179,7 @@ export function validateDefinitionShape(definition: unknown, errors: CoreError[]
   ));
   paths.items.forEach(({ record: path, index }) => validateContentItem(
     `content.paths[${index}]`, "path", path, errors,
-    () => {
-      validateAllowedKeys("path", path, ["id", "version"], errors);
-      validateNonEmptyString("path.id", path.id, errors);
-      validatePositiveInteger("path.version", path.version, errors);
-    },
+    () => validatePathShape(path, errors),
   ));
 
   if (errors.length > shapeErrorCount) {
