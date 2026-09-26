@@ -22,14 +22,15 @@ export type CollisionGridCollider = Readonly<{
  * 中心から広げた範囲の cell を、浮動小数点の丸めで境界をまたいでも取りこぼさないよう前後 1 cell ずつ広げて調べる。
  */
 export class CollisionGrid<T extends CollisionGridCollider> {
-  readonly #cells: T[][] = Array.from({ length: COLUMNS * ROWS }, () => []);
+  /** collider のある cell だけ配列を持つ。 */
+  readonly #cells: (T[] | undefined)[] = new Array<T[] | undefined>(COLUMNS * ROWS);
   readonly #maxRadius: number;
   readonly #size: number;
 
   constructor(colliders: readonly T[]) {
     let maxRadius = 0;
     for (const collider of colliders) {
-      this.#cells[cellIndex(columnOf(collider.position.x), rowOf(collider.position.y))]!.push(collider);
+      (this.#cells[cellIndex(columnOf(collider.position.x), rowOf(collider.position.y))] ??= []).push(collider);
       maxRadius = Math.max(maxRadius, collider.collisionRadius);
     }
     this.#maxRadius = maxRadius;
@@ -49,7 +50,10 @@ export class CollisionGrid<T extends CollisionGridCollider> {
     const candidates: T[] = [];
     for (let row = firstRow; row <= lastRow; row += 1) {
       for (let column = firstColumn; column <= lastColumn; column += 1) {
-        candidates.push(...this.#cells[cellIndex(column, row)]!);
+        const cell = this.#cells[cellIndex(column, row)];
+        if (cell) {
+          candidates.push(...cell);
+        }
       }
     }
     return candidates.sort((left, right) => left.id - right.id);

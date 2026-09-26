@@ -16,6 +16,9 @@ export type PatternRunnerState = Readonly<{
   waitRemaining: number;
 }>;
 
+/** spawn した enemy の、まだ命令を実行していない runner state。 */
+export const INITIAL_PATTERN_RUNNER_STATE: PatternRunnerState = Object.freeze({ cursor: 0, waitRemaining: 0 });
+
 /** enemy 1 体が spawn tick から実行する pattern runner。enemy がいなくなった tick の終わりに破棄する。 */
 export type EnemyPatternRunner = Readonly<{
   enemyId: EntityId;
@@ -34,7 +37,7 @@ export function createEnemyPatternRunner(enemyId: EntityId, patternId: PatternId
   return Object.freeze({
     enemyId,
     patternId,
-    state: Object.freeze({ cursor: 0, waitRemaining: 0 }),
+    state: INITIAL_PATTERN_RUNNER_STATE,
   });
 }
 

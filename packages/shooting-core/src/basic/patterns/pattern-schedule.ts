@@ -1,5 +1,5 @@
 import type { PatternProgram, PatternRun } from "./pattern-program.ts";
-import { patternRunnerStateAfterRun } from "./pattern-runner.ts";
+import { INITIAL_PATTERN_RUNNER_STATE, patternRunnerStateAfterRun } from "./pattern-runner.ts";
 import type { PatternRunnerState } from "./pattern-runner.ts";
 
 /** run を実行する経過 tick（spawn tick が 0）と cursor、それより前の run が撃った弾数。 */
@@ -65,7 +65,7 @@ export function countPatternBulletsThrough(schedule: PatternSchedule, elapsedTic
 /** spawn tick から `advancedTicks` tick 進めた runner state を返す。`advancePatternRunner()` を同じ回数呼んだ結果と一致する。 */
 export function patternRunnerStateAt(schedule: PatternSchedule, advancedTicks: number): PatternRunnerState {
   if (advancedTicks === 0) {
-    return Object.freeze({ cursor: 0, waitRemaining: 0 });
+    return INITIAL_PATTERN_RUNNER_STATE;
   }
   const located = locateLatestRun(schedule, advancedTicks - 1);
   const state = patternRunnerStateAfterRun(schedule.program, schedule.program.runs[located.cursor]!);

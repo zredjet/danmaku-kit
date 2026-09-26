@@ -215,8 +215,8 @@ export type PatternFireDefinition = {
  * enemy の移動 path。
  *
  * `segments` を先頭から順に実行し、各 segment は `duration` tick の間 `velocity` で等速移動する。segment 内の位置は
- * segment 開始位置 `p0` と経過 tick `t` から `p0 + velocity * t` として求める。`segments` を省略するか空にした path は
- * 動かない。sine offset など等速以外の segment は後続スライスで追加する。
+ * segment 開始位置 `p0` と経過 tick `t` から `p0 + velocity * t` として求め、`offset` を持つ segment はその sine の変位を足す。
+ * `segments` を省略するか空にした path は動かない。
  */
 export type PathDefinition = {
   id: PathId;

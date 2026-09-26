@@ -283,6 +283,9 @@ function retainRunnersOfActiveEnemies(
   runners: readonly EnemyPatternRunner[],
   entities: readonly RuntimeEntityState[],
 ): readonly EnemyPatternRunner[] {
+  if (runners.length === 0) {
+    return runners;
+  }
   const activeEnemyIds = new Set<number>();
   for (const entity of entities) {
     if (entity.kind === "enemy") {

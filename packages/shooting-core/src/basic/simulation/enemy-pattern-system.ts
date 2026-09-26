@@ -17,6 +17,8 @@ export type EnemyPatternAdvance = Readonly<{
   bullets: readonly EnemyBulletSpawnPlan[];
 }>;
 
+const NO_PATTERN_ADVANCE: EnemyPatternAdvance = Object.freeze({ runners: Object.freeze([]), bullets: Object.freeze([]) });
+
 /**
  * 全 enemy の pattern runner を enemy id 順に 1 tick 進め、撃つ敵弾の生成計画を返す（design 7.1 の update enemy behavior / pattern）。
  *
@@ -30,6 +32,9 @@ export function advanceEnemyPatterns(
   bulletsById: ReadonlyMap<string, BulletDefinition>,
   playerPosition: Vector2,
 ): CoreResult<EnemyPatternAdvance> {
+  if (runners.length === 0) {
+    return okResult(NO_PATTERN_ADVANCE);
+  }
   const enemiesById = new Map<number, EnemyRuntimeEntity>();
   for (const entity of entities) {
     if (entity.kind === "enemy") {

@@ -50,6 +50,18 @@ export type RestorePatternRunnerStateInput = Readonly<{
   state: PatternRunnerState;
 }>;
 
+/** program ごとの時刻表。program は load した content が持つ不変の値なので、同じ program の spawn で共有する。 */
+const schedulesByProgram = new WeakMap<PatternProgram, PatternSchedule>();
+
+function scheduleOf(program: PatternProgram): PatternSchedule {
+  let schedule = schedulesByProgram.get(program);
+  if (!schedule) {
+    schedule = createPatternSchedule(program);
+    schedulesByProgram.set(program, schedule);
+  }
+  return schedule;
+}
+
 /** 処理済み timeline step の spawn から、pattern の発射を求め直す source を作る。 */
 export function createRestorePatternFireSource(
   spawn: Readonly<{ spawnIndex: number; spawnTick: number; spawnPosition: Vector2 }>,
@@ -60,7 +72,7 @@ export function createRestorePatternFireSource(
   return Object.freeze({
     ...spawn,
     segments,
-    schedule: createPatternSchedule(program),
+    schedule: scheduleOf(program),
     lastFireElapsedTicks: Math.min(
       expectedTick - 1 - spawn.spawnTick,
       resolveLastAliveElapsedTicks(spawn.spawnPosition, segments),
