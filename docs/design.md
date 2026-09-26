@@ -784,7 +784,7 @@ Affinity feature を有効にする Player は、`initialAffinity` と `availabl
 
 - 角度は画面座標系で +x を 0°、+y（下）へ回る向きを正とし、1 周を 1,440 step（0.25°）に分ける。content の `angleDeg` / `spreadDeg` のような角度は 0.25° の倍数だけを受け付け、`angleStepsFromDegrees()` で整数 step に変換する（4 倍は 2 の冪の乗算なので丸めを伴わない）。
 - tick 中の sine / cosine は `simulation/sine-table.ts` の表だけから引き、host の `Math.sin` / `Math.cos` / `Math.atan2` を使わない。表は `packages/shooting-core/scripts/generate-sine-table.mjs`（`npm run generate-sine-table`）が 0〜90° の 361 entry を `round(sin(step * π / 720) * 2^30)` の整数として生成し、生成した整数 literal を正本として commit する。host の `Math.sin` は生成時にだけ使い、丸めは生成時の `Math.round` だけとする。tick は表を補間せずに引き、90° より先は対称性で広げる（sin 0° / 30° / 90° は 0 / 1/2 / 1 に一致し、180° は -0 にしない）。表の golden entry と checksum、対称性は test で固定する。
-- `aim: player` の向きは差分 vector を `Math.sqrt(dx * dx + dy * dy)` で割って正規化する。ECMAScript は `Math.sqrt` を正確な平方根の丸め（𝔽）と定めているが、`Math.hypot` と三角関数・指数関数は implementation-approximated なので使わない。目標と同じ位置からは真下を向く。fan は基準の向きを表の cos / sin で回転して作る。
+- `aim: player` の向きは、発射元から自機への差分 vector に最も近い角度 step へそろえる（`angleStepsOfVector()`）。`Math.atan2` は使わず、0〜90° の表の方向との外積の符号で二分探索し、隣り合う 2 step のうち内積が大きい方を選ぶ（四則演算と比較だけ）。差分が零なら真下を向く。狙いも固定角度も整数 step で表すので、敵弾の速度は常に表の `(cos, sin) * speed` になり、各成分は `speed` を超えない。fan は基準 step に各弾の step 差を足して作る。ECMAScript は `Math.sqrt` を正確な平方根の丸め（𝔽）と定めているので Core で使ってよいが、`Math.hypot` と三角関数・指数関数は implementation-approximated なので使わない。
 - `tests/deterministic-math.test.mjs` が Core の非 test source に implementation-approximated な `Math` function と `**` 演算子（`Number::exponentiate` も implementation-approximated）が現れないことを検査する。
 
 斑鳩系の属性切替を入れる場合は、弾と敵に `affinity` を持たせる。

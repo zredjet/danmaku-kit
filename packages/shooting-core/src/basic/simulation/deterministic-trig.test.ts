@@ -3,9 +3,8 @@ import test from "node:test";
 
 import { ANGLE_STEPS_PER_TURN, angleStepsFromDegrees } from "../shared/angle-steps.ts";
 import {
+  angleStepsOfVector,
   cosOfAngleSteps,
-  directionToward,
-  rotateByAngleSteps,
   sinOfAngleSteps,
   unitVectorAtAngleSteps,
 } from "./deterministic-trig.ts";
@@ -54,22 +53,64 @@ test("converts only quarter-degree multiples to angle steps", () => {
   assert.deepEqual([0.1, 0.3, 12.125, Number.NaN, Number.POSITIVE_INFINITY].map(angleStepsFromDegrees), [null, null, null, null, null]);
 });
 
-test("builds and rotates direction vectors from the table", () => {
+test("builds unit vectors from the table", () => {
   assert.deepEqual(unitVectorAtAngleSteps(360), { x: 0, y: 1 });
   assert.deepEqual(unitVectorAtAngleSteps(0), { x: 1, y: 0 });
-  assert.deepEqual(rotateByAngleSteps({ x: 0, y: 1 }, 360), { x: -1, y: 0 });
-  const rotated = rotateByAngleSteps({ x: 0, y: 2 }, 48);
-  assert.deepEqual(rotated, {
-    x: 0 * cosOfAngleSteps(48) - 2 * sinOfAngleSteps(48),
-    y: 0 * sinOfAngleSteps(48) + 2 * cosOfAngleSteps(48),
-  });
-  assert.equal(Object.isFrozen(rotated), true);
+  assert.deepEqual(unitVectorAtAngleSteps(-360), { x: 0, y: -1 });
+  assert.deepEqual(unitVectorAtAngleSteps(48), { x: cosOfAngleSteps(48), y: sinOfAngleSteps(48) });
+  assert.equal(Object.isFrozen(unitVectorAtAngleSteps(48)), true);
 });
 
-test("aims with a correctly rounded square root and points down when the target overlaps", () => {
-  assert.deepEqual(directionToward({ x: 192, y: 100 }, { x: 192, y: 400 }), { x: 0, y: 1 });
-  assert.deepEqual(directionToward({ x: 0, y: 0 }, { x: 3, y: -4 }), { x: 0.6, y: -0.8 });
-  const diagonal = directionToward({ x: 10, y: 10 }, { x: 20, y: 20 });
-  assert.deepEqual(diagonal, { x: 10 / Math.sqrt(200), y: 10 / Math.sqrt(200) });
-  assert.deepEqual(directionToward({ x: 5, y: 5 }, { x: 5, y: 5 }), { x: 0, y: 1 });
+test("quantizes a vector to the nearest angle step and points down for the zero vector", () => {
+  assert.deepEqual(
+    [
+      { x: 1, y: 0 },
+      { x: 0, y: 1 },
+      { x: -1, y: 0 },
+      { x: 0, y: -1 },
+      { x: 3, y: 3 },
+      { x: -3, y: 3 },
+      { x: -3, y: -3 },
+      { x: 3, y: -3 },
+      { x: 0, y: 0 },
+      { x: -0, y: -0 },
+      { x: 1e300, y: -1e-300 },
+    ].map(angleStepsOfVector),
+    [0, 360, 720, 1080, 180, 540, 900, 1260, 360, 360, 0],
+  );
+  assert.throws(() => angleStepsOfVector({ x: Number.POSITIVE_INFINITY, y: 0 }), RangeError);
+  assert.throws(() => angleStepsOfVector({ x: 0, y: Number.NaN }), RangeError);
+});
+
+test("maps every table direction scaled by a bullet speed back to its own step", () => {
+  for (const speed of [0.001, 1, 2.4, 3, 7.75, 8]) {
+    for (let step = 0; step < ANGLE_STEPS_PER_TURN; step += 1) {
+      const direction = unitVectorAtAngleSteps(step);
+      assert.equal(
+        angleStepsOfVector({ x: direction.x * speed, y: direction.y * speed }),
+        step,
+        `speed ${speed} step ${step}`,
+      );
+    }
+  }
+});
+
+test("agrees with the host atan2 on the nearest step away from half-step boundaries", () => {
+  // tick は atan2 を使わない。量子化の妥当性だけを host の Math.atan2 と比べて確かめる。
+  let checked = 0;
+  for (let x = -40; x <= 40; x += 3) {
+    for (let y = -40; y <= 40; y += 7) {
+      if (x === 0 && y === 0) {
+        continue;
+      }
+      const exact = ((Math.atan2(y, x) * 720) / Math.PI + ANGLE_STEPS_PER_TURN) % ANGLE_STEPS_PER_TURN;
+      const fraction = exact - Math.floor(exact);
+      if (Math.abs(fraction - 0.5) < 1e-6) {
+        continue;
+      }
+      assert.equal(angleStepsOfVector({ x, y }), Math.round(exact) % ANGLE_STEPS_PER_TURN, `(${x}, ${y})`);
+      checked += 1;
+    }
+  }
+  assert.ok(checked > 300);
 });
