@@ -362,6 +362,72 @@ test("latches invalid committed pending event snapshots", () => {
   assert.match(!staleFatal.ok ? staleFatal.errors[0]?.message ?? "" : "", /unsupported pending event in committed state/);
 });
 
+test("applies committed pending event overrides only to the working state", () => {
+  const fatalCommittedStates: unknown[] = [];
+  const started = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+    overrideCommittedPendingEventsTicks: [{ tick: 0, pendingEvents: [] }],
+    recordCommittedStateOnFatal: (state) => fatalCommittedStates.push(state),
+  }), createMinimumDefinition());
+
+  const fatal = started.tick(createEmptyInputFrame(0));
+  assert.equal(fatal.ok, false);
+  assert.match(!fatal.ok ? fatal.errors[0]?.message ?? "" : "", /unsupported pending event in committed state/);
+  assert.equal(fatalCommittedStates.length, 1);
+  assert.deepEqual((fatalCommittedStates[0] as { pendingEvents: unknown[] }).pendingEvents, [
+    { type: "stageStarted", tick: 0, stageId: "stage.stage_01" },
+  ]);
+});
+
+test("keeps committed state hooks for the tick when input is rejected before the tick runs", () => {
+  const started = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+    overrideCommittedNextEntityIdTicks: [{ tick: 0, nextEntityId: 1 }],
+  }), createMinimumDefinition());
+
+  const mismatch = started.tick(createEmptyInputFrame(1));
+  assert.equal(!mismatch.ok && mismatch.errors[0]?.code, "input.tickMismatch");
+  const malformed = tickUnknown(started, { tick: 0 });
+  assert.equal(!malformed.ok && malformed.errors[0]?.code, "input.invalidShape");
+
+  const fatal = started.tick(createPressedShotInputFrame(0));
+  assert.equal(fatal.ok, false);
+  assert.equal(!fatal.ok && fatal.errors[0]?.code, "stageSession.fatal");
+  assert.match(!fatal.ok ? fatal.errors[0]?.message ?? "" : "", /nextEntityId must be greater/);
+});
+
+test("applies every committed state fault for the same tick before building the working state", () => {
+  const fatalCommittedStates: unknown[] = [];
+  const started = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+    corruptCommittedPrngStateTicks: [0],
+    overrideCommittedNextEntityIdTicks: [{ tick: 0, nextEntityId: 10 }],
+    recordCommittedStateOnFatal: (state) => fatalCommittedStates.push(state),
+  }), createMinimumDefinition());
+
+  const fatal = started.tick(createEmptyInputFrame(0));
+  assert.equal(fatal.ok, false);
+  assert.match(!fatal.ok ? fatal.errors[0]?.message ?? "" : "", /prng\.invalidState/);
+  assert.equal(fatalCommittedStates.length, 1);
+  const fatalCommittedState = fatalCommittedStates[0] as { nextEntityId: number; prngState: { state: number } };
+  assert.equal(fatalCommittedState.nextEntityId, 10);
+  assert.deepEqual(fatalCommittedState.prngState, { state: 0 });
+});
+
+test("keeps a consumed committed nextEntityId override after the tick is rolled back", () => {
+  const started = startStageFromCoreAndDefinition(createShootingCoreWithTestingHooksForTest("0.0.0", {
+    failAfterWorkingMutationTicks: [0],
+    overrideCommittedNextEntityIdTicks: [{ tick: 0, nextEntityId: 10 }],
+  }), createMinimumDefinition());
+
+  const failed = started.tick(createPressedShotInputFrame(0));
+  assert.equal(!failed.ok && failed.errors[0]?.code, "testHook.failure");
+  assert.match(!failed.ok ? failed.errors[0]?.message ?? "" : "", /nextEntityId=11->12/);
+
+  const recovered = started.tick(createPressedShotInputFrame(0));
+  assert.equal(recovered.ok, true);
+  assert.deepEqual(recovered.ok && recovered.value.state.entities.map((entity) => entity.id), [1, 10]);
+  const serialized = started.serialize();
+  assert.equal(serialized.ok && serialized.value.nextEntityId, 11);
+});
+
 function createRollbackCollisionDefinition(): GameDefinition {
   const definition = createMinimumDefinition();
   return {

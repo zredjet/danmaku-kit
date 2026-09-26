@@ -438,7 +438,7 @@ Phase 1C-R で巨大ファイルは責務単位に分割したが、ディレク
    - Done: Phase 1C-S1 review: `CommittedPendingEvent` を独立定義したことで失われた DTO との field 集合一致を、serialize / hash projection の `satisfies Required<CommittedPendingEvent>` と戻り値型で型検査に戻す。`tests/module-graph.test.mjs` に rule の path が実在する module を指すことの検査と、`testing/` を非 test source から import させない rule を追加する。さらに shooting-core / validate-content の非 test source が `*.test.ts` と `test-support/` を型 import も含めて import しないことを検査し、1C-R 節の依存方向と module 表が 1C-R 完了時点の記録であることを明記する
    - Done: Phase 1C-S1: `AGENTS.md` の依存方向に `shared/`、`instrumentation/`、`hash/` の rule を加え、`docs/design.md` の directory 構成、Core module 構成、依存方向の段落と、この文書の対応表を新 path へ更新する。1C-4 で追加した replay trace / divergence artifact も `testing/` の説明へ反映する
 2. Phase 1C-S2: session / tick pipeline の整理
-   - Next: pending event 上書きが working state だけに効くこと、input 拒否 tick で hook を消費しないこと、同一 tick の複数 fault の適用順を test で固定する
+   - Done: Phase 1C-S2: fault injection の移動前に、pending event 上書きが working state だけに効くこと、input 拒否 tick で committed state hook を消費しないこと、同一 tick の PRNG 破壊と `nextEntityId` 上書きがともに committed state へ入ってから working state を作ること、rollback された tick でも消費済み `nextEntityId` 上書きが committed state に残り再適用されないことを test で固定する
    - Next: `tick()` の fault injection を `instrumentation/` の `applyCommittedStateFaultsBeforeTick()` へ本文そのままで移す
    - Next: `loaded-game.ts` の restore / startStage で重複する session context 構築を共通化し、`StageTickContext` を content と instrumentation に分ける
    - Next: timeline spawn を純粋関数の `simulation/stage-timeline-system.ts` へ抽出する。`STAGE_TICK_SYSTEM_ORDER` は design 7.1 の記録として現状のまま残す
