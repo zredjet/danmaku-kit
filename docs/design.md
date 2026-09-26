@@ -149,7 +149,7 @@ packages/shooting-core/src/
       parse-input-frame.ts     public API 境界の InputFrame parse
     events/
       game-event.ts            GameEvent と EventLog
-    simulation/                runtime entity、entity id、PRNG、player / shot / enemy bullet / collision system、system order
+    simulation/                runtime entity、entity id、PRNG、stage timeline / player / shot / enemy bullet / collision system、system order
     session/
       loaded-game.ts           startStage() / restore()
       start-stage-options.ts   StartStageOptions parse

@@ -17,8 +17,9 @@ import { spawnEnemyBulletsOnSpawn } from "../simulation/enemy-bullet-system.ts";
 import { advancePlayerMovement } from "../simulation/player-movement-system.ts";
 import { advancePlayerShotLifecycle } from "../simulation/player-shot-lifecycle-system.ts";
 import { spawnPlayerShotFromInput } from "../simulation/player-shot-system.ts";
-import { createEnemyRuntimeEntity, toReadonlyEntityState } from "../simulation/runtime-entity.ts";
-import type { EnemyRuntimeEntity, PlayerRuntimeEntity, RuntimeEntityState } from "../simulation/runtime-entity.ts";
+import { toReadonlyEntityState } from "../simulation/runtime-entity.ts";
+import type { PlayerRuntimeEntity, RuntimeEntityState } from "../simulation/runtime-entity.ts";
+import { advanceStageTimeline } from "../simulation/stage-timeline-system.ts";
 import { freezeEntitiesInIdOrder } from "../simulation/system-order.ts";
 import { createCommittedStageState } from "../state/committed-state.ts";
 import type { CommittedStageState, WorkingStageState } from "../state/committed-state.ts";
@@ -72,44 +73,28 @@ export function runStageTick(
   content: StageTickContent,
   instrumentation: StageTickInstrumentation,
 ): StageTickOutcome {
-  const spawnedEnemyEntities: EnemyRuntimeEntity[] = [];
-
   // system order の updateStageTimeline。timeline 順に spawn event を生成する。
-  while (
-    working.timelineCursor < content.stage.timeline.length
-    && content.stage.timeline[working.timelineCursor]!.tick === working.expectedTick
-  ) {
-    const step = content.stage.timeline[working.timelineCursor]!;
-    if (step.action.type === "spawnEnemy") {
-      const enemyDefinition = content.enemiesById.get(step.action.enemy);
-      if (!enemyDefinition) {
-        return fatalTickOutcome([{ code: "enemy.notFound", message: `Enemy not found: ${step.action.enemy}` }]);
-      }
-      const entity = createEnemyRuntimeEntity(working.entityAllocator, enemyDefinition, step.action);
-      if (!entity.ok) {
-        return fatalTickOutcome(entity.errors);
-      }
-      working.activeEntities.push(entity.value);
-      spawnedEnemyEntities.push(entity.value);
-      working.eventLog.push({
-        type: "entitySpawned",
-        tick: working.expectedTick,
-        entityId: entity.value.id,
-        entityKind: "enemy",
-        definitionId: step.action.enemy,
-        path: step.action.path,
-        pattern: step.action.pattern,
-        position: step.action.position,
-      });
-    }
-    working.timelineCursor += 1;
+  const timeline = advanceStageTimeline(
+    working.entityAllocator,
+    working.expectedTick,
+    content.stage.timeline,
+    working.timelineCursor,
+    content.enemiesById,
+  );
+  if (!timeline.ok) {
+    return fatalTickOutcome(timeline.errors);
   }
+  working.activeEntities.push(...timeline.value.entities);
+  for (const event of timeline.value.events) {
+    working.eventLog.push(event);
+  }
+  working.timelineCursor = timeline.value.timelineCursor;
 
   // system order の spawnBulletsPlayerShots。enemy pattern の弾生成を player shot より先に確定する。
   const enemyBulletSpawn = spawnEnemyBulletsOnSpawn(
     working.entityAllocator,
     working.expectedTick,
-    spawnedEnemyEntities,
+    timeline.value.entities,
     content.patternsById,
     content.bulletsById,
   );
