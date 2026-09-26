@@ -19,6 +19,7 @@
   ],
   "exclude": [
     "packages/*/src/**/*.test.ts",
+    "packages/*/src/**/test-support/**",
     "tools/*/src/**/*.test.ts"
   ]
 }

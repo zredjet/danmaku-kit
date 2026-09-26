@@ -27,7 +27,7 @@ test("keeps package source free of runtime import cycles", async () => {
  * 空の import として残り得るため、保守的に runtime edge として扱う。
  */
 async function collectRuntimeImportGraph(sourceRoot) {
-  const files = (await collectTypeScriptFiles(sourceRoot)).filter((file) => !file.endsWith(".test.ts"));
+  const files = (await collectTypeScriptFiles(sourceRoot)).filter((file) => !isTestCodeFile(file));
   const graph = new Map();
 
   for (const file of files) {
@@ -108,6 +108,11 @@ function findCycles(graph) {
   }
 
   return components.sort((left, right) => left[0].localeCompare(right[0]));
+}
+
+/** `*.test.ts` と test 専用 helper の `test-support/` は package runtime source から除く。 */
+function isTestCodeFile(file) {
+  return file.endsWith(".test.ts") || file.split(path.sep).includes("test-support");
 }
 
 function toRepositoryPath(file) {

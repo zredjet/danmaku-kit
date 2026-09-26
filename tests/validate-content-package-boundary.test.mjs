@@ -160,7 +160,7 @@ async function assertPackageDependencies(root, allowedDependencies) {
 
 async function assertSourceImports(root, allowedImports, declaredDependencies) {
   const sourceFiles = (await collectTypeScriptFiles(path.join(root, "src")))
-    .filter((file) => !file.endsWith(".test.ts"));
+    .filter((file) => !isTestCodeFile(file));
   const violations = [];
 
   for (const file of sourceFiles) {
@@ -250,6 +250,11 @@ function collectModuleSpecifiers(file, sourceText) {
 
   visit(sourceFile);
   return specifiers;
+}
+
+/** `*.test.ts` と test 専用 helper の `test-support/` は package runtime source から除く。 */
+function isTestCodeFile(file) {
+  return file.endsWith(".test.ts") || file.split(path.sep).includes("test-support");
 }
 
 function isPathInside(root, candidate) {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test, { after } from "node:test";
+import test from "node:test";
 
 import { createShootingCore } from "../core.ts";
 import type { HashableGameState } from "../hash/hashable-state.ts";
@@ -14,24 +14,10 @@ import {
   formatHeadlessDebugStateJsonForTest,
   serializeDebugStateForTest,
 } from "./debug-state.ts";
+import { enableInternalTestHooksForTestFile } from "../test-support/internal-test-hooks.ts";
 import { createMinimumDefinition } from "../../../../../tests/fixtures/minimum-game-definition.ts";
 
-const testEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
-const previousInternalTestHooksFlag = testEnv?.SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS;
-if (testEnv) {
-  testEnv.SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS = "1";
-}
-after(() => {
-  if (!testEnv) {
-    return;
-  }
-  // 同一processで後続testが動いても内部hookを意図せず有効化しないよう元へ戻す。
-  if (previousInternalTestHooksFlag === undefined) {
-    delete testEnv.SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS;
-  } else {
-    testEnv.SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS = previousInternalTestHooksFlag;
-  }
-});
+enableInternalTestHooksForTestFile();
 
 test("serializes immutable headless debug checkpoints without advancing the session", () => {
   const hashableStates: HashableGameState[] = [];
