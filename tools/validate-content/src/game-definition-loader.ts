@@ -35,7 +35,7 @@ export type GameDefinitionLoaderDependencies = Readonly<{
 /**
  * game-definition YAML と content root を読み、CLI と同じ診断で検証して `GameDefinition` を返す。
  *
- * file read failure や予期しない例外は throw せず、exit code 2 の tool error として `runResult` に入れる。
+ * file read failure、JS caller からの不正な引数、予期しない例外は throw せず、exit code 2 の tool error として `runResult` に入れる。
  */
 export function loadValidatedGameDefinition(
   paths: ValidateContentSourcePaths,
@@ -48,25 +48,51 @@ export async function loadValidatedGameDefinitionWith(
   paths: ValidateContentSourcePaths,
   dependencies: GameDefinitionLoaderDependencies,
 ): Promise<LoadValidatedGameDefinitionResult> {
+  const sourcePaths = readSourcePaths(paths);
+  if (!sourcePaths) {
+    return Object.freeze({
+      ok: false,
+      runResult: createToolErrorRunResult(
+        "",
+        "tool.invalidInput",
+        "paths must be an object with string gameDefinitionPath and contentRoot",
+      ),
+    });
+  }
   const fileSystem = dependencies.fileSystem ?? createNodeContentFileSystem();
   const loadSource = dependencies.loadSource ?? loadContentSource;
   try {
-    const loaded = await loadSource(paths.gameDefinitionPath, paths.contentRoot, fileSystem);
+    const loaded = await loadSource(sourcePaths.gameDefinitionPath, sourcePaths.contentRoot, fileSystem);
     const diagnostics = loaded.ok
       ? [...loaded.diagnostics, ...validateContentDefinition(loaded.definition, loaded.sourceIndex)]
       : loaded.diagnostics;
-    const runResult = createValidationRunResult(paths.contentRoot, diagnostics);
+    const runResult = createValidationRunResult(sourcePaths.contentRoot, diagnostics);
     if (loaded.ok && runResult.exitCode === 0) {
       return Object.freeze({ ok: true, definition: loaded.definition as GameDefinition, runResult });
     }
     return Object.freeze({ ok: false, runResult });
   } catch (cause) {
     const runResult = createToolErrorRunResult(
-      paths.contentRoot,
+      sourcePaths.contentRoot,
       isFileSystemError(cause) ? "tool.readFailed" : "tool.unexpected",
       safeErrorMessage(cause),
     );
     return Object.freeze({ ok: false, runResult });
+  }
+}
+
+/** 型の保証がない JS caller の引数から path を一度だけ読み、文字列の組でなければ null を返す。getter の例外も null にする。 */
+function readSourcePaths(value: unknown): ValidateContentSourcePaths | null {
+  try {
+    if (value === null || typeof value !== "object") {
+      return null;
+    }
+    const { gameDefinitionPath, contentRoot } = value as Readonly<Record<string, unknown>>;
+    return typeof gameDefinitionPath === "string" && typeof contentRoot === "string"
+      ? Object.freeze({ gameDefinitionPath, contentRoot })
+      : null;
+  } catch {
+    return null;
   }
 }
 

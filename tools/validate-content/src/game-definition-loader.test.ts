@@ -62,6 +62,29 @@ test("returns validation errors without a definition when content does not pass"
   assert.deepEqual(result.runResult.output.diagnostics.map((diagnostic) => diagnostic.code), ["player.defaultNotFound"]);
 });
 
+test("reports arguments that are not a pair of path strings as a tool error instead of throwing", async () => {
+  const throwingPaths = Object.defineProperty({ contentRoot: "content" }, "gameDefinitionPath", {
+    enumerable: true,
+    get() {
+      throw new Error("getter failure");
+    },
+  });
+  const invalidArguments: unknown[] = [
+    undefined,
+    null,
+    "fixtures/game-definition.minimum.yaml",
+    { gameDefinitionPath: 1, contentRoot: "content" },
+    throwingPaths,
+  ];
+
+  for (const paths of invalidArguments) {
+    const result = await loadValidatedGameDefinition(paths as Parameters<typeof loadValidatedGameDefinition>[0]);
+    assert.equal(result.ok, false);
+    assert.equal(result.runResult.exitCode, 2);
+    assert.deepEqual(result.runResult.output.diagnostics.map((diagnostic) => diagnostic.code), ["tool.invalidInput"]);
+  }
+});
+
 test("reports unreadable sources as a tool error instead of throwing", async () => {
   const result = await loadValidatedGameDefinition({
     ...minimumPaths,

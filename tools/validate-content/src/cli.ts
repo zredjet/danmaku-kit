@@ -58,7 +58,15 @@ export async function runValidateContentCli(
 
   const { options } = parsed;
   const { runResult } = await loadValidatedGameDefinitionWith(options, dependencies);
-  return await writeCliOutput(io, formatResult(runResult, options.format), runResult.exitCode);
+  let text: string;
+  try {
+    text = formatResult(runResult, options.format);
+  } catch (cause) {
+    // formatter の予期しない例外も process を落とさず、exit code 2 の tool error として出力する。
+    const toolError = createToolErrorRunResult(options.contentRoot, "tool.unexpected", safeErrorMessage(cause));
+    return await writeCliOutput(io, formatResult(toolError, options.format), toolError.exitCode);
+  }
+  return await writeCliOutput(io, text, runResult.exitCode);
 }
 
 /** CLI argvを重複・未知optionを拒否する厳密な設定値へ変換する。 */
