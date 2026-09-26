@@ -105,26 +105,6 @@ export function isRestoreJsonStringWithinSingleValueBudget(value: string): boole
   return byteLength.ok && byteLength.value <= MAX_RESTORE_JSON_STRING_BYTES;
 }
 
-/** JSON 文字列として不安定な lone surrogate を restore payload から除外する。 */
-export function containsLoneSurrogate(value: string): boolean {
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    if (code >= 0xd800 && code <= 0xdbff) {
-      const next = value.charCodeAt(index + 1);
-      if (!(next >= 0xdc00 && next <= 0xdfff)) {
-        return true;
-      }
-      index += 1;
-      continue;
-    }
-    if (code >= 0xdc00 && code <= 0xdfff) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 function validateRestoreJsonString(
   value: string,
   fieldName: string,

@@ -432,7 +432,7 @@ Phase 1C-R で巨大ファイルは責務単位に分割したが、ディレク
    - Done: Phase 1C-S1: `CommittedPendingEvent` を `HashablePendingEvent` の alias ではなく `state/committed-state.ts` で明示定義し、committed model から hash DTO への依存をなくす。形が食い違えば `assertNever` を持つ serialize / hash projection が型エラーになる。`hash/` を import してよい module を `state/hashable-projection.ts`、`instrumentation/`、`testing/` に固定する
    - Done: Phase 1C-S1: startStage option、stage content、restore top-level、replay metadata の4箇所で difficulty の error code と message を test で固定してから、`content/types.ts` の `KNOWN_DIFFICULTIES` と型 guard `isKnownDifficulty()` へ列挙を寄せる。各 error message は literal のまま残し、公開型 `Difficulty` は表示名を保つため literal union のまま残し、一覧との一致を型 test で固定する。両者は root export に含めないことを型契約で固定する
    - Done: Phase 1C-S1: validate-content の `output.ts`（537行）を本文そのままで、診断の投影・正規化・順序比較と plain data snapshot（`diagnostic-normalization.ts`、286行）、result 構築と集計（`output.ts`、111行）、JSON / human formatter と `normalizeOutputForFormatting()`（`output-format.ts`、153行）へ分ける。依存は `output-format.ts` → `output.ts` → `diagnostic-normalization.ts` の一方向で、public export と型契約の `src/output.ts` deep import 確認は変えない
-   - Next: 古いコメント、存在しない `StageSessionTestingHooks` を検査している型契約、参照のない `containsLoneSurrogate` を個別 commit で直す
+   - Done: Phase 1C-S1: hash adapter のコメントが指す versioned table を `hash/hashable-state.ts` に直し、`instrumentation/` が export する内部型 `StageSessionTestingHookOptions`、`ActiveStageSessionTestingHooks`、`HeadlessDebugCheckpoint` の root 非公開を型契約へ追加し、参照のない `containsLoneSurrogate` を削除する。それぞれ個別 commit とする
    - Next: `AGENTS.md`、`docs/design.md` の module 構成と依存方向、この文書の対応表を新 path へ更新する
 2. Phase 1C-S2: session / tick pipeline の整理
    - Next: pending event 上書きが working state だけに効くこと、input 拒否 tick で hook を消費しないこと、同一 tick の複数 fault の適用順を test で固定する
