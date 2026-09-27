@@ -8,7 +8,7 @@ import {
   MAX_SPAWNS_PER_TICK,
   MAX_STAGE_TIMELINE_STEPS,
 } from "../runtime-budgets.ts";
-import { FEATURE_CONTENT_COLLECTIONS, FEATURE_ENEMY_FIELDS } from "../feature-fields.ts";
+import { FEATURE_ENEMY_FIELDS } from "../feature-fields.ts";
 import { KNOWN_ENABLED_FEATURES } from "../types.ts";
 import type { EnabledFeature, GameDefinition } from "../types.ts";
 import {
@@ -25,6 +25,7 @@ import {
   validatePositiveIntegerAtMost,
   validatePositiveNumber,
 } from "./fields.ts";
+import { validateFeatureContentShape, validateFeatureFields } from "./feature-gating.ts";
 import { validatePathShape } from "./path-shape.ts";
 import { validatePatternShape } from "./pattern-shape.ts";
 import { addSchemaContext, validateContentItem } from "./schema-path.ts";
@@ -116,15 +117,7 @@ export function validateDefinitionShape(
     errors,
   );
   validateNonEmptyString("content.version", content.version, errors);
-  // feature の collection の値は、feature が有効なら module が、有効でなければ使わないので検証しない。
-  if (content.features !== undefined) {
-    const features = asRecord(content.features);
-    if (!features) {
-      errors.push({ code: "definition.invalidShape", message: "content.features must be an object" });
-    } else {
-      validateAllowedKeys("content.features", features, Object.keys(FEATURE_CONTENT_COLLECTIONS), errors);
-    }
-  }
+  validateFeatureContentShape(content.features, errors);
   const listedFeatures = new Set<unknown>(Array.isArray(root.enabledFeatures) ? root.enabledFeatures : []);
 
   const assetKeys = asRecord(content.assetKeys);
@@ -200,29 +193,6 @@ export function validateDefinitionShape(
     return null;
   }
   return definition as GameDefinition;
-}
-
-/**
- * basic の definition に feature が足す field を gating する。feature が `enabledFeatures` にあれば値の検証を feature の module に任せ、
- * なければ `feature.disabled` にする。
- */
-function validateFeatureFields(
-  path: string,
-  definition: Record<string, unknown>,
-  fields: Readonly<Record<string, EnabledFeature>>,
-  listedFeatures: ReadonlySet<unknown>,
-  errors: CoreError[],
-): void {
-  for (const [field, feature] of Object.entries(fields)) {
-    if (definition[field] !== undefined && !listedFeatures.has(feature)) {
-      errors.push({
-        code: "feature.disabled",
-        message: `${path}.${field} requires the ${feature} feature in enabledFeatures`,
-        schemaPath: `${path}.${field}`,
-        targetId: feature,
-      });
-    }
-  }
 }
 
 /** radius だけを持つ最小 collision 定義を検証する。 */

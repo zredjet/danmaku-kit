@@ -1,6 +1,5 @@
 import type { CoreError, CoreWarning } from "../result.ts";
-import { FEATURE_CONTENT_COLLECTIONS } from "./feature-fields.ts";
-import type { EnabledFeature, GameDefinition } from "./types.ts";
+import type { EnabledFeature } from "./types.ts";
 import { deepFreezePlainData } from "../shared/immutable.ts";
 import {
   validateAssetReferences,
@@ -10,6 +9,7 @@ import {
   validateStageTimelineReferences,
   validateUniqueIds,
 } from "./validation/references.ts";
+import { collectDisabledFeatureContent } from "./validation/feature-gating.ts";
 import { validatePatternSemantics } from "./validation/pattern-semantics.ts";
 import { validateDefinitionShape } from "./validation/shape.ts";
 
@@ -81,18 +81,4 @@ export function validateGameDefinitionWithWarnings(
     errors: [...semantics.errors],
     warnings: semantics.errors.length > 0 ? [] : [...semantics.warnings, ...collectDisabledFeatureContent(validated)],
   };
-}
-
-/** 有効でない feature の collection（使わずに読み込むだけの content）を warning にする（design 20）。 */
-function collectDisabledFeatureContent(definition: GameDefinition): CoreWarning[] {
-  return Object.entries(FEATURE_CONTENT_COLLECTIONS).flatMap(([collection, feature]) => (
-    definition.content.features?.[collection as keyof typeof FEATURE_CONTENT_COLLECTIONS] !== undefined
-      && !definition.enabledFeatures.includes(feature)
-      ? [{
-        code: "feature.disabledContent",
-        message: `content.features.${collection} is not used because the ${feature} feature is not in enabledFeatures`,
-        schemaPath: `content.features.${collection}`,
-      }]
-      : []
-  ));
 }
