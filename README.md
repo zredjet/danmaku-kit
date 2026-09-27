@@ -5,8 +5,10 @@
 最初の設計書は [docs/design.md](docs/design.md) にあります。実装順序は
 [docs/implementation-plan.md](docs/implementation-plan.md) で管理します。
 
-現在の状況: Phase 2A（Minimum playable）まで完了し、ブラウザで sample stage 1 を clear まで遊べる。完了の判定は
-[docs/implementation-plan.md](docs/implementation-plan.md) の「Phase 2A 完了判定」にある。
+現在の状況: Phase 2B（Authoring / content expansion）まで完了した。ブラウザで sample stage 1 を clear まで遊べ、content を YAML で書いて
+validate-content の診断と docs（[examples](docs/content-authoring/examples/README.md)、[error guide](docs/content-authoring/error-guide.md)、
+[sample content spec](docs/sample-content-spec.md)）で直し、dev server の Preview で単体再生して確かめられる。完了の判定は
+[docs/implementation-plan.md](docs/implementation-plan.md) の「Phase 2A 完了判定」と「Phase 2B 完了判定」にある。
 
 現在の方針:
 

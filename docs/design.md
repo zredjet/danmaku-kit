@@ -2253,6 +2253,8 @@ Phase 2B の成果物には sample content spec を含める。sample stage は 
 
 Phase 2B のタスク分割と範囲の決定（Pattern DSL は load 時に run へ展開できる `repeat`、`radial`、`stream`、difficulty の `if` までにすること、pickup を最初の feature module にして drops を乱数なしで出すこと、scoring rule は `advancedScoring` と一緒に後へ回すこと、Preview の overlay は公開の `serialize()` から読めるものに限ること）は `docs/implementation-plan.md` の「Phase 2B タスク分割」に置いた。
 
+Phase 2B（Authoring / content expansion）は完了した。上の 9 項目を test と確認に対応付けた判定は `docs/implementation-plan.md` の「Phase 2B 完了判定」にある。Linux の screenshot baseline は remote で CI を実行できるようになってから作る。
+
 ### Phase 3: プレイフィール
 
 - グレイズ
@@ -2285,7 +2287,7 @@ Phase 2B のタスク分割と範囲の決定（Pattern DSL は load 時に run 
 - 当たり判定 debug overlay を切り替えられる。
 - Phase 2B では `content/pickups/*.yaml`、`content/patterns/*.yaml` の radial 弾幕、`docs/sample-content-spec.md`、content authoring examples を追加する。
 
-Phase 2A の完了時点で、Phase 2B の項目を除く全項目を満たした（`docs/implementation-plan.md` の「Phase 2A 完了判定」）。`content/enemies/*.yaml` は敵の HP、score、当たり判定を定義し、移動と弾幕は stage timeline の spawn ごとに `content/paths/*.yaml` と `content/patterns/*.yaml` を組み合わせる形で定義する（9.5）。
+Phase 2A の完了時点で、Phase 2B の項目を除く全項目を満たした（`docs/implementation-plan.md` の「Phase 2A 完了判定」）。Phase 2B の項目（pickup、radial 弾幕、sample content spec、content authoring examples）は Phase 2B の完了時点で満たした（同「Phase 2B 完了判定」）。`content/enemies/*.yaml` は敵の HP、score、当たり判定を定義し、移動と弾幕は stage timeline の spawn ごとに `content/paths/*.yaml` と `content/patterns/*.yaml` を組み合わせる形で定義する（9.5）。
 
 ## 24. 未決定事項
 
@@ -2326,4 +2328,6 @@ state hash は `docs/implementation-plan.md` の Phase 1B-6、replay metadata mi
 
 Phase 2A（Minimum playable）は完了した。Core に path movement、enemy bullet の movement / cleanup / 上限、決定的な角度計算、`wait` / `fire` / `loop` の PatternProgram と pattern runner、残機切れと全滅による stage の終了、collision broad phase grid を加え、`apps/sample-title` に Vite / Phaser の runtime（content pipeline、固定 tick loop、keyboard input、lifecycle、DOM HUD、演出、integer scale と letterbox、debug overlay、dev / test build の debug hook）、6 wave の sample stage 1、headless replay golden、Playwright の browser smoke test を置いた。判定は `docs/implementation-plan.md` の「Phase 2A 完了判定」にある。
 
-次は Phase 2B（22）の authoring / content expansion で、pickup、Pattern DSL の残りの命令と semantic validation、sample content spec、minimal YAML examples と error guide、Preview scene、Browser regression test を扱う。
+Phase 2B（Authoring / content expansion）は完了した。最初の optional feature module として pickup を Core の determinism contract（serialize、state hash、restore、replay）を保って足し、Pattern DSL に `repeat`、`radial`、`stream`、difficulty の `if` と意味の検証を加えた。sample app には content の hot reload、dev / test build の Preview（単体再生、1 tick 送り、overlay、dev-only の cheat、start paused）を置き、content authoring の examples と error guide、sample content spec を test で content と Core の code に同期させ、Preview の決定的な画面の browser regression test と CI の browser job を足した。判定は `docs/implementation-plan.md` の「Phase 2B 完了判定」にある。
+
+次は Phase 3（22）のプレイフィールで、グレイズ、ボム、弾消し、hit stop、screen shake、属性切替、rank、replay UI を扱う。
