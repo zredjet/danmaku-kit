@@ -18,7 +18,8 @@ export type PatternSemanticDiagnostics = Readonly<{
  * ごとに見る（どの stage も使わない pattern は既知の difficulty すべてで見る）。どれかの difficulty で 1 run の弾数が敵弾の active 上限を
  * 超える pattern と、1 run の命令数が 1 tick の命令数の上限を超える pattern（`repeat` を展開すると起き得る）は、その run の tick に必ず
  * fatal になるので error にする。どの difficulty でも一度も撃たない pattern と、spawn から実行されない step（`loop` より後ろなど）と、
- * どの difficulty でも使われない `if` の枝は、動作はするが書き間違いの可能性が高いので warning にする。
+ * どの difficulty でも使われない `if` の枝は、動作はするが書き間違いの可能性が高いので warning にする。stage の同じ tick に出る敵が
+ * spawn の tick に撃つ弾と実行する命令の合計も見る（`validateSpawnTickBudgets()`）。
  */
 export function validatePatternSemantics(
   patterns: readonly PatternDefinition[],
@@ -80,7 +81,71 @@ export function validatePatternSemantics(
       warnings.push({ code: "pattern.unusedBranch", message: branch.message, schemaPath: branch.path, referrerId: pattern.id });
     }
   });
+  errors.push(...validateSpawnTickBudgets(patterns, stages));
   return Object.freeze({ errors: Object.freeze(errors), warnings: Object.freeze(warnings) });
+}
+
+/**
+ * stage の同じ tick に出る敵が、spawn の tick に撃つ弾と実行する命令の合計を stage の difficulty ごとに見る。spawn の tick の run
+ * （`fireOnSpawn` の 1 発と、`steps` の最初の run）は敵が倒される前に必ず実行されるので、合計が敵弾の active 上限か 1 tick の命令数の
+ * 上限を超える stage は、その tick に必ず fatal になる。spawn より後の run は、敵が倒されたり退場したりして実行されないことがある
+ * ので見ない（実行時の上限で止める）。1 体の run だけで上限を超える tick は pattern の error が報告するので、ここでは重ねない。
+ */
+function validateSpawnTickBudgets(
+  patterns: readonly PatternDefinition[],
+  stages: readonly StageDefinition[],
+): readonly CoreError[] {
+  const patternsById = new Map(patterns.map((pattern) => [pattern.id, pattern]));
+  const spawnRuns = new Map<string, Readonly<{ bullets: number; commands: number }>>();
+  const spawnRunOf = (pattern: PatternDefinition, difficulty: Difficulty) => {
+    const key = `${pattern.id} ${difficulty}`;
+    let spawnRun = spawnRuns.get(key);
+    if (!spawnRun) {
+      const run = pattern.steps ? compilePatternProgram(pattern, difficulty)?.runs.get(0) : undefined;
+      spawnRun = pattern.steps
+        ? { bullets: run?.bulletCount ?? 0, commands: run?.executedCommands ?? 0 }
+        : { bullets: pattern.fireOnSpawn ? 1 : 0, commands: 0 };
+      spawnRuns.set(key, spawnRun);
+    }
+    return spawnRun;
+  };
+  const errors: CoreError[] = [];
+  stages.forEach((stage, stageIndex) => {
+    const context = { schemaPath: `content.stages[${stageIndex}].timeline`, referrerId: stage.id } as const;
+    for (const difficulty of stage.difficulties) {
+      const totals = new Map<number, { bullets: number; commands: number; maxBullets: number; maxCommands: number }>();
+      for (const step of stage.timeline) {
+        const pattern = patternsById.get(step.action.pattern);
+        if (!pattern) {
+          continue;
+        }
+        const spawnRun = spawnRunOf(pattern, difficulty);
+        const total = totals.get(step.tick) ?? { bullets: 0, commands: 0, maxBullets: 0, maxCommands: 0 };
+        total.bullets += spawnRun.bullets;
+        total.commands += spawnRun.commands;
+        total.maxBullets = Math.max(total.maxBullets, spawnRun.bullets);
+        total.maxCommands = Math.max(total.maxCommands, spawnRun.commands);
+        totals.set(step.tick, total);
+      }
+      for (const [tick, total] of totals) {
+        if (total.bullets > MAX_ACTIVE_ENEMY_BULLETS && total.maxBullets <= MAX_ACTIVE_ENEMY_BULLETS) {
+          errors.push({
+            code: "definition.invalidConstraint",
+            message: `stage.timeline spawns at tick ${tick} fire ${total.bullets} bullets in that tick on ${difficulty}, over the active enemy bullet budget ${MAX_ACTIVE_ENEMY_BULLETS}`,
+            ...context,
+          });
+        }
+        if (total.commands > MAX_PATTERN_COMMANDS_PER_TICK && total.maxCommands <= MAX_PATTERN_COMMANDS_PER_TICK) {
+          errors.push({
+            code: "definition.invalidConstraint",
+            message: `stage.timeline spawns at tick ${tick} execute ${total.commands} pattern commands in that tick on ${difficulty}, over the pattern command budget ${MAX_PATTERN_COMMANDS_PER_TICK}`,
+            ...context,
+          });
+        }
+      }
+    }
+  });
+  return errors;
 }
 
 /**

@@ -138,8 +138,8 @@ validate-content は YAML の読み込みと content root の形を先に調べ�
 ### `definition.invalidConstraint`
 
 - 重要度: error
-- 原因: 形は正しいが、組み合わせの条件を満たさない。pattern の `loop` の戻り先から `loop` までに `wait` がない（同じ tick で無限に回る）、`repeat` を展開した命令の数が上限を超える、1 tick に撃つ弾の数が敵弾の active 上限を超える（difficulty ごとに数え、超えた difficulty が message に出る）、`fireOnSpawn` の位置が有限にならない、など。
-- 直し方: `loop` の範囲に `wait` を入れる、`repeat` の `count` や 1 回の `fire` の弾数（`fan` / `radial` の `count` と `stream` の `count` の積）を減らす。
+- 原因: 形は正しいが、組み合わせの条件を満たさない。pattern の `loop` の戻り先から `loop` までに `wait` がない（同じ tick で無限に回る）、`repeat` を展開した命令の数が上限を超える、1 tick に撃つ弾の数が敵弾の active 上限を超える（difficulty ごとに数え、超えた difficulty が message に出る）、stage の同じ tick に出る敵が spawn の tick に撃つ弾や実行する命令の合計が上限を超える（spawn の tick の run は敵が倒される前に必ず実行されるため。schema path は `content.stages[<index>].timeline`）、`fireOnSpawn` の位置が有限にならない、など。
+- 直し方: `loop` の範囲に `wait` を入れる、`repeat` の `count` や 1 回の `fire` の弾数（`fan` / `radial` の `count` と `stream` の `count` の積）を減らす。同じ tick に出す敵の合計なら、spawn の tick をずらすか、最初の発射の前に `wait` を置く。
 - schema path: message の field（`content.patterns[0].steps` など）
 
 ### `id.invalidNamespace`

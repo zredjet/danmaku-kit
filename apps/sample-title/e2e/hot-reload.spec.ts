@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { expect, test } from "@playwright/test";
-import { createServer, type ViteDevServer } from "vite";
+import { createServer, type Plugin, type ViteDevServer } from "vite";
 
 import { sampleTitleContentPlugin } from "../vite/content-plugin.ts";
 import { playerCenterRgb, readDump, readReplay, waitForLifecycle, waitForTicks } from "./support.ts";
@@ -28,7 +28,10 @@ test.beforeAll(async () => {
     configFile: false,
     // 壊れた content を試す間の Vite の error log は想定どおりなので出さない。
     logLevel: "silent",
-    plugins: [sampleTitleContentPlugin({ gameDefinitionPath: path.join(workRoot, "config/game-definition.yaml"), contentRoot })],
+    plugins: [
+      sampleTitleContentPlugin({ gameDefinitionPath: path.join(workRoot, "config/game-definition.yaml"), contentRoot }),
+      missingSpritePlugin(),
+    ],
     server: { host: "127.0.0.1", port: 4190, strictPort: false },
   });
   await server.listen();
@@ -38,6 +41,23 @@ test.afterAll(async () => {
   await server?.close();
   await rm(workRoot, { recursive: true, force: true });
 });
+
+/** 本番と同じく、`missing-` で始まる sprite の path に 404 を返す（dev server は存在しない path に index.html を返すため）。 */
+function missingSpritePlugin(): Plugin {
+  return {
+    name: "e2e-missing-sprite",
+    configureServer(devServer) {
+      devServer.middlewares.use((request, response, next) => {
+        if (request.url?.includes("/assets/sprites/missing-")) {
+          response.statusCode = 404;
+          response.end();
+          return;
+        }
+        next();
+      });
+    },
+  };
+}
 
 /** 一時 content の file の最初の `search` を `replace` に置き換える。 */
 async function editContent(file: string, search: string, replace: string): Promise<void> {
@@ -100,4 +120,33 @@ test("reloads a page that loaded broken content once the content is fixed", asyn
   await expect(page.locator("vite-error-overlay")).toHaveCount(1, { timeout: 15_000 });
   await editContent("enemies/drone.yaml", "hp: fast", "hp: 5");
   await waitForLifecycle(page, "title");
+});
+
+test("swaps a sprite that fell back at boot for its own texture once its path is fixed", async ({ page }) => {
+  // 自機の sprite の path を壊し、読めなければ scout の sprite で代える（fallback）ようにしてから開く。
+  const manifestPath = path.join(contentRoot, "assets/manifest.yaml");
+  const manifest = await readFile(manifestPath, "utf8");
+  const playerEntry = /  player\.default:\n    type: sprite\n    path: [^\n]+\n    required: true\n/u;
+  expect(manifest).toMatch(playerEntry);
+  await writeFile(manifestPath, manifest.replace(
+    playerEntry,
+    "  player.default:\n    type: sprite\n    path: assets/sprites/missing-player.svg\n    required: false\n    fallback: enemy.scout\n",
+  ));
+  // dev server が変更を検出して検証し終えてから開く（開いている途中に届くと、fallback の変更として page を読み込み直すため）。
+  await page.waitForTimeout(1_000);
+  await page.goto(`${server.resolvedUrls!.local[0]!}?seed=hot-reload-fallback`);
+  await waitForLifecycle(page, "title");
+  await page.keyboard.press("Enter");
+  await waitForLifecycle(page, "playing");
+  await expect.poll(async () => (await playerCenterRgb(page))[0]).toBeGreaterThan(200);
+  await page.evaluate(() => Object.assign(window, { hotReloadMarker: true }));
+
+  // path を直すと、同じ page のまま fallback をやめて自機の sprite（中心が濃い青）で描く。被弾の点滅で自機が消えた画素（背景）と
+  // 区別するため、青の成分も見る。
+  await editContent("assets/manifest.yaml", "path: assets/sprites/missing-player.svg", "path: assets/sprites/player.svg");
+  await expect.poll(async () => {
+    const [red, , blue] = await playerCenterRgb(page);
+    return red < 100 && blue > 90;
+  }, { timeout: 15_000 }).toBe(true);
+  expect(await page.evaluate(() => (window as unknown as { hotReloadMarker?: boolean }).hotReloadMarker)).toBe(true);
 });

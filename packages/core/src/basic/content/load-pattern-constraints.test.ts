@@ -364,3 +364,50 @@ test("rejects a stream that stacks identical bullets with a zero speed step", ()
   ]]);
   assert.equal(loadWithPattern({ steps: [{ fire: { ...aimedFire, stream: { count: 1, speedStep: 0 } } }] }).ok, true);
 });
+
+/** `ticks` の各 tick に 1 体ずつ、`pattern.none` を撃つ敵を出す stage にし、pattern を差し替えた定義を読む。 */
+function loadWithSpawnTicks(ticks: readonly number[], pattern: Record<string, unknown>, difficulties: readonly string[] = ["normal"]) {
+  const definition = createMinimumDefinition();
+  const [stage] = definition.content.stages;
+  const spawn = stage!.timeline[0]!;
+  return validateGameDefinitionWithWarnings({
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{ ...stage!, difficulties, timeline: ticks.map((tick) => ({ ...spawn, tick })) }],
+      patterns: [{ id: "pattern.none", version: 1, ...pattern }],
+    },
+  }, []);
+}
+
+test("rejects enemies spawned in the same tick whose spawn-tick runs exceed a runtime budget together", () => {
+  // 64 発の run は 1 体なら予算に収まるが、同じ tick に 32 体出すと、spawn の tick に 2,048 発になって必ず fatal になる。
+  const volley = { steps: [fanFire(64), { wait: 60 }, { loop: 0 }] };
+
+  assert.deepEqual(loadWithSpawnTicks(Array.from({ length: 31 }, () => 60), volley).errors, []);
+  assert.deepEqual(loadWithSpawnTicks(Array.from({ length: 32 }, () => 60), volley).errors.map((error) => [error.code, error.schemaPath, error.message]), [[
+    "definition.invalidConstraint",
+    "content.stages[0].timeline",
+    "stage.timeline spawns at tick 60 fire 2048 bullets in that tick on normal, over the active enemy bullet budget 2000",
+  ]]);
+  // spawn の tick を分けるか、最初の発射を spawn の後にすれば、敵が倒されて撃たないこともあるので error にしない。
+  assert.deepEqual(loadWithSpawnTicks(Array.from({ length: 32 }, (_, index) => 60 + Math.floor(index / 16)), volley).errors, []);
+  assert.deepEqual(loadWithSpawnTicks(Array.from({ length: 32 }, () => 60), { steps: [{ wait: 1 }, fanFire(64), { wait: 60 }, { loop: 1 }] }).errors, []);
+});
+
+test("counts the spawn-tick runs of each difficulty and the command budget", () => {
+  const branched = {
+    steps: [{ if: { difficulty: ["hard"], then: [fanFire(64)], else: [fanFire(8)] } }, { wait: 60 }, { loop: 0 }],
+  };
+  assert.deepEqual(
+    loadWithSpawnTicks(Array.from({ length: 32 }, () => 60), branched, ["normal", "hard"]).errors.map((error) => error.message),
+    ["stage.timeline spawns at tick 60 fire 2048 bullets in that tick on hard, over the active enemy bullet budget 2000"],
+  );
+
+  // 1 発ずつの fire を並べた run は、同じ tick の命令の合計も 1 tick の命令数の上限を超える（run は最後の wait も 1 命令と数える）。
+  const singleShots = { steps: [{ repeat: { count: 21, steps: [fanFire(1)] } }, { wait: 60 }, { loop: 0 }] };
+  assert.deepEqual(loadWithSpawnTicks(Array.from({ length: 100 }, () => 60), singleShots).errors.map((error) => error.message), [
+    "stage.timeline spawns at tick 60 fire 2100 bullets in that tick on normal, over the active enemy bullet budget 2000",
+    "stage.timeline spawns at tick 60 execute 2200 pattern commands in that tick on normal, over the pattern command budget 2000",
+  ]);
+});

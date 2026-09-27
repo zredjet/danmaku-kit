@@ -1960,7 +1960,7 @@ Phase 2A-5 の最小 subset（`wait` / `fire` / `loop`）では、`loop` が前�
 
 Phase 2B-1 の意味の検証（`content/validation/pattern-semantics.ts`）: shape と参照の検証に通った content の各 pattern を `PatternProgram` にし、spawn から実行する run だけを見て静的な予算を求める。
 
-- 1 run の弾数が敵弾の active 上限（2,000）を超える pattern と、1 run の命令数が 1 tick の命令数の上限（2,000）を超える pattern（`repeat` を展開すると起き得る）は、その run の tick に必ず fatal になるため `definition.invalidConstraint` の load error にする。loop より後ろのように spawn から実行されない run は数えない。
+- 1 run の弾数が敵弾の active 上限（2,000）を超える pattern と、1 run の命令数が 1 tick の命令数の上限（2,000）を超える pattern（`repeat` を展開すると起き得る）は、その run の tick に必ず fatal になるため `definition.invalidConstraint` の load error にする。loop より後ろのように spawn から実行されない run は数えない。stage の同じ tick に出る敵が spawn の tick に撃つ弾（`fireOnSpawn` の 1 発と `steps` の最初の run）と実行する命令の合計も、difficulty ごとに同じ上限と比べて load error にする（spawn の tick の run は敵が倒される前に必ず実行される。schema path は `content.stages[<index>].timeline`）。spawn より後の run は、敵が倒されたり退場したりして実行されないことがあるので load では合算せず、実行時の上限で止める。
 - 一度も撃たない pattern（`pattern.neverFires`）と、spawn からどの run でも実行されない step（`pattern.unreachableStep`、`loop` より後ろの step など）は、動作はするが書き間違いの可能性が高いため warning にする。warning は `CoreResult.warnings` で返し、content に error がある間は返さない。
 - difficulty の `if` を持つ pattern（Phase 2B-3）は、pattern を使う stage の difficulty ごとに（どの stage も使わない pattern は既知の difficulty すべてで）予算を求め、どれかの difficulty で上限を超えれば error にする（message に超えた difficulty を書く）。`pattern.neverFires` はどの difficulty でも撃たないときだけ出す。`loop` は top-level にだけ置けて前へ戻るため、step に届くかは difficulty によらない。
 - どの difficulty でも使われない `if` の枝（`pattern.unusedBranch`）も warning にする。`if` に届く difficulty（外側の `if` で絞った後）にない difficulty を `if.difficulty` が挙げていれば `if.difficulty` に、届く difficulty がすべて `then` を使うなら `if.else` に出す。

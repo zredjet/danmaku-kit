@@ -29,6 +29,8 @@ export type BootSceneOptions = Readonly<{
 export type StageSceneData = Readonly<{
   /** definition id から、読み込み済みの texture の key を引く表。fallback を使った asset は fallback の key になる。 */
   textures: ReadonlyMap<string, string>;
+  /** definition id から、その definition が使う asset の key を引く表（hot reload で読み直した asset の texture に向け直すため）。 */
+  definitionAssets: ReadonlyMap<string, string>;
   /** 読み込み済みの texture の key から、texture の画素数と内部解像度で描く大きさの比を引く表。 */
   textureScales: ReadonlyMap<string, number>;
   viewPoolCapacities: Extract<ViewPoolPlan, { ok: true }>["capacities"];
@@ -107,6 +109,7 @@ export class BootScene extends Scene {
     this.#options.reportAssetStatus("ready");
     const data: StageSceneData = {
       textures: textures.textures,
+      definitionAssets: this.#options.definitionAssets,
       textureScales: new Map(this.#requests.map((request) => [request.key, request.rasterScale])),
       viewPoolCapacities: plan.capacities,
       assetEvents: outcome.events,

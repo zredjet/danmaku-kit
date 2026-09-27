@@ -4,7 +4,7 @@ import test from "node:test";
 import type { GameDefinition } from "@danmaku-kit/core";
 
 import { loadSampleTitleDefinition } from "../../test-support/sample-title-game.ts";
-import { collectDefinitionAssets, resolveDefinitionTextures } from "./definition-assets.ts";
+import { collectDefinitionAssets, resolveDefinitionTextures, retargetReloadedTextures } from "./definition-assets.ts";
 import { collectCollisionRadii } from "./collision-radii.ts";
 import { VIEW_POOL_BUDGET, planPreviewViewPoolCapacities, planViewPoolCapacities } from "./view-pool-plan.ts";
 
@@ -126,4 +126,17 @@ test("sizes the preview pools to the runtime budget so that any target fits", as
   const plan = planPreviewViewPoolCapacities(withoutPickups, "stage.stage_01", "player.default");
   assert.equal(plan.ok && plan.capacities.pickup, 0);
   assert.equal(planPreviewViewPoolCapacities(definition, "stage.missing", "player.default").ok, false);
+});
+
+test("points the definitions of a reloaded asset back at its own texture instead of the boot fallback", () => {
+  const definitionAssets = new Map([["enemy.scout", "enemy.scout"], ["enemy.drone", "enemy.drone"], ["player.default", "player.default"]]);
+  // 起動時に enemy.scout の sprite が読めず、fallback の enemy.drone の texture を使っている。
+  const booted = new Map([["enemy.scout", "enemy.drone"], ["enemy.drone", "enemy.drone"], ["player.default", "player.default"]]);
+
+  assert.deepEqual(
+    retargetReloadedTextures(booted, definitionAssets, ["enemy.scout"]),
+    new Map([["enemy.scout", "enemy.scout"], ["enemy.drone", "enemy.drone"], ["player.default", "player.default"]]),
+  );
+  // 読み直していない asset を使う definition は、fallback を含めてそのまま。
+  assert.deepEqual(retargetReloadedTextures(booted, definitionAssets, ["player.default"]), booted);
 });

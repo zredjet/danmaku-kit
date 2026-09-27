@@ -44,12 +44,14 @@ export type EntityViewsOptions = Readonly<{
  */
 export class EntityViews {
   readonly #options: EntityViewsOptions;
+  #textures: ReadonlyMap<string, string>;
   readonly #pools: Readonly<Record<ViewKind, ViewPool<GameObjects.Image>>>;
   readonly #views = new Map<EntityId, EntityView>();
   readonly #playerHitbox: GameObjects.Arc;
 
   constructor(scene: Scene, options: EntityViewsOptions) {
     this.#options = options;
+    this.#textures = options.textures;
     const createPool = (kind: ViewKind) => new ViewPool(options.capacities[kind], () => (
       scene.add.image(0, 0, PLACEHOLDER_TEXTURE).setDepth(DEPTH_BY_KIND[kind]).setVisible(false).setActive(false)
     ));
@@ -131,8 +133,12 @@ export class EntityViews {
     return null;
   }
 
-  /** texture を読み直した後に、表示中の view へ texture を当て直す（content の hot reload の asset の変更）。 */
-  refreshTextures(): void {
+  /**
+   * texture を読み直した後に、definition の texture の表を `textures` に替え、表示中の view へ texture を当て直す（content の hot reload
+   * の asset の変更）。
+   */
+  refreshTextures(textures: ReadonlyMap<string, string>): void {
+    this.#textures = textures;
     for (const view of this.#views.values()) {
       view.image.setTexture(this.#textureOf(view));
     }
@@ -145,7 +151,7 @@ export class EntityViews {
   }
 
   #textureOf(entity: Pick<ViewEntity, "definitionId">): string {
-    const texture = this.#options.textures.get(entity.definitionId);
+    const texture = this.#textures.get(entity.definitionId);
     if (texture === undefined) {
       throw new Error(`No texture for ${entity.definitionId}`);
     }

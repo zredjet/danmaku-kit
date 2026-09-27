@@ -8,6 +8,7 @@ import { buildHudView, buildLoadingHudView, type HudPort } from "../hud/hud-view
 import type { GameLifecycleState } from "../lifecycle/game-lifecycle.ts";
 import type { GameShell, GameShellStep } from "../lifecycle/game-shell.ts";
 import { describeRuntimeEvent } from "../runtime-event.ts";
+import { retargetReloadedTextures } from "../view/definition-assets.ts";
 import { HIT_SPARK_BUDGET, HitSparks } from "../view/hit-sparks.ts";
 import { isPlayerVisible } from "../view/invincibility-blink.ts";
 import { PickupAttraction, collectViewEntities, type ViewEntity } from "../view/view-entities.ts";
@@ -55,6 +56,10 @@ export class StageScene extends Scene {
   #warming = false;
   #halted = false;
   #assetNotes: readonly string[] = [];
+  /** definition id から今当てている texture の key を引く表。hot reload で読み直した asset は、その asset 自身の key に向け直す。 */
+  #textures: ReadonlyMap<string, string> = new Map();
+  /** hot reload で読み直せた asset の key（fallback の注記を消す）。 */
+  readonly #reloadedAssetKeys = new Set<string>();
   #lastEntities: readonly ViewEntity[] = [];
   #textureReloads = 0;
 
@@ -74,6 +79,7 @@ export class StageScene extends Scene {
     }
     fitCameraToPlayfield(this);
     this.#assetNotes = data.assetEvents.filter((event) => event.type === "assetFallbackUsed").map(describeRuntimeEvent);
+    this.#textures = data.textures;
     this.#views = new EntityViews(this, {
       collisionRadii: this.#options.collisionRadii,
       textures: data.textures,
@@ -171,11 +177,13 @@ export class StageScene extends Scene {
    * content の hot reload で asset manifest の sprite の path が変わったとき、その texture を読み直して表示中の view に当て直す。stage は
    * 続ける。読み込みの間も表示中の view が古い texture を描けるよう、一時的な key で読み込み、すべて読めたら古い texture と入れ替える。
    * 読めない sprite があれば古い texture のまま `done(false)` を呼ぶ（呼び出し側は page を読み込み直す）。view をまだ作っていないか、
-   * scene が止まっていれば読み込まずに false を返す。
+   * scene が止まっていれば読み込まずに false を返す。起動時に読めずに fallback を使っていた sprite も、読み直せれば fallback をやめて
+   * その sprite 自身の texture を当て、debug HUD の fallback の注記も消す。
    */
   reloadTextures(requests: readonly AssetLoadRequest[], done: (ok: boolean) => void): boolean {
     const views = this.#views;
-    if (!views || this.#halted) {
+    const data = this.#data;
+    if (!views || !data || this.#halted) {
       return false;
     }
     this.#textureReloads += 1;
@@ -201,7 +209,13 @@ export class StageScene extends Scene {
         }
         this.textures.renameTexture(temporaryKeys[index]!, request.key);
       });
-      views.refreshTextures();
+      const reloadedKeys = requests.map((request) => request.key);
+      reloadedKeys.forEach((key) => this.#reloadedAssetKeys.add(key));
+      this.#textures = retargetReloadedTextures(this.#textures, data.definitionAssets, reloadedKeys);
+      views.refreshTextures(this.#textures);
+      this.#assetNotes = data.assetEvents
+        .filter((event) => event.type === "assetFallbackUsed" && !this.#reloadedAssetKeys.has(event.assetKey))
+        .map(describeRuntimeEvent);
       done(true);
     });
     this.load.start();

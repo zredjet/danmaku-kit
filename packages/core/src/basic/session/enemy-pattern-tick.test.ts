@@ -169,20 +169,26 @@ test("fails fatally when pattern runners would execute more than 2,000 commands 
         patterns: [...base.content.patterns, {
           id: "pattern.flood",
           version: 1,
+          // spawn の tick は wait だけにする。spawn の tick に同じ tick の敵の合計が上限を超える content は load が拒む
+          // （`validateSpawnTickBudgets()`）ので、実行時の上限は spawn の後の run で確かめる。
           steps: [
-            ...Array.from({ length: 63 }, () => ({ fire: { bullet: "bullet.red_small", angleDeg: 90, speed: 1 } } as const)),
+            { wait: 1 },
+            ...Array.from({ length: 62 }, () => ({ fire: { bullet: "bullet.red_small", angleDeg: 90, speed: 1 } } as const)),
             { wait: 1 },
           ],
         }],
       },
     };
-    return startStageFromDefinition(definition).tick(createEmptyInputFrame(0));
+    const session = startStageFromDefinition(definition);
+    assert.equal(session.tick(createEmptyInputFrame(0)).ok, true);
+    return session.tick(createEmptyInputFrame(1));
   };
 
-  // 1 体は 63 発と wait の 64 命令を実行する。31 体（1,984 命令、1,953 発）までは受け付ける。
+  // spawn の次の tick に、1 体は 62 発と wait の 63 命令を実行する。31 体（1,953 命令、1,922 発）までは受け付け、32 体（2,016 命令、
+  // 1,984 発）は命令数の上限だけを超える。
   const atBudget = flood(31);
   assert.equal(atBudget.ok, true);
-  assert.equal(atBudget.ok && atBudget.value.state.entities.filter((entity) => entity.kind === "enemyBullet").length, 1_953);
+  assert.equal(atBudget.ok && atBudget.value.state.entities.filter((entity) => entity.kind === "enemyBullet").length, 1_922);
   const exceeded = flood(32);
   assert.equal(exceeded.ok, false);
   assert.equal(!exceeded.ok && exceeded.errors[0]?.code, "stageSession.fatal");

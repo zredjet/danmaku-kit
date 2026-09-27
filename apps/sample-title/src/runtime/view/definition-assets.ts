@@ -45,3 +45,19 @@ export function resolveDefinitionTextures(
     ? Object.freeze({ ok: false, missingAssets: Object.freeze([...missingAssets].sort()) })
     : Object.freeze({ ok: true, textures });
 }
+
+/**
+ * content の hot reload で読み直した asset を使う definition の texture を、読み直した asset 自身の key に向け直す。起動時に読めずに
+ * fallback を使った asset も、読み直せれば fallback をやめる（`resolveDefinitionTextures()` の表は fallback の key を指したままになる）。
+ */
+export function retargetReloadedTextures(
+  textures: ReadonlyMap<string, string>,
+  definitionAssets: ReadonlyMap<string, string>,
+  reloadedAssetKeys: readonly string[],
+): ReadonlyMap<string, string> {
+  const reloaded = new Set(reloadedAssetKeys);
+  return new Map([...textures].map(([definitionId, texture]) => {
+    const assetKey = definitionAssets.get(definitionId);
+    return [definitionId, assetKey !== undefined && reloaded.has(assetKey) ? assetKey : texture] as const;
+  }));
+}
