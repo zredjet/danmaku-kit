@@ -103,31 +103,66 @@ tools/
     package.json
 apps/
   sample-title/
-    src/
-      runtime/
-        lifecycle/
-        assets/
-      ui/
+    config/
+      game-definition.yaml
     content/
+      assets/
+        manifest.yaml
       stages/
       enemies/
       bullets/
       player-shots/
-      bombs/
-      scoring/
-      rank/
+      players/
       patterns/
       paths/
+      bombs/          # Phase 2B 以降（optional feature の content）
+      scoring/
+      rank/
       pickups/
       affinities/
-      player/
+    public/
       assets/
-        manifest.yaml
+    vite/
+    e2e/
+    src/
+      main.ts
+      runtime/
+        assets/
+        audio/
+        debug/
+        hud/
+        input/
+        lifecycle/
+        loop/
+        view/
+        phaser/
+      ui/
+      debug/
+      sample-content/
+      test-support/
     package.json
 docs/
 ```
 
 実装初期は単一リポジトリ内で進めるが、Core は `packages/shooting-core` として切り出せる境界を維持する。Sample title は `apps/sample-title` に置き、Core から title 固有の asset、UI、シナリオ、テーマを参照しない。
+
+Sample app の module 構成（Phase 2A 完了時点）:
+
+| Path | 内容 |
+| --- | --- |
+| `config/game-definition.yaml`、`content/` | game definition と種類別の content YAML、asset manifest。Phase 2A の validator が受け付けるのは `stages`、`enemies`、`bullets`、`player-shots`、`players`、`patterns`、`paths`、`assets` で、ほかは optional feature を入れる slice で足す |
+| `public/assets/` | manifest が参照する仮素材の SVG |
+| `vite/` | content を validate-content の Node API で検証して virtual module にする Vite plugin と、production build に debug hook が入らないことの test（Node で実行） |
+| `src/main.ts` | entry。Core の load、`GameShell`、DOM overlay、viewport、Phaser、debug hook を組み立てる。`import.meta` と virtual module を読むのはここだけ |
+| `src/runtime/` | Phaser と DOM に依存しない runtime（loop、input、lifecycle と `GameShell`、view の計画と pool、asset の読み込み判断、HUD の内容、dump と再生記録の組み立て、audio status）。node:test で検査する |
+| `src/runtime/phaser/` | Phaser の scene、entity view、演出、render scale。`phaser` を import してよいのはここと entry だけ |
+| `src/ui/` | DOM overlay の HUD と viewport への配置 |
+| `src/debug/` | dev / test build だけが置く `window.__SHOOTING_DEBUG_STATE__` と `window.__SHOOTING_DEBUG_REPLAY__` |
+| `src/sample-content/` | sample content の参照・撃破・headless replay golden の test |
+| `src/test-support/` | 複数の test が使う helper（sample の load、fake session と frame、headless replay） |
+| `e2e/` | Playwright の browser smoke test |
+
+依存方向は、`ui/`、`debug/`、`runtime/phaser/` を import してよいのは `src/main.ts` だけで、`tests/module-graph.test.mjs` の `SAMPLE_TITLE_LAYER_RULES` が検査する。package の import（Core は root export だけ、`phaser` は entry と `runtime/phaser/` だけ）は `SAMPLE_TITLE_PACKAGE_IMPORT_RULES` が検査する。
 
 Core package の module 構成（公開 surface は `src/basic/index.ts` の export だけで、value export は `createShootingCore` のみ）:
 
@@ -586,6 +621,8 @@ behavior:
   startAt: 30
   loop: true
 ```
+
+上の例は authoring schema 案である。Phase 2A の Core と validate-content が受け付ける enemy は `id`、`version`、`asset`、`collision.radius`、`hp`、`score` だけで、移動と弾幕は enemy に持たせず、stage timeline の `spawnEnemy` が spawn ごとに `path`（`content/paths/`）と `pattern`（`content/patterns/`）を組み合わせる。同じ enemy を wave ごとに別の動きと弾幕で出せる形で、enemy が既定の movement / behavior を持つ形は Phase 2B 以降で検討する。
 
 Boss は Enemy の拡張として扱う。`boss: true`、phase、HP bar、時間制限、無敵区間を `EnemyDefinition` に追加できる。
 
@@ -2060,7 +2097,7 @@ Phase 1C の完了条件は、content authoring と CI で最低限の validatio
 - サンプルステージ 1 つ
 - Browser smoke test
 
-Phase 2A の完了条件を初期 playable milestone とする。
+Phase 2A の完了条件を初期 playable milestone とする。Phase 2A は 2A-0〜2A-13 の slice で完了し、23 の各項目と 21.6 の受け入れテストを test または手動確認に対応付けた判定を `docs/implementation-plan.md` の「Phase 2A 完了判定」に置いた。
 
 ### Phase 2B: Authoring / content expansion
 
@@ -2108,6 +2145,8 @@ Phase 2B の成果物には sample content spec を含める。sample stage は 
 - 当たり判定 debug overlay を切り替えられる。
 - Phase 2B では `content/pickups/*.yaml`、`content/patterns/*.yaml` の radial 弾幕、`docs/sample-content-spec.md`、content authoring examples を追加する。
 
+Phase 2A の完了時点で、Phase 2B の項目を除く全項目を満たした（`docs/implementation-plan.md` の「Phase 2A 完了判定」）。`content/enemies/*.yaml` は敵の HP、score、当たり判定を定義し、移動と弾幕は stage timeline の spawn ごとに `content/paths/*.yaml` と `content/patterns/*.yaml` を組み合わせる形で定義する（9.5）。
+
 ## 24. 未決定事項
 
 初期実装では以下を暫定デフォルトにする。
@@ -2144,3 +2183,7 @@ Phase 1A の Core minimum contract は、TypeScript package、最小 content sch
 Phase 1B-5D として、`LoadedGame.restore(state): CoreResult<StageSession>` の public API、top-level error boundary、PRNG snapshot の public restore error 変換、deterministic payload の shape、pending event、runtime entity の kind 別 shape / registry / runtime budget validation、accepted committed state 変換、非空 extension state の shape / JSON guard / feature mismatch 分類、transactional restore、roundtrip determinism は実装済みである。`nextEntityId` は EntityAllocator と共有する上限まで含めて `state.invalidShape` として正規化する。続く Phase 1B-6 の state hash minimum も canonical encoder、fixed seed xxHash64、gameplay digest golden、restore 後の複数 tick 一致まで実装済みである。Phase 1B-7 では metadata-only の `ReplayMetadata` を root type export し、未検証 `enabledFeatures` を replay 互換性 field として含め、snapshot 専用 `stateHashVersion` と replay playback API は公開しない境界を型契約で固定した。Phase 1C-1 では `tools/validate-content` package と immutable diagnostic / JSON / human / exit code contract、Phase 1C-2 では YAML parser、source span、CLI / filesystem boundary、Core validation adapter、Phase 1C-3 では静的な最小 content fixture と実プロセス CLI golden test、Phase 1C-4 では test-only headless debug dump、state / PRNG hash、count metrics、portable artifact path / JSON formatter と、first divergent checkpoint の field-level replay divergence artifact を追加した。Phase 1C-R では振る舞いを変えない module 分割リファクタリング（`docs/implementation-plan.md` の Phase 1C-R）、Phase 1C-S では振る舞いを変えない構造整理（同 Phase 1C-S）を完了した。Phase 1C の tooling minimum は完了し、Phase 2A へ進む条件の確認結果と minimum playable の slice 分割は `docs/implementation-plan.md` の「Phase 2A タスク分割」に置いた。
 
 state hash は `docs/implementation-plan.md` の Phase 1B-6、replay metadata minimum は同計画の Phase 1B-7 で実装済みである。
+
+Phase 2A（Minimum playable）は完了した。Core に path movement、enemy bullet の movement / cleanup / 上限、決定的な角度計算、`wait` / `fire` / `loop` の PatternProgram と pattern runner、残機切れと全滅による stage の終了、collision broad phase grid を加え、`apps/sample-title` に Vite / Phaser の runtime（content pipeline、固定 tick loop、keyboard input、lifecycle、DOM HUD、演出、integer scale と letterbox、debug overlay、dev / test build の debug hook）、6 wave の sample stage 1、headless replay golden、Playwright の browser smoke test を置いた。判定は `docs/implementation-plan.md` の「Phase 2A 完了判定」にある。
+
+次は Phase 2B（22）の authoring / content expansion で、pickup、Pattern DSL の残りの命令と semantic validation、sample content spec、minimal YAML examples と error guide、Preview scene、Browser regression test を扱う。

@@ -4,7 +4,7 @@
 
 ## 現在の実装スライス
 
-Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump と first divergent checkpoint の field-level replay divergence artifact、Phase 1C-R の振る舞いを変えない module 分割リファクタリングも完了し、Phase 1C の tooling minimum を完了した。Phase 2A 着手前の Phase 1C-S（振る舞いを変えない構造整理）で、ディレクトリと依存 layer の対応を整え、entity kind の知識を `entities/<kind>/` へ縦に集めた。「Phase 2A へ進む条件」を確認し、Phase 2A を walking skeleton、Core gameplay、runtime / app、仕上げの slice へ分割した（「Phase 2A タスク分割」）。Phase 2A-0 で Core source の import を同じ package の相対 path に限る guard を固定した。Phase 2A-1a で Vite / Phaser の sample app skeleton と app の import 規則を置いた。Phase 2A-1b で validate-content の Node API と Vite content plugin による content pipeline を置いた。Phase 2A-1c で固定 tick clock と keyboard input adapter を Phaser 非依存の module として置いた。Phase 2A-1d で Phaser Scene と view 同期をつなぎ、ブラウザで自機を動かして撃てる walking skeleton（Phase 2A-1）を完成させた。Phase 2A-2 で敵が path に沿って動き、path を終えて画面外へ出た敵を取り除くようにした。Phase 2A-3 で敵弾を動かし、画面外の敵弾を取り除き、active 2,000 の上限を fatal として固定した。Phase 2A-4 で host の三角関数に依存しない決定的な角度計算を固定し、path に sine offset を加えた。Phase 2A-5 で `wait` / `fire` / `loop` の PatternProgram と enemy ごとの pattern runner を追加し、serialize / hash / restore まで通した。Phase 2A-6 で残機切れの gameOver と、timeline 消化後の全滅による stageCleared を Core で判定し、終了後の tick を caller precondition error にした。Phase 2A-7 で collision の全探索を固定サイズの broad phase grid に置き換え、解決結果と state hash を変えずに候補を絞り込んだ。Phase 2A-8 で asset manifest の entry を検証し、sample app が仮素材の sprite を preload して、kind ごとの view pool で entity を描くようにした。Phase 2A-9 で sample app を game lifecycle（title、開始演出、pause、stage 終了から title への復帰）で動かし、DOM overlay の HUD と、無敵中の点滅・撃破の hit spark を加えた。Phase 2A-10 で playfield を integer scale と letterbox で viewport へ収め、devicePixelRatio を canvas の描画解像度にだけ使うようにし、collider と entity 数の debug overlay と、dev / test build 専用の browser debug state dump を加えた。Phase 2A-11 で sample stage 1 を 6 wave・26 体と gunship で clear まで遊べる長さにし、content の参照、敵撃破、headless replay golden の test を加えた。Phase 2A-12 で Playwright の browser smoke test（`npm run test:browser`）を加え、起動、描画、移動と低速移動、HUD、debug overlay、viewport と DPR ごとの配置、browser の入力の Node での再生一致を確かめるようにした。次は Phase 2A-13 の docs と milestone 確認に着手する。
+Phase 1A の renderer 非依存 Core minimum contract と Phase 1B の determinism contract は完了済みである。Phase 1C-1 の validate-content output contract、Phase 1C-2 の parser / CLI boundary、Phase 1C-3 の fixture / CLI integration、Phase 1C-4 の headless debug dump と first divergent checkpoint の field-level replay divergence artifact、Phase 1C-R の振る舞いを変えない module 分割リファクタリングも完了し、Phase 1C の tooling minimum を完了した。Phase 2A 着手前の Phase 1C-S（振る舞いを変えない構造整理）で、ディレクトリと依存 layer の対応を整え、entity kind の知識を `entities/<kind>/` へ縦に集めた。「Phase 2A へ進む条件」を確認し、Phase 2A を walking skeleton、Core gameplay、runtime / app、仕上げの slice へ分割した（「Phase 2A タスク分割」）。Phase 2A-0 で Core source の import を同じ package の相対 path に限る guard を固定した。Phase 2A-1a で Vite / Phaser の sample app skeleton と app の import 規則を置いた。Phase 2A-1b で validate-content の Node API と Vite content plugin による content pipeline を置いた。Phase 2A-1c で固定 tick clock と keyboard input adapter を Phaser 非依存の module として置いた。Phase 2A-1d で Phaser Scene と view 同期をつなぎ、ブラウザで自機を動かして撃てる walking skeleton（Phase 2A-1）を完成させた。Phase 2A-2 で敵が path に沿って動き、path を終えて画面外へ出た敵を取り除くようにした。Phase 2A-3 で敵弾を動かし、画面外の敵弾を取り除き、active 2,000 の上限を fatal として固定した。Phase 2A-4 で host の三角関数に依存しない決定的な角度計算を固定し、path に sine offset を加えた。Phase 2A-5 で `wait` / `fire` / `loop` の PatternProgram と enemy ごとの pattern runner を追加し、serialize / hash / restore まで通した。Phase 2A-6 で残機切れの gameOver と、timeline 消化後の全滅による stageCleared を Core で判定し、終了後の tick を caller precondition error にした。Phase 2A-7 で collision の全探索を固定サイズの broad phase grid に置き換え、解決結果と state hash を変えずに候補を絞り込んだ。Phase 2A-8 で asset manifest の entry を検証し、sample app が仮素材の sprite を preload して、kind ごとの view pool で entity を描くようにした。Phase 2A-9 で sample app を game lifecycle（title、開始演出、pause、stage 終了から title への復帰）で動かし、DOM overlay の HUD と、無敵中の点滅・撃破の hit spark を加えた。Phase 2A-10 で playfield を integer scale と letterbox で viewport へ収め、devicePixelRatio を canvas の描画解像度にだけ使うようにし、collider と entity 数の debug overlay と、dev / test build 専用の browser debug state dump を加えた。Phase 2A-11 で sample stage 1 を 6 wave・26 体と gunship で clear まで遊べる長さにし、content の参照、敵撃破、headless replay golden の test を加えた。Phase 2A-12 で Playwright の browser smoke test（`npm run test:browser`）を加え、起動、描画、移動と低速移動、HUD、debug overlay、viewport と DPR ごとの配置、browser の入力の Node での再生一致を確かめるようにした。Phase 2A-13 で docs を実装に合わせ、sample app の依存方向を test に固定し、design 23 の初期マイルストーンを test と手動確認に対応付けて Phase 2A の完了を判定した（「Phase 2A 完了判定」）。Phase 2A（Minimum playable）は完了した。次は Phase 2B（authoring / content expansion）のタスク分割に着手する。
 
 Done:
 
@@ -101,9 +101,15 @@ Done:
 - broad phase 2A-7 で collision の全探索を playfield の 32 px grid（enemy bullet grid と、接触と被弾で共有する enemy grid）へ置き換え、候補を entity id 昇順で返して解決順と state hash / replay を変えずに候補を絞り込む。debug dump の `collisionCandidates` を broad phase 通過 pair 数にする
 - assets / view pool 2A-8 で validate-content が manifest entry（type、base-relative path、required、usage、fallback の型一致と cycle、`runtime.` の予約）を検証して検証済み manifest を返し、sample app は仮素材の SVG を loading で preload して design 17 の規則で開始を判断する。entity は content と runtime budget から見積もった kind ごとの view pool の sprite で描き、枯渇は `RuntimeEvent.viewPoolExhausted` で stage を止める
 
+- lifecycle / HUD 2A-9 で `GameLifecycleState` と Phaser 非依存の `GameShell` で title、開始演出、pause、focus lost、stage 終了、title への復帰を動かし、DOM overlay の HUD に score と lives を `GameFrame.state` から出す。無敵中の点滅と撃破の hit spark を render-only の演出にする
+- scaling / debug 2A-10 で playfield を integer scale と letterbox で viewport へ収め（小さいときだけ小数倍）、devicePixelRatio を canvas の描画解像度にだけ使う。collider と entity 数の debug overlay と、dev / test build 専用の `BrowserDebugStateDump` の hook を置く
+- sample stage 2A-11 で stage 1 を 6 wave・26 体（drone、scout、gunship）の clear まで遊べる stage にし、content の参照の schema test、敵撃破の unit test、headless replay golden を置く
+- browser smoke 2A-12 で Playwright の `npm run test:browser` を置き、起動、描画、移動と低速移動、HUD、debug overlay、viewport と DPR、browser の入力の Node での再生一致を確かめる
+- docs / milestone 2A-13 で docs を実装に合わせ、sample app の依存方向を `tests/module-graph.test.mjs` に固定し、design 23 の各項目を test と手動確認に対応付けて Phase 2A の完了を判定する
+
 Next:
 
-- Phase 2A-9: `src/runtime/lifecycle/` に `GameLifecycleState` を置き、Phase 2A で使う state と focus lost / visibility change の扱いを node:test で固定する。DOM overlay の HUD に score と lives を出し、`playerHit` の点滅と撃破の hit spark を render-only の演出にする
+- Phase 2B のタスク分割: design 22 の Phase 2B（pickup、Pattern DSL と semantic validation、sample content spec、minimal YAML examples と error guide、Preview scene、Browser regression test）を、この文書の「Phase 2A タスク分割」と同じ形で slice に分ける
 
 Phase 1C-1 は診断と出力の安定した契約、Phase 1C-2 は実績ある YAML parser と source span 付き診断の CLI 接続、Phase 1C-3 は静的 fixture と実プロセスの JSON / human golden contract を固定した。Phase 1C-4 は renderer / browser field を含まない headless debug state summary と、summary から値を復元せず deterministic snapshot、順序付き frame event、side 別 input、side status を比較する field-level replay divergence artifact を固定した。
 
@@ -160,6 +166,7 @@ Status legend:
 | `docs/design.md` 12 / 19 / 21.5 Scaling / debug | scaling、debug overlay、`BrowserDebugStateDump` | Done | `apps/sample-title/src/runtime/view/`, `apps/sample-title/src/runtime/debug/`, `apps/sample-title/src/runtime/phaser/`, `apps/sample-title/src/ui/`, `apps/sample-title/src/debug/` | 配置と render scale の計算、debug HUD の行、dump の組み立てを node:test、production build での hook 未定義を build して検査 | `npm run check`, `npm run dev` |
 | `docs/design.md` 21.6 / 23 Sample stage | サンプルステージ 1 | Done | `apps/sample-title/content/`, `apps/sample-title/public/assets/`, `apps/sample-title/src/sample-content/`, `apps/sample-title/src/test-support/headless-replay.ts` | 参照の schema test、敵撃破の unit test、headless replay golden | `npm run check`, `npm run dev` |
 | `docs/design.md` 21.5 Browser Test | Playwright の browser smoke と deterministic replay smoke | Done | `apps/sample-title/e2e/`, `apps/sample-title/playwright.config.ts`, `apps/sample-title/src/runtime/debug/browser-replay-record.ts` | 起動、描画、入力、HUD、overlay、viewport / DPR、replay 一致 | `npm run test:browser` |
+| `docs/design.md` 4 / 22 / 23 Phase 2A 完了 | directory 構成と依存方向の docs、初期マイルストーンの判定 | Done | `docs/design.md`, `docs/implementation-plan.md`, `README.md`, `AGENTS.md`, `tests/module-graph.test.mjs` | sample app の依存方向（`SAMPLE_TITLE_LAYER_RULES`）、「Phase 2A 完了判定」の各項目に対応する test | `npm run check`, `npm run test:browser` |
 
 ## 次の作業順
 
@@ -538,14 +545,20 @@ Phase 1C-S 完了時点の Core では、`PathDefinition` が id / version だ�
 | `content/` | design 4 の種類別 YAML と `assets/manifest.yaml` |
 | `public/assets/` | manifest が参照する仮素材 SVG |
 | `vite/` | content を検証して virtual module を生成する Vite plugin（Node で実行） |
-| `src/runtime/loop/` | 固定 tick clock、catch-up、dropped tick |
+| `src/main.ts` | entry。Core の load、`GameShell`、DOM overlay、viewport、Phaser、debug hook を組み立てる |
+| `src/runtime/loop/` | 固定 tick clock、catch-up、dropped tick、`StageLoop`（dev / test build では受け付けた入力を記録） |
 | `src/runtime/input/` | keyboard queue、`InputFrame` / `UiInputFrame` 変換、default binding |
-| `src/runtime/lifecycle/` | `GameLifecycleState` と遷移 |
-| `src/runtime/view/` | entity id 差分からの view spawn / update / destroy 計画と pool sizing |
+| `src/runtime/lifecycle/` | `GameLifecycleState` と遷移、開始演出の timer、lifecycle で stage を進める `GameShell` |
+| `src/runtime/view/` | entity id 差分からの view 同期の計画、view pool と sizing、viewport の配置、点滅、hit spark、entity 数 |
 | `src/runtime/assets/` | manifest path 解決、load 結果、fallback |
-| `src/runtime/phaser/` | Phaser Scene、view pool、描画。`phaser` を import してよいのはここと entry だけ |
-| `src/ui/` | DOM overlay の HUD、debug HUD、fatal / result 表示 |
-| `src/debug/` | `BrowserDebugStateDump` と dev / test build 専用の global hook |
+| `src/runtime/hud/` | HUD と debug HUD に出す内容 |
+| `src/runtime/audio/` | audio status（Phase 2A は `muted` 固定） |
+| `src/runtime/debug/` | `BrowserDebugStateDump` と `BrowserReplayRecord` を組み立てる純粋関数と型 |
+| `src/runtime/phaser/` | Phaser Scene、entity view、演出、collider 表示、render scale。`phaser` を import してよいのはここと entry だけ |
+| `src/ui/` | DOM overlay の HUD、debug HUD、error 表示と、viewport への配置 |
+| `src/debug/` | dev / test build 専用の `window.__SHOOTING_DEBUG_STATE__` / `window.__SHOOTING_DEBUG_REPLAY__` |
+| `src/sample-content/` | sample content の参照・撃破・headless replay golden の test |
+| `src/test-support/` | 複数の test が使う helper（sample の load、fake session と frame、headless replay） |
 | `e2e/` | Playwright の Browser test |
 
 1. Phase 2A-0: 着手条件の import guard（振る舞いは変えない）
@@ -644,8 +657,39 @@ Phase 1C-S 完了時点の Core では、`PathDefinition` が id / version だ�
     - Done: `StageLoop` が Core の受け付けた `InputFrame` を残し（dev / test build だけ）、`window.__SHOOTING_DEBUG_REPLAY__()` が開始条件、入力、serialize 結果を返す（dump の schema の外、design 21.5）。e2e は遊んだ入力を Node で再生し、tick、entity 数、自機座標、serialize 結果の digest が一致することを確かめる。同じ往復を GameShell の node:test でも固定した。`--repeat-each=3` で 33 件が安定して通ることを確認した
     - Later: CI で動かすときは Linux の screenshot baseline を作って commit し、`npx playwright install chromium` で browser を入れる
 14. Phase 2A-13: docs と milestone 確認
-    - Queued: `docs/design.md` の directory 構成と Phase 2A の実装状況、この文書の対応表、README の開発コマンド、`AGENTS.md` の app の依存方向を更新する
-    - Queued: design 23 の初期マイルストーンの各項目を、対応する test または手動確認手順に対応付けて Phase 2A の完了を判定する
+    - Done: `docs/design.md` の directory 構成（sample app の `config/`、`public/`、`vite/`、`e2e/`、`src/` の各 directory と、Phase 2A で受け付ける content の種類。`player/` は実際の `players/` に直した）、sample app の module 構成と依存方向、Phase 2A の実装状況（22、23、26）、9.5 の enemy が movement / behavior を持たず timeline の spawn が path と pattern を組み合わせる実際の schema を更新した。この文書の現在の slice、Done / Next、対応表、README の開発コマンドと操作を更新した
+    - Done: sample app の依存方向（`ui/`、`debug/`、`runtime/phaser/` を import してよいのは `src/main.ts` だけ）を `tests/module-graph.test.mjs` の `SAMPLE_TITLE_LAYER_RULES` に固定し、`AGENTS.md` に書いた。runtime module から `ui/` を import する違反を注入して検出を確かめた
+    - Done: design 23 の初期マイルストーンと design 21.6 の受け入れテストを test と手動確認に対応付け、Phase 2A の完了を判定した（「Phase 2A 完了判定」）
+
+## Phase 2A 完了判定
+
+判定時点（Phase 2A-13）: `npm run check` は 514 test pass、sample content の `validate-content` は diagnostic 0 件、`npm run test:browser` は 11 test pass（Playwright 1.63.0 の Chromium、macOS）。
+
+design 23 の初期マイルストーン:
+
+| 項目 | 判定 | 自動 test | 手動確認（`npm run dev`） |
+| --- | --- | --- | --- |
+| ブラウザで起動する | 満たす | `e2e/smoke.spec.ts`（title へ進み asset が ready）、`e2e/viewport.spec.ts`（desktop / high DPI / mobile / 小さい窓 / resize） | title 画面に「SHOOTING SAMPLE」が出る |
+| 自機が移動し、低速移動できる | 満たす | Core `simulation/player-movement-system.test.ts`（content の速度と focus 速度）、app `runtime/input/keyboard-input.test.ts`、`e2e/smoke.spec.ts`（4 px / tick、Shift で 1.8 px / tick と当たり判定の表示） | Enter で開始し、矢印 key で動き、Shift を押すと遅くなって判定が出る |
+| 自機ショットで敵を倒せる | 満たす | Core `simulation/collision-system.test.ts`・`session/collision-scoring-tick.test.ts`、app `sample-content/stage-01.test.ts`（scout の HP 10 → 5 → 撃破、defeated event、+100 点）、`sample-content/stage-01-replay.test.ts`（26 体撃破）、`e2e/smoke.spec.ts`（撃破で HUD の score が変わる） | Z を押し続けて drone を倒すと score が増え、hit spark が出る |
+| `content/stages/stage_01.yaml` で敵の出現を定義できる | 満たす | `sample-content/content-references.test.ts`（参照の解決と、壊した参照の diagnostic）、`sample-content/stage-01-replay.test.ts`（6 wave・26 体の出現と撃破、tick 2216 の clear） | stage 1 の wave が順に出て、全滅か退場で STAGE CLEAR になる |
+| `content/enemies/*.yaml` で敵の HP、移動、弾幕を定義できる | 形を変えて満たす | `sample-content/stage-01.test.ts`（enemies の HP と score）、`sample-content/content-references.test.ts` | enemy YAML が HP、score、当たり判定を持ち、移動（`paths/*.yaml`）と弾幕（`patterns/*.yaml`）は stage timeline の spawn ごとに組み合わせる。design 9.5 の enemy に movement / behavior を持たせる形は Phase 2B 以降（design 9.5、23 に記載） |
+| 最小 pattern command subset で簡単な 3-way 弾幕を定義できる | 満たす | Core `session/enemy-pattern-tick.test.ts`（3-way golden：弾数、角度、seed 再現性）、app `sample-content/stage-01-replay.test.ts`（sample の 3-way が 15° 間隔の 3 発） | scout が自機を狙って 3-way を撃つ |
+| 当たり判定 debug overlay を切り替えられる | 満たす | `runtime/lifecycle/game-shell.test.ts`（どの状態でも切り替え）、`e2e/smoke.spec.ts`（Backquote / F3 で dump、debug HUD、collider の描画が切り替わる） | dev server では最初から表示し、Backquote / F3 で消える |
+| Phase 2B の項目（pickup、radial 弾幕、sample content spec、authoring examples） | 対象外 | — | — |
+
+design 21.6 の受け入れテスト:
+
+| 対象 | 判定 | 対応する test |
+| --- | --- | --- |
+| `content/stages/stage_01.yaml` の schema test | 満たす | `apps/sample-title/src/sample-content/content-references.test.ts`、`npm run validate-content:sample` |
+| 敵撃破の unit test（HP 減少、撃破 event、score 加算） | 満たす | `apps/sample-title/src/sample-content/stage-01.test.ts`、Core `simulation/collision-system.test.ts` |
+| 3-way 弾幕の golden test（弾数、角度、seed 再現性） | 満たす | Core `session/enemy-pattern-tick.test.ts`、`apps/sample-title/src/sample-content/stage-01-replay.test.ts` |
+| 低速移動の unit test と browser test（移動倍率と当たり判定表示） | 満たす | Core `simulation/player-movement-system.test.ts`、`apps/sample-title/e2e/smoke.spec.ts` |
+| debug overlay の browser test（collider 表示の toggle） | 満たす | `apps/sample-title/e2e/smoke.spec.ts` |
+| browser smoke（起動、canvas 非空、HUD 更新、screenshot diff、debug state dump、deterministic replay smoke） | 満たす | `apps/sample-title/e2e/smoke.spec.ts`、`screenshot.spec.ts`（title 画面、darwin の baseline だけ）、`viewport.spec.ts`、`replay.spec.ts` |
+
+残す課題（Phase 2A の完了は妨げない）: screenshot diff の baseline は macOS だけで、CI では Linux の baseline と `npx playwright install chromium` が要る（2A-12 の Later）。SVG の texture は起動時の render scale で作る（2A-10 の Later）。enemy の view pool は spawn 数と budget の小さい方で見積もる（2A-8 の Later）。
 
 Later（Phase 2A の外）:
 
