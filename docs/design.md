@@ -150,7 +150,7 @@ Sample app の module 構成（Phase 2A 完了時点）:
 
 | Path | 内容 |
 | --- | --- |
-| `config/game-definition.yaml`、`content/` | game definition と種類別の content YAML、asset manifest。Phase 2A の validator が受け付けるのは `stages`、`enemies`、`bullets`、`player-shots`、`players`、`patterns`、`paths`、`assets` で、ほかは optional feature を入れる slice で足す |
+| `config/game-definition.yaml`、`content/` | game definition と種類別の content YAML、asset manifest。validator が受け付けるのは `stages`、`enemies`、`bullets`、`player-shots`、`players`、`patterns`、`paths`、`assets` と、optional feature の `pickups`（Phase 2B-5、`content.features.pickups`）で、ほかは optional feature を入れる slice で足す |
 | `public/assets/` | manifest が参照する仮素材の SVG |
 | `vite/` | content を validate-content の Node API で検証して virtual module にする Vite plugin と、production build に debug hook が入らないことの test（Node で実行） |
 | `src/main.ts` | entry。Core の load、`GameShell`、DOM overlay、viewport、Phaser、debug hook を組み立てる。`import.meta` と virtual module を読むのはここだけ |
@@ -225,7 +225,7 @@ packages/shooting-core/src/
 
 依存方向は `core.ts` → `session/` → `serialization/restore/` / `state/` → 下位 module（`content/`、`simulation/`、`hash/` など）→ `shared/` とし、下位 module から上位 layer を import しない。`instrumentation/` は `core.ts`、`session/`、`testing/` だけが使う session の差し込み口で、通常 runtime から到達してよい。runtime entity は kind ごとに `entities/<kind>/` の model / snapshot / restore へ縦に分け、各 file はそれぞれの layer に属する。`entities/*/snapshot.ts` は `serialization/types.ts`、`state/`、`hash/`、kind 別 restore から、`entities/*/restore.ts` は `serialization/restore/` からだけ使い、kind directory 同士は import しない。非 test source について、`core.ts`、`session/`、`serialization/restore/`、`state/`、`instrumentation/`、`hash/`、`testing/`、`entities/*/snapshot.ts`、`entities/*/restore.ts` を import してよい module と、kind directory 同士が import しないこと、`shared/` が他 module を import しないことは型 import も含めて、runtime import cycle と `index.ts` から `hash/` / `testing/` へ実行時に到達しないことは実行時 import で、`tests/module-graph.test.mjs` が検査する。同じ test は rule の path が実在する module を指すことと、shooting-core / validate-content の非 test source が `*.test.ts` / `test-support/` を import しないこと、shooting-core の非 test source が同じ `src/` 配下の module だけを相対 path で import し、npm package、`node:`、triple-slash reference directive を型 import も含めて使わないことも検査する。state hash と headless debug dump の digest は test helper 側で計算する。
 
-`extension/` は optional feature が basic に差し込む口（Phase 2B-4）で、`content/types.ts`、`result.ts`、`serialization/types.ts`、`shared/` だけを import し、`core.ts`、`api-types.ts`、`index.ts`、`session/`、`state/`、`serialization/restore/`、`instrumentation/`、`testing/` から使う。basic は `src/features/` を import せず、feature は同じ feature の directory と basic の `extension/`、`shared/`、`result.ts`、`content/types.ts`、`serialization/types.ts` だけを型 import も含めて import し、feature 同士は import しない（`tests/module-graph.test.mjs`）。package の export map は root と、`src/features/` の directory ごとの `./features/<feature>` だけを持つ（`tests/package-boundary.test.mjs`）。
+`extension/` は optional feature が basic に差し込む口（Phase 2B-4）で、`content/types.ts`、`content/validation/` の field / schema path / reference の helper（feature は `extension/content-validation.ts` を通して使う）、`result.ts`、`serialization/types.ts`、`shared/` だけを import し、`core.ts`、`api-types.ts`、`index.ts`、`session/`、`state/`、`serialization/restore/`、`instrumentation/`、`testing/` から使う。basic は `src/features/` を import せず、feature は同じ feature の directory と basic の `extension/`、`shared/`、`result.ts`、`content/types.ts`、`serialization/types.ts` だけを型 import も含めて import し、feature 同士は import しない（`tests/module-graph.test.mjs`）。package の export map は root と、`src/features/` の directory ごとの `./features/<feature>` だけを持つ（`tests/package-boundary.test.mjs`）。
 
 ## 5. レイヤー責務
 
@@ -787,16 +787,29 @@ Phase 1 の Simulation 座標は JavaScript の finite number として保持し
 
 ### 9.9 Pickup 定義例
 
-Enemy の drops から参照する回収アイテムは、`content/pickups/` の定義として管理する。Pickup は Phase 2B の content authoring 拡張とし、Phase 1A / Phase 2A の minimum playable には含めない。
+Enemy の drops から参照する回収アイテムは、`content/pickups/` の定義として管理する。Pickup は Phase 2B の content authoring 拡張とし、Phase 1A / Phase 2A の minimum playable には含めない。Phase 2B-5 で pickup feature（`@shooting-sample/shooting-core/features/pickup`）の content として実装した。`enabledFeatures: [pickup]` の content だけが使え、validate-content は `pickups/*.yaml` を `content.features.pickups` に入れる。
 
 ```yaml
 id: pickup.score_small
 version: 1
 asset: pickup.score_small
 score: 100
-magnetRadius: 80
 collectRadius: 10
+magnetRadius: 80
+velocity: { x: 0, y: 1.5 }
 ```
+
+```yaml
+# content/enemies/drone.yaml（抜粋）
+drops:
+  - pickup: pickup.score_small
+    count: 3
+    spread: 24
+```
+
+- pickup は `score`（0 以上の整数）、`collectRadius`（0 より大きく 64 以下）、省略できる `magnetRadius`（`collectRadius` より大きく 256 以下）、`velocity`（px / tick、x は ±8、y は 0 より大きく 8 以下）を持つ。下へ落ちるので、回収されなければ playfield の下から出て消える。
+- enemy の `drops` は 1 つ以上の `{ pickup, count, spread? }` で、`count` の合計は 1 enemy あたり 16 以下にする。撃破した位置を中心に `count` 個を横へ `spread` px（0〜128）の幅で等間隔に並べる。乱数は使わない。
+- 生成、移動、回収、吸い寄せ（`magnetRadius` を Core で扱うか描画の演出にするか）と state は Phase 2B-6 で決める。
 
 ### 9.10 Scoring / Rank 定義例
 
@@ -1466,24 +1479,21 @@ type GameDefinition = {
   content: ContentRegistry;
 };
 
-// Future feature module schema。現在の basic core validator はこれらの field を受け付けない。
-type FeatureRegistry = Partial<{
-  bombs: readonly BombDefinition[];
+// optional feature の content（Phase 2B-5 で pickups を実装。ほかは feature を入れる slice で足す）。
+// ContentRegistry.features?: FeatureContentRegistry
+type FeatureContentRegistry = Partial<{
   pickups: readonly PickupDefinition[];
-  affinities: readonly AffinityRules[];
-  scoringRules: readonly ScoringRule[];
-  rankRules: readonly RankRule[];
+  bombs: readonly BombDefinition[];          // 未実装
+  affinities: readonly AffinityRules[];      // 未実装
+  scoringRules: readonly ScoringRule[];      // 未実装
+  rankRules: readonly RankRule[];            // 未実装
 }>;
 
-type FeatureContentRegistry = ContentRegistry & Readonly<{
-  features?: FeatureRegistry;
-}>;
-
+// 未実装の feature が足す top-level field。
 type FeatureGameDefinition = GameDefinition & Readonly<{
   defaultAffinityRulesId?: string;
   defaultScoringRuleId?: string;
   defaultRankRuleId?: string;
-  content: FeatureContentRegistry;
 }>;
 
 type StartStageOptions = {
@@ -1746,7 +1756,9 @@ Feature module 導入後、Affinity を使う content では、Bullet、Enemy、
 
 Feature module 導入後の `enabledFeatures` は optional module の境界である。MVP basic core は `[]` だけを許可し、basic score は Core minimum の固定仕様として扱う。Feature schema では disabled feature の定義ファイルを content library として registry に含めることは許可するが、default id、stage/player からの参照、runtime input action、collision pair として使うことは禁止する。未使用の disabled feature 定義は warning、参照された disabled feature は load error にする。
 
-`FeatureRegistry` は feature schema 側の型であり、現在の basic `ContentRegistry` には存在しない。Feature schema では `Partial` だが、`enabledFeatures` に含まれる feature の registry entry は原則必須とする。空配列は「feature module は有効だが content 定義はない」状態として許可する。entry 自体が欠けている場合は configuration error とする。ただし `graze` は Player field だけで有効化できるため registry entry を持たない。
+feature の content は `ContentRegistry.features`（`FeatureContentRegistry`）に置く。`Partial` だが、`enabledFeatures` に含まれる feature の collection は必須とする。空配列は「feature module は有効だが content 定義はない」状態として許可する。collection 自体が欠けている場合は configuration error（pickup は `definition.invalidShape`）とする。ただし `graze` は Player field だけで有効化できるため collection を持たない。
+
+Feature の gating（Phase 2B-5）: basic は feature が持つ content の field を `content/feature-fields.ts` の表で知り、feature の module が Core に登録されていなくても gating する。`enabledFeatures` にない feature の collection（`content.features.pickups`）は検証せずに読み込むだけで Core は読まず、`feature.disabledContent` の warning にする。basic の definition に feature が足す field（`EnemyDefinition.drops`）を、その feature が `enabledFeatures` にない content で使えば `feature.disabled` の error にする。`enabledFeatures` にあって module が登録されていなければ `feature.unsupported` の error にする。有効な feature の collection と field の値は feature の module の `loadContent()` が検証し、参照を解決する（pickup の参照切れは `pickup.notFound`）。この matrix は `features/pickup/gating.test.ts` が固定する。validate-content は feature の診断を `featureGate` にし、`enabledFeatures` と無効な feature の collection は game definition を、無効な feature を使う field はその definition を指す。
 
 - `bomb` 無効: basic schema では `PlayerDefinition.bomb` field 自体を禁止する。feature schema では `bomb.definition` の参照、`bomb` gameplay action、`bombClear` collision pair を禁止し、bomb 未所持の表現が必要な場合だけ `bomb.definition: null` を許可する。
 - `graze` 無効: `PlayerDefinition.graze` field、player graze collider、`playerGraze` collision pair は禁止。
@@ -1763,7 +1775,8 @@ Feature registration（Phase 2B-4、`src/basic/extension/feature-module.ts`）:
 - `GameDefinition.enabledFeatures` は `features` に渡された feature だけを受け付け、渡されていない既知の feature は feature ごとに `feature.unsupported`（`targetId` 付き）にする。feature を 1 つも渡さない Core は、従来どおり `enabledFeatures: []` だけを受け付ける。
 - Core は有効な feature の module を canonical feature order で呼ぶ。`load()` は basic の検証に通った definition に `validateContent()` を当てて error と warning を足し、`startStage()` は `createInitialState()` で state を作り、tick は `spawn`（spawn bullets / player shots の後）と `scoring`（collision resolution と basic の scoring の後、cleanup の前）の位置で system を実行する。serialize は `serializeState()` を `SerializedEnabledFeatureState` の payload に、state hash は `hashState()` を feature state に入れ、restore は feature ごとに 1 つの state と `stateVersion` を確かめてから `restoreState()` で state を作る（spawn から到達できる state だけを受け付けるのは module の責務）。
 - feature の state は JSON 互換の plain data で、Core が committed state に feature ごとに持って freeze する。hook が plain data でない値を返せば、startStage と tick は `stageSession.fatal`、restore は `state.invalidShape` にする。system の error は tick の fatal になる。
-- Phase 2B-4 の時点で登録された feature はなく、state hash、replay、validate-content の golden は変わらない。content の schema fragment（`content.pickups` や `EnemyDefinition.drops`）と無効な feature の gating、feature が共有 allocator から採番する entity の restore（allocation envelope と restore の文脈）、tick の文脈（entity、event、score）は、pickup を足す Phase 2B-5 / 2B-6 で SPI に足す。
+- `loadContent()` は load 時に 1 度だけ feature の content（pickup は `pickupsById`）を作り、Core は hook の文脈の `content` に渡す（Phase 2B-5）。
+- Phase 2B-4 の時点で登録された feature はなく、state hash、replay、validate-content の golden は変わらない。Phase 2B-5 で pickup の content と gating を足した（state は `null`）。feature が共有 allocator から採番する entity の restore（allocation envelope と restore の文脈）と tick の文脈（entity、event、score）は、pickup の simulation を足す Phase 2B-6 で SPI に足す。
 
 `StageSession.tick()` は stage session が active でない場合、`gameOver` / `stageCleared` 後、または tick mismatch 時に `CoreResult` の error を返す。precondition violation を silent no-op にしない。`gameOver` / `stageCleared` 後の余分な tick と tick mismatch は caller precondition error であり、session を fatal にしない。budget invariant 破壊、不正 state、内部 system order 違反は fatal error とし、以後の `tick()` は同じ fatal reason を返す。tick 更新は commit 前の working state で実行し、成功時だけ committed state に swap するため、部分更新された state は公開しない。Phase 1B-4 で追加済みの `serialize()` は fatal 後に error を返す。Phase 1B-5A で追加済みの `restore()` は version mismatch、top-level content / feature mismatch、top-level shape error を `CoreError[]` として返し、失敗時に既存 handle へ副作用を残さない。runtime entity、pending event、PRNG、allocator、registry reference の deep validation は Phase 1B-5B、feature state の欠落・余剰・wrong feature は Phase 1B-5C の extension state validation で扱う。
 

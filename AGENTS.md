@@ -61,7 +61,7 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 - `instrumentation/`（test hook 有効化 guard、stage session testing hook、headless debug checkpoint）は通常 runtime から到達してよい session の差し込み口で、import してよいのは `core.ts`、`session/`、`testing/` だけ。
 - `hash/` は DTO、encoder、digest だけを持ち、上位 layer を import しない。`hash/` を import してよいのは `state/hashable-projection.ts`、`instrumentation/`、`testing/` だけ。
 - `shared/`（guard、immutable、UTF-8 順序比較、field order helper）は最下層とし、`src/basic/` 内の他 module を import しない。
-- `extension/`（optional feature の module の型、`defineFeature()`、登録の解決）は `content/types.ts`、`result.ts`、`serialization/types.ts`、`shared/` だけを import し、`extension/` を import してよいのは `core.ts`、`api-types.ts`、`index.ts`、`session/`、`state/`、`serialization/restore/`、`instrumentation/`、`testing/` だけ。
+- `extension/`（optional feature の module の型、`defineFeature()`、登録の解決、feature 向けの content 検証 helper の facade）は `content/types.ts`、`content/validation/` の `fields.ts` / `references.ts` / `schema-path.ts`、`result.ts`、`serialization/types.ts`、`shared/` だけを import し、`extension/` を import してよいのは `core.ts`、`api-types.ts`、`index.ts`、`session/`、`state/`、`serialization/restore/`、`instrumentation/`、`testing/` だけ。
 - `entities/*/snapshot.ts` を import してよいのは `serialization/types.ts`、`state/`、`hash/`、`entities/*/restore.ts` だけ。`entities/*/restore.ts` は `serialization/restore/` からだけ、`entities/restore-common.ts` はそれと `entities/*/restore.ts` からだけ、`serialization/restore-plain-data.ts` は restore 層と entities の restore module からだけ import する。layer rule の `*` は `/` を含まない1 segment に一致する。
 - `entities/<kind>/` の module は別 kind の directory を型 import も含めて import しない。
 - `index.ts` から実行時 import で到達する範囲に test / tooling 専用の `hash/` と `testing/` を含めない。`testing/` は非 test source から型 import も含めて import しない。state hash と headless debug dump の digest は test helper 側で計算する。
@@ -99,9 +99,10 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 feature を追加するとき:
 
 1. `src/features/<feature>/` と `index.ts`（`defineFeature()`）を作り、package の export map に足す。
-2. content の schema fragment、検証、tick の system、state の serialize / hash / restore を module の hook に実装し、無効な feature の gating（定義だけは warning、参照は error）と feature 間の依存を matrix test に固定する。
-3. feature を使う host（sample app、validate-content）が `createShootingCore({ features })` に渡すようにし、`SAMPLE_TITLE_PACKAGE_IMPORT_RULES` などの import rule に subpath を足す。
-4. state hash の byte 列が変わるので `SERIALIZED_STATE_HASH_VERSION`、hash golden、型契約、`docs/design.md` の feature の項を更新する。
+2. feature の content の型を basic の `content/types.ts`（`FeatureContentRegistry` と、basic の definition に足す field）に置き、`content/feature-fields.ts` の表に collection と field を登録する（basic はこの表で、module が登録されていなくても gating する）。
+3. content の検証と索引（`loadContent()`）、tick の system、state の serialize / hash / restore を module の hook に実装し、無効な feature の gating（定義だけは warning、参照は error）と feature 間の依存を matrix test に固定する。feature の test の共通 helper は `src/features/<feature>/test-support/` に置く。
+4. feature を使う host（sample app、validate-content）が `createShootingCore({ features })` に渡すようにし、`SAMPLE_TITLE_PACKAGE_IMPORT_RULES` や validate-content の package boundary test の import rule に subpath を足す。validate-content の content-root の directory は `content-collections.ts` に足す。
+5. state hash の byte 列が変わるので `SERIALIZED_STATE_HASH_VERSION`、hash golden、型契約、`docs/design.md` の feature の項を更新する。
 
 ### runtime entity kind（`packages/shooting-core/src/basic/entities/`）
 
