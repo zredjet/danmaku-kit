@@ -315,7 +315,7 @@ DOM overlay として HUD、メニュー、設定、リザルトを担当する�
 
 Phase 2A-9 の sample app の実装:
 
-- `src/ui/hud-overlay.ts` が canvas と同じ大きさの箱（`index.html` の `.stage-root`）に DOM overlay を重ね、score、lives、状態の見出し（LOADING と進み具合、title、READY、PAUSED、STAGE CLEAR、GAME OVER）、debug HUD（Core と content の version、lifecycle、audio status、seed、tick、dropped tick、asset の fallback、hit spark の drop 数）、loading と runtime の error を出す。overlay は pointer event を canvas へ通し、同じ内容の再描画では DOM を触らない。
+- `src/ui/hud-overlay.ts` が canvas と同じ大きさの箱（`index.html` の `.stage-root`）に DOM overlay を重ね、score、lives、状態の見出し（LOADING と進み具合、title、READY、PAUSED、STAGE CLEAR、GAME OVER）、debug HUD（Core と content の version、lifecycle、audio status、difficulty、seed、tick、dropped tick、asset の fallback、hit spark の drop 数）、loading と runtime の error を出す。overlay は pointer event を canvas へ通し、同じ内容の再描画では DOM を触らない。
 - score と lives は `GameFrame.state` を正本にし、event から数え直さない。表示する内容は Phaser と DOM に依存しない `src/runtime/hud/hud-view.ts` の `buildHudView()` が lifecycle と最新の frame から決め、scene は `HudPort` を通して overlay を更新する。`src/runtime/` は `src/ui/` を import しない。
 - canvas と overlay は同じ CSS transform root（`.stage-root`）に入れ、scale と letterbox は root の transform でまとめて当てる（12）。debug HUD は debug overlay を表示している間だけ出す（19）。
 
@@ -359,7 +359,7 @@ type GameLifecycleState =
 Phase 2A-9 の sample app の実装:
 
 - `src/runtime/lifecycle/game-lifecycle.ts` の `transitionLifecycle()` が上の遷移を純粋関数として持ち、入力と accumulator を捨てる合図と開始演出 timer を止める合図を返す。Phaser に依存しない `GameShell`（`game-shell.ts`）が UI action、focus lost / visibility change、Core の最終 frame を lifecycle の出来事に変え、合図を入力 adapter、stage loop、timer に実行させる。`result` と `replayPlayback` は型だけを置き、Phase 2A では遷移しない。
-- boot scene が asset の読み込みで `loading` を始め、stage scene が view pool を作り終えたら `title` へ進む。`title` の `confirm`（Enter / Space）で `stageStarting` へ進んで stage session を作り、seed を決める（`?seed=` があれば毎回その seed、なければ開始ごとに乱数）。開始演出（READY）は render frame の経過時間で 1,000 ms 続き、その間は tick を実行しない。window の blur か visibility の hidden で focus lost になったら、window の focus（visible に戻ったときは focus を持っていれば）が戻るまで開始演出の timer を止め、戻った最初の frame の経過時間は数えない。window が表示されたまま focus だけを失っても render frame は続くため、1 frame を捨てるだけでは止まらない。
+- boot scene が asset の読み込みで `loading` を始め、stage scene が view pool を作り終えたら `title` へ進む。`title` の `confirm`（Enter / Space）で `stageStarting` へ進んで stage session を作り、seed を決める（`?seed=` があれば毎回その seed、なければ開始ごとに乱数）。difficulty は `?difficulty=` の値を stage が持っていればそれ、なければ stage の最初の difficulty にする（Phase 2B-3、`src/runtime/lifecycle/stage-difficulty.ts`）。開始演出（READY）は render frame の経過時間で 1,000 ms 続き、その間は tick を実行しない。window の blur か visibility の hidden で focus lost になったら、window の focus（visible に戻ったときは focus を持っていれば）が戻るまで開始演出の timer を止め、戻った最初の frame の経過時間は数えない。window が表示されたまま focus だけを失っても render frame は続くため、1 frame を捨てるだけでは止まらない。
 - `playing` 中の `pause`（P / Esc）と focus lost / visibility change で `paused` へ進み、`pause` で `playing` へ戻る。Core が `stageCleared` / `gameOver` の frame を返した render frame で同じ名前の state へ進み、`confirm` で `title` へ戻る（Phase 2A は `result` 画面を置かない）。
 - loading を終えて `title` へ進むとき、`stageStarting` へ進むとき、`paused` の出入り、`title` へ戻るときに入力ラッチと accumulator を捨てる。loading 中（stage scene が view pool を作っている間は shell を進めない）に押した UI action は title へ持ち越さず、開始前から押している key は一度離すまで効かない。
 
@@ -688,7 +688,7 @@ steps:
   - loop: 0
 ```
 
-各 step は `wait`、`fire`、`loop` のどれか 1 つの key だけを持つ。`fire` は `bullet`、`speed`（px / tick、0 より大きく 8 以下）と、向きとして `aim: player` か `angleDeg`（+x を 0°、+y へ回る向きを正とする -360〜360 の 0.25° の倍数）のどちらか一方を持ち、省略できる `origin` は発射する enemy 自身を表す `self` だけを受け付ける。`fan` は `count` 発（1〜64）を基準の向きを中心に並べ、`spreadDeg`（0〜360）は最初と最後の弾の間の角度とする。各弾は基準から `-spread / 2 + i * spread / (count - 1)` だけずれるため、すべての弾が 0.25° 刻みに載るよう、広がりの step 数が 2 と `count - 1` で割り切れることを validation で要求する（`count` が 1 なら `spreadDeg` は 0）。`loop` は前の step の index へ戻り、戻り先から loop までの間に `wait` を含む必要がある。1 pattern の step は 1〜64 個、`wait` は 1〜3,600 tick に制限する。
+各 step は `wait`、`fire`、`loop` のどれか 1 つの key だけを持つ（Phase 2B-2 / 2B-3 で `repeat` と `if` を足した）。`fire` は `bullet`、`speed`（px / tick、0 より大きく 8 以下）と、向きとして `aim: player` か `angleDeg`（+x を 0°、+y へ回る向きを正とする -360〜360 の 0.25° の倍数）のどちらか一方を持ち、省略できる `origin` は発射する enemy 自身を表す `self` だけを受け付ける。`fan` は `count` 発（1〜64）を基準の向きを中心に並べ、`spreadDeg`（0〜360）は最初と最後の弾の間の角度とする。各弾は基準から `-spread / 2 + i * spread / (count - 1)` だけずれるため、すべての弾が 0.25° 刻みに載るよう、広がりの step 数が 2 と `count - 1` で割り切れることを validation で要求する（`count` が 1 なら `spreadDeg` は 0）。`loop` は前の step の index へ戻り、戻り先から loop までの間に `wait` を含む必要がある。1 pattern の step は 1〜64 個、`wait` は 1〜3,600 tick に制限する。
 
 Phase 2B-2 で `repeat`、`fire.radial`、`fire.stream` を追加した。
 
@@ -717,6 +717,26 @@ steps:
 - `fire.radial` は基準の向き（`aim` か `angleDeg`）から 1 周を `count` 等分した向きへ撃つ（1〜64、360° を `count` で割った角度が 0.25° の倍数になる数だけ）。`fan` と `radial` はどちらか一方だけを指定できる。
 - `fire.stream` は各向きに、`speed` から `speedStep` ずつ変えた速さの弾を `count` 発（1〜16）重ねる。`count` が 2 以上なら `speedStep` は 0 以外で、すべての弾の速さが 0 より大きく 8 以下になる必要がある。
 - 1 回の発射の弾は向きごとに速さを並べた順（向きが外側、速さが内側）に採番する。
+
+Phase 2B-3 で difficulty による分岐 `if` を追加した。
+
+```yaml
+id: pattern.scout_three_way
+version: 1
+steps:
+  - wait: 20
+  - if:
+      difficulty: [hard]
+      then:
+        - fire: { bullet: bullet.red_small, aim: player, fan: { count: 5, spreadDeg: 40 }, speed: 2.4 }
+      else:
+        - fire: { bullet: bullet.red_small, aim: player, fan: { count: 3, spreadDeg: 24 }, speed: 2.4 }
+  - wait: 50
+  - loop: 0
+```
+
+- `if.difficulty` は既知の difficulty（`normal`、`hard`）を重複なく 1 つ以上並べる。stage の difficulty が含まれれば `then`、含まれなければ `else`（省略すると何もしない）を実行する。`then` と `else` には `repeat` の `steps` と同じ命令（`wait`、`fire`、`repeat`、`if`。1〜64 個）を置け、`loop` は置けない。`repeat` と `if` の入れ子は合わせて 4 段までにする。
+- 分岐は stage を始めるとき（restore では snapshot の difficulty で）に解決して PatternProgram に展開するため、runner の状態と state hash は変わらない。`loop` の範囲の `wait` には、`then` と `else` の両方に `wait` を含む `if` だけを数える。展開した後の命令数の上限（4,096）は difficulty ごとに数える。
 
 `parallel`、`set`、`move`、HP / 時間の `if`、`emitEvent`、`randomSpread`、`accel` は後続の DSL で扱う（`docs/implementation-plan.md` の「Phase 2B タスク分割」）。
 
@@ -884,7 +904,8 @@ Affinity feature を有効にする Player は、`initialAffinity` と `availabl
 
 PatternProgram の最小 command subset（Phase 2A-5）:
 
-- load 時に `steps` を `PatternProgram`（`patterns/pattern-program.ts`）へ正規化する。`repeat` は展開し（Phase 2B-2）、角度と fan / radial は整数 step にし、stream は弾ごとの速さにする。run を始められる cursor（0、各 `wait` の直後、末尾）ごとに、次の `wait` か末尾まで実行する命令のまとまり（run）の発射命令、弾数、実行命令数、次の cursor と待ち tick 数を 1 度だけ求める。命令列に分岐や乱数はないため、tick と restore は同じ run を引く。cursor は展開した後の命令の位置で、`repeat` のない pattern では step の index と同じになる。
+- load 時に `steps` を `PatternProgram`（`patterns/pattern-program.ts`）へ正規化する。`repeat` は展開し（Phase 2B-2）、difficulty の `if` は difficulty ごとに枝を選んで展開し（Phase 2B-3）、角度と fan / radial は整数 step にし、stream は弾ごとの速さにする。run を始められる cursor（0、各 `wait` の直後、末尾）ごとに、次の `wait` か末尾まで実行する命令のまとまり（run）の発射命令、弾数、実行命令数、次の cursor と待ち tick 数を 1 度だけ求める。展開した命令列に分岐や乱数はないため、tick と restore は同じ run を引く。cursor は展開した後の命令の位置で、`repeat` と `if` のない pattern では step の index と同じになる。
+- content の index は既知の difficulty ごとに PatternProgram の表を持ち（`if` を持たない pattern は 1 つの program を共有する）、stage session は `startStage()` の difficulty の表を、restore は snapshot の `difficulty` の表を使う。
 - runner state は cursor と `waitRemaining`（次の run までに進める tick 数）だけを持つ。runner は enemy を spawn した tick から毎 tick、待ちが 2 tick 以上残っていれば 1 減らし、それ以外は cursor から run を実行する。`wait: N` で止まった run の次の run は N tick 後に実行する。末尾まで実行した runner は cursor を命令数にして止まる。
 - `loop` の戻り先から loop までの間に `wait` があることを validation で保証するため、戻るたびに次に当たる loop の位置が前へ進み、1 回の run は必ず `wait` か末尾で止まる（静的に検出できる無限ループの拒否、design 21.3）。
 - 発射命令は、基準の向き（`angleDeg` の step か、自機への向きに最も近い step）に fan の step 差を足した向きの表の単位 vector に `speed` を掛けて敵弾の速度にする。発射元は enemy の移動前の位置で、敵弾は生成した tick から動く。
@@ -1219,7 +1240,7 @@ state hash、PRNG state hash（state hash と同じ canonical encoding / xxHash6
 
 Phase 2A-10 の sample app の実装:
 
-- debug overlay は `toggleDebug`（Backquote / F3）でどの lifecycle でも切り替え、dev server では最初から表示する。表示中は content の collision radius による collider の円を entity ごとに描き（`src/runtime/phaser/collider-overlay.ts`）、debug HUD に Core と content の version、lifecycle、audio status、seed、tick、dropped tick、kind 別の entity 数、asset の fallback と hit spark の drop 数を出す（`src/runtime/hud/debug-lines.ts`）。
+- debug overlay は `toggleDebug`（Backquote / F3）でどの lifecycle でも切り替え、dev server では最初から表示する。表示中は content の collision radius による collider の円を entity ごとに描き（`src/runtime/phaser/collider-overlay.ts`）、debug HUD に Core と content の version、lifecycle、audio status、difficulty、seed、tick、dropped tick、kind 別の entity 数、asset の fallback と hit spark の drop 数を出す（`src/runtime/hud/debug-lines.ts`）。
 - simulation events / tick、render events / tick、object pool 使用量は Phase 2A では出さない。
 
 Content 制作者向け workflow:
@@ -1881,7 +1902,9 @@ Phase 2B-1 の意味の検証（`content/validation/pattern-semantics.ts`）: sh
 
 - 1 run の弾数が敵弾の active 上限（2,000）を超える pattern と、1 run の命令数が 1 tick の命令数の上限（2,000）を超える pattern（`repeat` を展開すると起き得る）は、その run の tick に必ず fatal になるため `definition.invalidConstraint` の load error にする。loop より後ろのように spawn から実行されない run は数えない。
 - 一度も撃たない pattern（`pattern.neverFires`）と、spawn からどの run でも実行されない step（`pattern.unreachableStep`、`loop` より後ろの step など）は、動作はするが書き間違いの可能性が高いため warning にする。warning は `CoreResult.warnings` で返し、content に error がある間は返さない。
-- `CoreWarning` は error と同じく optional の `schemaPath` と `referrerId` を持ち、validate-content は warning を YAML の該当 step（never fires は `steps` 全体）へ向けて exit code 0 の schema diagnostic として出す（CLI golden の `pattern-warning`、`pattern-silent`、`pattern-budget-error`）。
+- difficulty の `if` を持つ pattern（Phase 2B-3）は、pattern を使う stage の difficulty ごとに（どの stage も使わない pattern は既知の difficulty すべてで）予算を求め、どれかの difficulty で上限を超えれば error にする（message に超えた difficulty を書く）。`pattern.neverFires` はどの difficulty でも撃たないときだけ出す。`loop` は top-level にだけ置けて前へ戻るため、step に届くかは difficulty によらない。
+- どの difficulty でも使われない `if` の枝（`pattern.unusedBranch`）も warning にする。`if` に届く difficulty（外側の `if` で絞った後）にない difficulty を `if.difficulty` が挙げていれば `if.difficulty` に、届く difficulty がすべて `then` を使うなら `if.else` に出す。
+- `CoreWarning` は error と同じく optional の `schemaPath` と `referrerId` を持ち、validate-content は warning を YAML の該当 step（never fires は `steps` 全体）へ向けて exit code 0 の schema diagnostic として出す（CLI golden の `pattern-warning`、`pattern-silent`、`pattern-budget-error`、`pattern-difficulty-warning`）。
 - 静的な予算は runtime の状態を変えないため、state hash と replay は変わらない。
 
 ### 21.4 Golden Test
