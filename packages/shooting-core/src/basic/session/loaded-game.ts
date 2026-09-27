@@ -1,4 +1,5 @@
 import type { LoadedGame, StageSession } from "../api-types.ts";
+import { patternProgramsForDifficulty } from "../content/content-index.ts";
 import type { LoadedContentIndex } from "../content/content-index.ts";
 import type { PlayerDefinition, StageDefinition } from "../content/types.ts";
 import { deepFreezePlainData } from "../shared/immutable.ts";
@@ -129,7 +130,7 @@ function createStageSessionFromContent(
       enemiesById: content.enemiesById,
       pathsById: content.pathsById,
       patternsById: content.patternsById,
-      patternProgramsById: content.patternProgramsById,
+      patternProgramsById: patternProgramsForDifficulty(content, initial.serializationMetadata.difficulty),
       playerShotsById: content.playerShotsById,
       stage,
       player,

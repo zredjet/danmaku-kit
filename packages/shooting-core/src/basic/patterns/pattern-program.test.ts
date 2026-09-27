@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { PatternDefinition, PatternStepDefinition } from "../content/types.ts";
+import type { Difficulty, PatternDefinition, PatternStepDefinition } from "../content/types.ts";
 import { compilePatternProgram } from "./pattern-program.ts";
 import type { PatternFireCommand } from "./pattern-program.ts";
 
-function compile(steps: readonly PatternStepDefinition[]) {
-  const program = compilePatternProgram({ id: "pattern.test", version: 1, steps });
+function compile(steps: readonly PatternStepDefinition[], difficulty: Difficulty = "normal") {
+  const program = compilePatternProgram({ id: "pattern.test", version: 1, steps }, difficulty);
   assert.ok(program);
   return program;
 }
@@ -27,8 +27,8 @@ test("returns null for patterns without steps", () => {
     fireOnSpawn: { bullet: "bullet.red_small", offset: { x: 0, y: 8 } },
   };
 
-  assert.equal(compilePatternProgram({ id: "pattern.none", version: 1 }), null);
-  assert.equal(compilePatternProgram(fireOnSpawn), null);
+  assert.equal(compilePatternProgram({ id: "pattern.none", version: 1 }, "normal"), null);
+  assert.equal(compilePatternProgram(fireOnSpawn, "normal"), null);
 });
 
 test("normalizes fire directions and spreads fan bullets evenly around the base step", () => {
@@ -129,4 +129,31 @@ test("spreads radial bullets around the circle from the base direction and stack
     ],
   ]);
   assert.equal(program.runs.get(0)!.bulletCount, 10);
+});
+
+test("expands the difficulty branch of if and counts a branch without commands as passed", () => {
+  const fire = { bullet: "bullet.red_small", angleDeg: 90, speed: 1 } as const;
+  const steps: readonly PatternStepDefinition[] = [
+    { if: { difficulty: ["hard"], then: [{ fire }, { fire }] } },
+    { wait: 4 },
+    { if: { difficulty: ["hard"], then: [{ wait: 2 }], else: [{ repeat: { count: 3, steps: [{ fire }] } }] } },
+    { loop: 0 },
+  ];
+  const normal = compile(steps, "normal");
+  const hard = compile(steps, "hard");
+
+  // normal は最初の `if` が空になり、`loop` は空の step の位置（cursor 0 の wait）へ戻る。
+  assert.deepEqual([normal.stepCount, normal.length], [4, 5]);
+  assert.deepEqual([...normal.runs].map(([cursor, run]) => [cursor, run.bulletCount, run.executedSteps, run.next]), [
+    [0, 0, [0, 1], { cursor: 1, waitTicks: 4 }],
+    [1, 3, [0, 1, 2, 3], { cursor: 1, waitTicks: 4 }],
+    [5, 0, [], null],
+  ]);
+  assert.deepEqual([hard.stepCount, hard.length], [4, 5]);
+  assert.deepEqual([...hard.runs].map(([cursor, run]) => [cursor, run.bulletCount, run.executedSteps, run.next]), [
+    [0, 2, [0, 1], { cursor: 3, waitTicks: 4 }],
+    [3, 0, [2], { cursor: 4, waitTicks: 2 }],
+    [4, 2, [0, 1, 3], { cursor: 3, waitTicks: 4 }],
+    [5, 0, [], null],
+  ]);
 });

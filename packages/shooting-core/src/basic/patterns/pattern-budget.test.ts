@@ -7,7 +7,7 @@ import { compilePatternProgram } from "./pattern-program.ts";
 
 function analyze(steps: readonly PatternStepDefinition[]) {
   const pattern: PatternDefinition = { id: "pattern.test", version: 1, steps };
-  return analyzePatternProgram(compilePatternProgram(pattern)!);
+  return analyzePatternProgram(compilePatternProgram(pattern, "normal")!);
 }
 
 const fire = (count = 1): PatternStepDefinition => ({

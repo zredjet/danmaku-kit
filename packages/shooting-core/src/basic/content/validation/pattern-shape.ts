@@ -1,5 +1,6 @@
 import { patternStreamSpeeds } from "../../patterns/pattern-program.ts";
 import type { CoreError } from "../../result.ts";
+import { KNOWN_DIFFICULTIES, isKnownDifficulty } from "../types.ts";
 import { asRecord } from "../../shared/guards.ts";
 import { ANGLE_STEPS_PER_TURN, angleStepsFromDegrees } from "../../shared/angle-steps.ts";
 import {
@@ -28,8 +29,8 @@ import {
 } from "./fields.ts";
 import { addSchemaContext } from "./schema-path.ts";
 
-const TOP_LEVEL_STEP_KINDS = Object.freeze(["wait", "fire", "loop", "repeat"] as const);
-const REPEAT_BODY_STEP_KINDS = Object.freeze(["wait", "fire", "repeat"] as const);
+const TOP_LEVEL_STEP_KINDS = Object.freeze(["wait", "fire", "loop", "repeat", "if"] as const);
+const REPEAT_BODY_STEP_KINDS = Object.freeze(["wait", "fire", "repeat", "if"] as const);
 
 /** PatternDefinition の shape validation。 */
 export function validatePatternShape(pattern: Record<string, unknown>, errors: CoreError[]): void {
@@ -90,7 +91,7 @@ function validatePatternStepShape(
   const kinds = loop ? TOP_LEVEL_STEP_KINDS : REPEAT_BODY_STEP_KINDS;
   validateAllowedKeys(path, step, loop ? TOP_LEVEL_STEP_KINDS : [...REPEAT_BODY_STEP_KINDS, "loop"], errors);
   if (kinds.filter((kind) => step[kind] !== undefined).length + (!loop && step.loop !== undefined ? 1 : 0) !== 1) {
-    errors.push({ code: "definition.invalidShape", message: `${path} must have exactly one of wait, fire, loop or repeat` });
+    errors.push({ code: "definition.invalidShape", message: `${path} must have exactly one of wait, fire, loop, repeat or if` });
   }
   if (step.wait !== undefined) {
     validatePositiveIntegerAtMost(`${path}.wait`, step.wait, MAX_PATTERN_WAIT_TICKS, errors);
@@ -102,11 +103,14 @@ function validatePatternStepShape(
     if (loop) {
       validatePatternLoopShape(step.loop, loop.stepIndex, loop.waitStepIndexes, errors);
     } else {
-      errors.push({ code: "definition.invalidShape", message: `${path}.loop must not be placed inside repeat` });
+      errors.push({ code: "definition.invalidShape", message: `${path}.loop must not be placed inside repeat or if` });
     }
   }
   if (step.repeat !== undefined) {
     validatePatternRepeatShape(`${path}.repeat`, step.repeat, repeatDepth + 1, errors);
+  }
+  if (step.if !== undefined) {
+    validatePatternIfShape(`${path}.if`, step.if, repeatDepth + 1, errors);
   }
 }
 
@@ -119,43 +123,104 @@ function validatePatternRepeatShape(path: string, value: unknown, depth: number,
   }
   validateAllowedKeys(path, repeat, ["count", "steps"], errors);
   validatePositiveIntegerAtMost(`${path}.count`, repeat.count, MAX_PATTERN_REPEAT_COUNT, errors);
-  if (depth > MAX_PATTERN_REPEAT_DEPTH) {
-    errors.push({ code: "definition.invalidShape", message: `${path} must be nested at most ${MAX_PATTERN_REPEAT_DEPTH} deep` });
-    return;
-  }
-  const steps = validateObjectArray(`${path}.steps`, repeat.steps, errors);
-  if (Array.isArray(repeat.steps) && steps.sourceLength === 0) {
-    errors.push({ code: "definition.invalidShape", message: `${path}.steps must contain at least 1 step` });
-  }
-  if (steps.sourceLength > MAX_PATTERN_STEPS) {
-    errors.push({ code: "definition.invalidShape", message: `${path}.steps must contain at most ${MAX_PATTERN_STEPS} steps` });
-  }
-  for (const { record: step, index } of steps.items) {
-    const stepErrorStart = errors.length;
-    validatePatternStepShape(`${path}.steps[]`, step, depth, errors);
-    addSchemaContext(errors, stepErrorStart, `${path}.steps[${index}]`, `${path}.steps[]`);
+  if (validateNestingDepth(path, depth, errors)) {
+    validatePatternBodyStepsShape(`${path}.steps`, repeat.steps, depth, errors);
   }
 }
 
-/** step が `wait` か、`wait` を含む `repeat` か。 */
+/**
+ * difficulty の `if` を検証する。`difficulty` は既知の difficulty を重複なく 1 つ以上並べ、`then` と省略できる `else` は `repeat` の
+ * `steps` と同じ命令列にする。
+ */
+function validatePatternIfShape(path: string, value: unknown, depth: number, errors: CoreError[]): void {
+  const branch = asRecord(value);
+  if (!branch) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must be an object` });
+    return;
+  }
+  validateAllowedKeys(path, branch, ["difficulty", "then", "else"], errors);
+  const difficulties = branch.difficulty;
+  if (!Array.isArray(difficulties) || difficulties.length === 0) {
+    errors.push({ code: "definition.invalidShape", message: `${path}.difficulty must be a non-empty array` });
+  } else if (!difficulties.every(isKnownDifficulty)) {
+    errors.push({ code: "definition.invalidShape", message: `${path}.difficulty must contain only ${KNOWN_DIFFICULTIES.join(" or ")}` });
+  } else if (new Set(difficulties).size !== difficulties.length) {
+    errors.push({ code: "definition.invalidShape", message: `${path}.difficulty must not contain duplicates` });
+  }
+  if (!validateNestingDepth(path, depth, errors)) {
+    return;
+  }
+  validatePatternBodyStepsShape(`${path}.then`, branch.then, depth, errors);
+  if (branch.else !== undefined) {
+    validatePatternBodyStepsShape(`${path}.else`, branch.else, depth, errors);
+  }
+}
+
+/** `repeat` と `if` の入れ子が深すぎないことを検証する。 */
+function validateNestingDepth(path: string, depth: number, errors: CoreError[]): boolean {
+  if (depth > MAX_PATTERN_REPEAT_DEPTH) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must be nested at most ${MAX_PATTERN_REPEAT_DEPTH} deep` });
+    return false;
+  }
+  return true;
+}
+
+/** `repeat` の `steps` と `if` の `then` / `else` の命令列（1〜64 個、`loop` は置けない）を検証する。 */
+function validatePatternBodyStepsShape(path: string, value: unknown, depth: number, errors: CoreError[]): void {
+  const steps = validateObjectArray(path, value, errors);
+  if (Array.isArray(value) && steps.sourceLength === 0) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must contain at least 1 step` });
+  }
+  if (steps.sourceLength > MAX_PATTERN_STEPS) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must contain at most ${MAX_PATTERN_STEPS} steps` });
+  }
+  for (const { record: step, index } of steps.items) {
+    const stepErrorStart = errors.length;
+    validatePatternStepShape(`${path}[]`, step, depth, errors);
+    addSchemaContext(errors, stepErrorStart, `${path}[${index}]`, `${path}[]`);
+  }
+}
+
+/** step が `wait` か、`wait` を含む `repeat` か、両方の枝が `wait` を含む `if` か。 */
 function containsWait(step: Record<string, unknown>): boolean {
   if (step.wait !== undefined) {
     return true;
   }
-  const body = asRecord(step.repeat)?.steps;
-  return Array.isArray(body) && body.some((child) => {
+  const repeatBody = asRecord(step.repeat)?.steps;
+  if (repeatBody !== undefined) {
+    return stepsContainWait(repeatBody);
+  }
+  const branch = asRecord(step.if);
+  return branch !== null && stepsContainWait(branch.then) && stepsContainWait(branch.else);
+}
+
+function stepsContainWait(steps: unknown): boolean {
+  return Array.isArray(steps) && steps.some((child) => {
     const record = asRecord(child);
     return record !== null && containsWait(record);
   });
 }
 
-/** `repeat` を展開した後の命令数。上限を超えた時点で打ち切り、上限 + 1 を返す。形の壊れた step は 1 命令と数える。 */
+/**
+ * `repeat` を展開した後の命令数（`if` は長い方の枝）。上限を超えた時点で打ち切り、上限 + 1 を返す。形の壊れた step は 1 命令と数える。
+ */
 function countExpandedCommands(steps: readonly unknown[]): number {
   let total = 0;
   for (const value of steps) {
-    const repeat = asRecord(asRecord(value)?.repeat);
-    const count = repeat && typeof repeat.count === "number" && Number.isSafeInteger(repeat.count) && repeat.count > 0 ? repeat.count : 1;
-    total += repeat && Array.isArray(repeat.steps) ? count * countExpandedCommands(repeat.steps) : 1;
+    const step = asRecord(value);
+    const repeat = asRecord(step?.repeat);
+    const branch = asRecord(step?.if);
+    if (repeat && Array.isArray(repeat.steps)) {
+      const count = typeof repeat.count === "number" && Number.isSafeInteger(repeat.count) && repeat.count > 0 ? repeat.count : 1;
+      total += count * countExpandedCommands(repeat.steps);
+    } else if (branch) {
+      total += Math.max(
+        Array.isArray(branch.then) ? countExpandedCommands(branch.then) : 0,
+        Array.isArray(branch.else) ? countExpandedCommands(branch.else) : 0,
+      );
+    } else {
+      total += 1;
+    }
     if (total > MAX_PATTERN_EXPANDED_COMMANDS) {
       return MAX_PATTERN_EXPANDED_COMMANDS + 1;
     }

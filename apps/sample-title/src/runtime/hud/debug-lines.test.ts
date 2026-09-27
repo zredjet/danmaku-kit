@@ -20,21 +20,21 @@ const base = {
 } as const;
 
 test("shows the stage seed, tick, dropped ticks and entity counts per kind during a stage", () => {
-  assert.deepEqual(buildDebugHudLines({ ...base, lifecycle: "playing", seed: "abc", frame, notes: ["hit sparks dropped 2"] }), [
+  assert.deepEqual(buildDebugHudLines({ ...base, lifecycle: "playing", seed: "abc", difficulty: "hard", frame, notes: ["hit sparks dropped 2"] }), [
     "shooting-core 0.0.0 / content sample@content.1",
     "playing  audio muted",
-    "seed abc  tick 42  dropped 3",
+    "hard  seed abc  tick 42  dropped 3",
     "player 1  enemy 1  enemyBullet 1  playerShot 0",
     "hit sparks dropped 2",
   ]);
 });
 
 test("leaves out the stage lines outside a stage and before the first tick", () => {
-  assert.deepEqual(buildDebugHudLines({ ...base, lifecycle: "title", seed: null, frame: null }), [
+  assert.deepEqual(buildDebugHudLines({ ...base, lifecycle: "title", seed: null, difficulty: null, frame: null }), [
     "shooting-core 0.0.0 / content sample@content.1",
     "title  audio muted",
   ]);
-  assert.deepEqual(buildDebugHudLines({ ...base, lifecycle: "stageStarting", seed: "abc", frame: null }).slice(2), [
-    "seed abc  tick -  dropped 3",
+  assert.deepEqual(buildDebugHudLines({ ...base, lifecycle: "stageStarting", seed: "abc", difficulty: "normal", frame: null }).slice(2), [
+    "normal  seed abc  tick -  dropped 3",
   ]);
 });

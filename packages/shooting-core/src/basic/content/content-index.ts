@@ -1,7 +1,9 @@
-import { compilePatternProgram } from "../patterns/pattern-program.ts";
+import { compilePatternProgram, hasDifficultyBranch } from "../patterns/pattern-program.ts";
 import type { PatternProgram } from "../patterns/pattern-program.ts";
+import { KNOWN_DIFFICULTIES } from "./types.ts";
 import type {
   BulletDefinition,
+  Difficulty,
   EnemyDefinition,
   GameDefinition,
   PathDefinition,
@@ -17,8 +19,11 @@ export type LoadedContentIndex = Readonly<{
   enemiesById: ReadonlyMap<string, EnemyDefinition>;
   pathsById: ReadonlyMap<string, PathDefinition>;
   patternsById: ReadonlyMap<string, PatternDefinition>;
-  /** `steps` を持つ pattern だけの PatternProgram。 */
-  patternProgramsById: ReadonlyMap<string, PatternProgram>;
+  /**
+   * difficulty ごとの、`steps` を持つ pattern だけの PatternProgram。difficulty の `if` を持たない pattern は、どの difficulty でも同じ
+   * program を共有する。
+   */
+  patternProgramsByDifficulty: ReadonlyMap<Difficulty, ReadonlyMap<string, PatternProgram>>;
   playerShotsById: ReadonlyMap<string, PlayerShotDefinition>;
   playersById: ReadonlyMap<string, PlayerDefinition>;
   stagesById: ReadonlyMap<string, StageDefinition>;
@@ -32,12 +37,38 @@ export function createLoadedContentIndex(definition: GameDefinition): LoadedCont
     enemiesById: new Map(definition.content.enemies.map((enemy) => [enemy.id, enemy])),
     pathsById: new Map(definition.content.paths.map((path) => [path.id, path])),
     patternsById: new Map(definition.content.patterns.map((pattern) => [pattern.id, pattern])),
-    patternProgramsById: new Map(definition.content.patterns.flatMap((pattern) => {
-      const program = compilePatternProgram(pattern);
-      return program ? [[pattern.id, program] as const] : [];
-    })),
+    patternProgramsByDifficulty: compilePatternProgramsByDifficulty(definition),
     playerShotsById: new Map(definition.content.playerShots.map((playerShot) => [playerShot.id, playerShot])),
     playersById: new Map(definition.content.players.map((player) => [player.id, player])),
     stagesById: new Map(definition.content.stages.map((stage) => [stage.id, stage])),
   };
+}
+
+/** 既知の difficulty ごとに PatternProgram を作る。`if` を持たない pattern は 1 度だけ compile して共有する。 */
+function compilePatternProgramsByDifficulty(
+  definition: GameDefinition,
+): ReadonlyMap<Difficulty, ReadonlyMap<string, PatternProgram>> {
+  const shared = new Map<string, PatternProgram>();
+  for (const pattern of definition.content.patterns) {
+    const program = hasDifficultyBranch(pattern) ? null : compilePatternProgram(pattern, KNOWN_DIFFICULTIES[0]);
+    if (program) {
+      shared.set(pattern.id, program);
+    }
+  }
+  return new Map(KNOWN_DIFFICULTIES.map((difficulty) => [difficulty, new Map(definition.content.patterns.flatMap((pattern) => {
+    const program = shared.get(pattern.id) ?? (hasDifficultyBranch(pattern) ? compilePatternProgram(pattern, difficulty) : null);
+    return program ? [[pattern.id, program] as const] : [];
+  }))]));
+}
+
+/** difficulty の PatternProgram の表。`KNOWN_DIFFICULTIES` の difficulty はすべて表を持つ。 */
+export function patternProgramsForDifficulty(
+  content: Pick<LoadedContentIndex, "patternProgramsByDifficulty">,
+  difficulty: Difficulty,
+): ReadonlyMap<string, PatternProgram> {
+  const programs = content.patternProgramsByDifficulty.get(difficulty);
+  if (!programs) {
+    throw new RangeError(`no pattern programs for difficulty ${difficulty}`);
+  }
+  return programs;
 }

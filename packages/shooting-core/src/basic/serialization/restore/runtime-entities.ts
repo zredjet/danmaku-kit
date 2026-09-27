@@ -59,7 +59,7 @@ export function validateRestoreRuntimeEntities(
   stage: StageDefinition,
   timelineCursor: number,
 ): CoreResult<ValidatedRestoreRuntimeEntities> {
-  const spawnBudget = createRestoreSpawnBudget(stage, timelineCursor, content, state.expectedTick);
+  const spawnBudget = createRestoreSpawnBudget(stage, timelineCursor, content, state.expectedTick, state.difficulty);
   if (!spawnBudget.ok) {
     return spawnBudget;
   }

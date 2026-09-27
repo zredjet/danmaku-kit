@@ -1,5 +1,6 @@
+import { patternProgramsForDifficulty } from "../../content/content-index.ts";
 import type { LoadedContentIndex } from "../../content/content-index.ts";
-import type { PathSegmentDefinition, StageDefinition } from "../../content/types.ts";
+import type { Difficulty, PathSegmentDefinition, StageDefinition } from "../../content/types.ts";
 import type { EnemyBulletRuntimeEntity } from "../../entities/enemy-bullet/model.ts";
 import type { EnemyRuntimeEntity } from "../../entities/enemy/model.ts";
 import { isSameRestorePosition } from "../../entities/restore-common.ts";
@@ -72,7 +73,9 @@ export function createRestoreSpawnBudget(
   timelineCursor: number,
   content: LoadedContentIndex,
   expectedTick: number,
+  difficulty: Difficulty,
 ): CoreResult<RestoreSpawnBudget> {
+  const patternPrograms = patternProgramsForDifficulty(content, difficulty);
   const enemySpawnCandidates: RestoreEnemySpawnCandidate[] = [];
   const enemyBulletCandidates: RestoreEnemyBulletCandidate[] = [];
   const patternFireSources: RestorePatternFireSource[] = [];
@@ -94,7 +97,7 @@ export function createRestoreSpawnBudget(
     if (!pattern) {
       return coreError("state.registryInvalid", "stage timeline references an unknown pattern");
     }
-    const program = content.patternProgramsById.get(pattern.id);
+    const program = patternPrograms.get(pattern.id);
     if (program) {
       patternFireSources.push(createRestorePatternFireSource(
         { spawnIndex: enemySpawnCandidates.length - 1, spawnTick: step.tick, spawnPosition: step.action.position },

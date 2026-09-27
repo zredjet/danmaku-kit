@@ -17,6 +17,7 @@ type GoldenCaseName =
   | "pattern-silent"
   | "pattern-budget-error"
   | "pattern-repeat-error"
+  | "pattern-difficulty-warning"
   | "asset-manifest-error"
   | "game-definition-error"
   | "argument-error";
@@ -46,6 +47,7 @@ const GOLDEN_CASES: readonly Readonly<{
   Object.freeze({ name: "pattern-silent", exitCode: 0 }),
   Object.freeze({ name: "pattern-budget-error", exitCode: 1 }),
   Object.freeze({ name: "pattern-repeat-error", exitCode: 1 }),
+  Object.freeze({ name: "pattern-difficulty-warning", exitCode: 0 }),
   Object.freeze({ name: "asset-manifest-error", exitCode: 1 }),
   Object.freeze({ name: "game-definition-error", exitCode: 1 }),
   Object.freeze({ name: "argument-error", exitCode: 2 }),
@@ -119,6 +121,31 @@ const REPEAT_ERROR_PATTERN_YAML = [
   "",
 ].join("\n");
 
+const DIFFICULTY_BRANCH_PATTERN_YAML = [
+  "id: pattern.scout_three_way",
+  "version: 1",
+  "steps:",
+  "  - wait: 20",
+  "  - if:",
+  "      difficulty: [hard]",
+  "      then:",
+  "        - fire:",
+  "            bullet: bullet.red_small",
+  "            aim: player",
+  "            fan:",
+  "              count: 5",
+  "              spreadDeg: 40",
+  "            speed: 2.4",
+  "      else:",
+  "        - fire:",
+  "            bullet: bullet.red_small",
+  "            aim: player",
+  "            speed: 2.4",
+  "  - wait: 50",
+  "  - loop: 0",
+  "",
+].join("\n");
+
 /** 静的minimum fixtureを隔離領域へ複製し、各失敗ケースの差分だけを適用する。 */
 async function prepareCaseFixture(
   context: Readonly<{ after: (callback: () => Promise<void>) => void }>,
@@ -155,6 +182,10 @@ async function prepareCaseFixture(
   } else if (name === "pattern-repeat-error") {
     // repeat の中の fire の radial.count が 1 周を 0.25° 刻みに等分しない。
     await writeFile(path.join(contentRoot, "patterns", "scout_three_way.yaml"), REPEAT_ERROR_PATTERN_YAML, "utf8");
+  } else if (name === "pattern-difficulty-warning") {
+    // normal だけの stage が使う pattern の `if` が hard を挙げる。
+    await writeFile(path.join(contentRoot, "patterns", "scout_three_way.yaml"), DIFFICULTY_BRANCH_PATTERN_YAML, "utf8");
+    await replaceFixtureText(contentRoot, "stages/stage_01.yaml", "      pattern: pattern.basic\n", "      pattern: pattern.scout_three_way\n");
   } else if (name === "asset-manifest-error") {
     await replaceFixtureText(contentRoot, "assets/manifest.yaml", "    path: shot.png\n", "    path: /shot.png\n");
   } else if (name === "game-definition-error") {

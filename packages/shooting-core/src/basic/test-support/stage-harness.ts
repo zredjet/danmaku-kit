@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { createMinimumDefinition } from "../../../../../tests/fixtures/minimum-game-definition.ts";
 import type { LoadedGame, ShootingCore, StageSession } from "../api-types.ts";
-import type { GameDefinition } from "../content/types.ts";
+import type { Difficulty, GameDefinition } from "../content/types.ts";
 import { createShootingCore } from "../core.ts";
 import type { InputFrame } from "../input/input-frame.ts";
 import type { SerializedGameState } from "../serialization/types.ts";
@@ -46,10 +46,10 @@ export function startStageFromCoreAndDefinition(core: ShootingCore, definition: 
   return startStageFromLoadedGame(loaded.value);
 }
 
-export function startStageFromLoadedGame(loaded: LoadedGame) {
+export function startStageFromLoadedGame(loaded: LoadedGame, difficulty: Difficulty = "normal") {
   const started = loaded.startStage({
     stageId: "stage.stage_01",
-    difficulty: "normal",
+    difficulty,
     seed: "seed-1",
   });
   assert.equal(started.ok, true);

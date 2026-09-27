@@ -17,7 +17,7 @@ const aimed = { bullet: "bullet.red_small", aim: "player", speed: 2 } as const;
 const threeWay = { ...aimed, fan: { count: 3, spreadDeg: 24 } } as const;
 
 function compile(steps: readonly PatternStepDefinition[]): PatternProgram {
-  const program = compilePatternProgram({ id: "pattern.test", version: 1, steps });
+  const program = compilePatternProgram({ id: "pattern.test", version: 1, steps }, "normal");
   assert.ok(program);
   return program;
 }

@@ -12,6 +12,7 @@ import {
   createDestroyedPatternEnemyDefinition,
   createEnemyPatternDefinition,
   createExitingPatternEnemyDefinition,
+  createDifficultyBranchPatternDefinition,
   createExtendedPatternDefinition,
 } from "../test-support/definitions.ts";
 import { tableVelocity } from "../test-support/geometry.ts";
@@ -257,4 +258,19 @@ test("fixes the radial, stream and repeat golden: bullet order, directions, spee
   assert.deepEqual([aimedSteps[2]! - aimedSteps[0]!, aimedSteps[4]! - aimedSteps[2]!, aimedSteps[1]! - aimedSteps[0]!], [60, 60, 0]);
   assert.deepEqual(run("golden-a"), golden);
   assert.deepEqual(run("golden-b").frames, golden.frames);
+});
+
+test("fires the difficulty branch of the stage's difficulty", () => {
+  const run = (difficulty: "normal" | "hard") => {
+    const loaded = createShootingCore("0.0.0").load(createDifficultyBranchPatternDefinition());
+    assert.equal(loaded.ok, true);
+    const started = loaded.ok ? loaded.value.startStage({ stageId: "stage.stage_01", difficulty, seed: "seed-1" }) : null;
+    assert.ok(started?.ok);
+    return emptyInputs(16).map((input) => assertTickOk(started.value.tick(input), `tick ${input.tick}`));
+  };
+  const firedCounts = (frames: readonly GameFrame[]) => spawnedBatches(frames).flatMap((batch, tick) => batch.length > 0 ? [[tick, batch.length]] : []);
+
+  // normal は最初の `if` を飛ばし、4 tick ごとに 1 発。hard は spawn tick に 3-way、その後 radial 4 方向を 2 tick おきに 2 回撃って 4 tick 休む。
+  assert.deepEqual(firedCounts(run("normal")), [[4, 1], [8, 1], [12, 1]]);
+  assert.deepEqual(firedCounts(run("hard")), [[0, 3], [4, 4], [6, 4], [12, 4], [14, 4]]);
 });

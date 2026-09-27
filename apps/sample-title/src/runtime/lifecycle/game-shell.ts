@@ -1,4 +1,12 @@
-import type { CoreError, GameEvent, GameFrame, InputFrame, LoadedGame, StartStageOptions } from "@shooting-sample/shooting-core";
+import type {
+  CoreError,
+  Difficulty,
+  GameEvent,
+  GameFrame,
+  InputFrame,
+  LoadedGame,
+  StartStageOptions,
+} from "@shooting-sample/shooting-core";
 
 import type { BrowserReplayRecord } from "../debug/browser-replay-record.ts";
 import type { KeyboardInputAdapter, KeyboardInputEvent } from "../input/keyboard-input.ts";
@@ -34,6 +42,8 @@ export type GameShellStep =
     lifecycle: GameLifecycle;
     /** 現在の stage の seed。stage の外（loading、title）では null。 */
     seed: string | null;
+    /** 現在の stage の difficulty。stage の外では null。 */
+    difficulty: Difficulty | null;
     /** 現在の stage で直近に実行した tick の frame。stage の外や、開始演出中でまだ tick を実行していなければ null。 */
     frame: GameFrame | null;
     latestInput: InputFrame | null;
@@ -202,6 +212,7 @@ export class GameShell {
       ok: true,
       lifecycle: this.#lifecycle,
       seed: current?.seed ?? null,
+      difficulty: current?.start.difficulty ?? null,
       frame: current?.frame ?? null,
       latestInput: current?.latestInput ?? null,
       events,

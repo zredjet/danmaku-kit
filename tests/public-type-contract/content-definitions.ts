@@ -224,6 +224,38 @@ const repeatRadialStreamPatternDefinition: PatternDefinition = {
     { loop: 0 },
   ],
 };
+// Phase 2B-3: difficulty の `if` は load 時に stage の difficulty で枝を選ぶ。
+const difficultyBranchPatternDefinition: PatternDefinition = {
+  id: "pattern.gunship_burst",
+  version: 1,
+  steps: [
+    {
+      if: {
+        difficulty: ["hard"],
+        then: [{ repeat: { count: 2, steps: [{ fire: { bullet: "bullet.red_small", aim: "player", speed: 2 } }, { wait: 5 }] } }],
+        else: [{ fire: { bullet: "bullet.red_small", aim: "player", speed: 2 } }],
+      },
+    },
+    { wait: 30 },
+    { loop: 0 },
+  ],
+};
+const invalidPatternIfDifficulty: PatternDefinition = {
+  id: "pattern.invalid",
+  version: 1,
+  steps: [
+    // @ts-expect-error if selects branches by the known difficulties only.
+    { if: { difficulty: ["lunatic"], then: [{ wait: 1 }] } },
+  ],
+};
+const invalidPatternLoopInsideIf: PatternDefinition = {
+  id: "pattern.invalid",
+  version: 1,
+  steps: [
+    // @ts-expect-error loop returns to a top-level step and cannot be placed inside if.
+    { if: { difficulty: ["hard"], then: [{ wait: 1 }, { loop: 0 }] } },
+  ],
+};
 const invalidPatternRepeatCount: PatternDefinition = {
   id: "pattern.invalid",
   version: 1,
@@ -376,6 +408,9 @@ void movingFireOnSpawnPatternDefinition;
 void invalidFireOnSpawnPatternVelocity;
 void stepsPatternDefinition;
 void repeatRadialStreamPatternDefinition;
+void difficultyBranchPatternDefinition;
+void invalidPatternIfDifficulty;
+void invalidPatternLoopInsideIf;
 void invalidPatternRepeatCount;
 void invalidPatternStream;
 void invalidPatternLoopInsideRepeat;

@@ -1,4 +1,11 @@
-import type { BulletId, PatternDefinition, PatternFireDefinition, PatternId, PatternStepDefinition } from "../content/types.ts";
+import type {
+  BulletId,
+  Difficulty,
+  PatternDefinition,
+  PatternFireDefinition,
+  PatternId,
+  PatternStepDefinition,
+} from "../content/types.ts";
 import { ANGLE_STEPS_PER_TURN, angleStepsFromDegrees } from "../shared/angle-steps.ts";
 
 /** 発射の向き。`aimAtPlayer` は発射する tick の自機の位置から、`angle` は固定の角度 step から決める。 */
@@ -58,16 +65,27 @@ type NormalizedPatternCommand =
   | Readonly<{ kind: "fire"; command: PatternFireCommand; sourceStep: number }>
   | Readonly<{ kind: "loop"; target: number; sourceStep: number }>;
 
-/** 検証済みの pattern から PatternProgram を作る。`steps` を持たない pattern は null を返す。 */
-export function compilePatternProgram(pattern: PatternDefinition): PatternProgram | null {
+/**
+ * 検証済みの pattern から、stage の difficulty で動かす PatternProgram を作る。`steps` を持たない pattern は null を返す。
+ *
+ * difficulty の `if` はここで枝を選んで展開する。`if` を持たない pattern の program は difficulty によらず同じになる
+ * （`hasDifficultyBranch()`）。
+ */
+export function compilePatternProgram(pattern: PatternDefinition, difficulty: Difficulty): PatternProgram | null {
   if (!pattern.steps) {
     return null;
   }
   const expanded: NormalizedPatternCommand[] = [];
   const startOfStep: number[] = [];
+  // difficulty の `if` で命令が 1 つもなくなった step は、その位置を cursor が通ったときに実行したと数える。
+  const emptyStepsAt = new Map<number, number[]>();
   pattern.steps.forEach((step, sourceStep) => {
-    startOfStep.push(expanded.length);
-    appendNormalizedStep(step, sourceStep, expanded);
+    const start = expanded.length;
+    startOfStep.push(start);
+    appendNormalizedStep(step, sourceStep, difficulty, expanded);
+    if (expanded.length === start) {
+      emptyStepsAt.set(start, [...emptyStepsAt.get(start) ?? [], sourceStep]);
+    }
   });
   // `loop` の戻り先は top-level の step の index なので、その step を展開した最初の命令の位置へ付け替える。
   const commands = expanded.map((command) => command.kind === "loop"
@@ -75,7 +93,7 @@ export function compilePatternProgram(pattern: PatternDefinition): PatternProgra
     : command);
   const runStarts = [0, ...commands.flatMap((command, index) => command.kind === "wait" ? [index + 1] : []), commands.length];
   const runs = new Map([...new Set(runStarts)].sort((left, right) => left - right)
-    .map((cursor) => [cursor, resolvePatternRun(commands, cursor)] as const));
+    .map((cursor) => [cursor, resolvePatternRun(commands, emptyStepsAt, cursor)] as const));
   return Object.freeze({
     patternId: pattern.id,
     stepCount: pattern.steps.length,
@@ -84,21 +102,42 @@ export function compilePatternProgram(pattern: PatternDefinition): PatternProgra
   });
 }
 
-/** content の step を runner が実行する命令へ変換して `out` に足す。`repeat` は `steps` を `count` 回続けて足す。 */
-function appendNormalizedStep(step: PatternStepDefinition, sourceStep: number, out: NormalizedPatternCommand[]): void {
+/**
+ * content の step を runner が実行する命令へ変換して `out` に足す。`repeat` は `steps` を `count` 回続けて足し、`if` は difficulty で
+ * 選んだ枝を足す（`else` がなければ何も足さない）。
+ */
+function appendNormalizedStep(
+  step: PatternStepDefinition,
+  sourceStep: number,
+  difficulty: Difficulty,
+  out: NormalizedPatternCommand[],
+): void {
   if ("wait" in step) {
     out.push(Object.freeze({ kind: "wait", ticks: step.wait, sourceStep }));
   } else if ("fire" in step) {
     out.push(Object.freeze({ kind: "fire", command: normalizePatternFire(step.fire), sourceStep }));
   } else if ("loop" in step) {
     out.push(Object.freeze({ kind: "loop", target: step.loop, sourceStep }));
-  } else {
+  } else if ("repeat" in step) {
     for (let iteration = 0; iteration < step.repeat.count; iteration += 1) {
       for (const child of step.repeat.steps) {
-        appendNormalizedStep(child, sourceStep, out);
+        appendNormalizedStep(child, sourceStep, difficulty, out);
       }
     }
+  } else {
+    const branch = step.if.difficulty.includes(difficulty) ? step.if.then : step.if.else ?? [];
+    for (const child of branch) {
+      appendNormalizedStep(child, sourceStep, difficulty, out);
+    }
   }
+}
+
+/** pattern が difficulty の `if` を持つか。持たない pattern の program は difficulty ごとに作り分けなくてよい。 */
+export function hasDifficultyBranch(pattern: PatternDefinition): boolean {
+  const visit = (steps: readonly PatternStepDefinition[]): boolean => steps.some((step) => (
+    "if" in step || ("repeat" in step && visit(step.repeat.steps))
+  ));
+  return visit(pattern.steps ?? []);
 }
 
 /**
@@ -151,13 +190,23 @@ function requireAngleSteps(degrees: number | undefined): number {
  * `loop` の戻り先から loop までの間に `wait` があることを validation が保証するため、戻るたびに次に当たる loop の位置が前へ進み、
  * 実行する命令数は `(命令数 + 1) ^ 2` を超えない。
  */
-function resolvePatternRun(commands: readonly NormalizedPatternCommand[], start: number): PatternRun {
+function resolvePatternRun(
+  commands: readonly NormalizedPatternCommand[],
+  emptyStepsAt: ReadonlyMap<number, readonly number[]>,
+  start: number,
+): PatternRun {
   const fires: PatternFireCommand[] = [];
   const executedSteps = new Set<number>();
   const maxExecutedCommands = (commands.length + 1) * (commands.length + 1);
   let cursor = start;
   let executedCommands = 0;
-  while (cursor < commands.length) {
+  for (;;) {
+    for (const step of emptyStepsAt.get(cursor) ?? []) {
+      executedSteps.add(step);
+    }
+    if (cursor >= commands.length) {
+      break;
+    }
     if (executedCommands >= maxExecutedCommands) {
       throw new Error("pattern loops must be validated to pass through a wait step");
     }

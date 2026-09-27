@@ -67,7 +67,7 @@ test("rejects malformed steps with the step index in the schema path", () => {
   assert.deepEqual(errorsOf(loaded), [
     ["definition.invalidShape", "content.patterns[0].steps[2]", "pattern.steps must contain objects"],
     ["definition.invalidShape", "content.patterns[0].steps[0].wait", "pattern.steps[].wait must be a positive integer"],
-    ["definition.invalidShape", "content.patterns[0].steps[1]", "pattern.steps[] must have exactly one of wait, fire, loop or repeat"],
+    ["definition.invalidShape", "content.patterns[0].steps[1]", "pattern.steps[] must have exactly one of wait, fire, loop, repeat or if"],
     ["definition.invalidShape", "content.patterns[0].steps[1].wait", "pattern.steps[].wait must be at most 3600"],
     ["definition.invalidShape", "content.patterns[0].steps[3].repeat", "pattern.steps[].repeat must be an object"],
     ["definition.invalidShape", "content.patterns[0].steps[4].fire", "pattern.steps[].fire must be an object"],
@@ -306,7 +306,7 @@ test("rejects malformed repeat, radial and stream with nested schema paths", () 
     [
       "definition.invalidShape",
       "content.patterns[0].steps[1].repeat.steps[0].loop",
-      "pattern.steps[].repeat.steps[].loop must not be placed inside repeat",
+      "pattern.steps[].repeat.steps[].loop must not be placed inside repeat or if",
     ],
     [
       "definition.invalidShape",
@@ -386,4 +386,110 @@ test("rejects a stream that stacks identical bullets with a zero speed step", ()
     "pattern.steps[].fire.stream.speedStep must not be 0 when stream.count is more than 1",
   ]]);
   assert.equal(loadWithPattern({ steps: [{ fire: { ...aimedFire, stream: { count: 1, speedStep: 0 } } }] }).ok, true);
+});
+
+/** 最小の定義の stage を `difficulties` にして、その stage が使う pattern を差し替えた定義を読む。 */
+function loadWithPatternForDifficulties(pattern: Record<string, unknown>, difficulties: readonly string[]) {
+  const definition = createMinimumDefinition();
+  return loadUnknown({
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: definition.content.stages.map((stage) => ({ ...stage, difficulties })),
+      patterns: [{ id: "pattern.none", version: 1, ...pattern }],
+    },
+  });
+}
+
+test("accepts difficulty branches in steps and inside repeat", () => {
+  const loaded = loadWithPatternForDifficulties({
+    steps: [
+      { if: { difficulty: ["hard"], then: [fanFire(5)], else: [fanFire(3)] } },
+      { wait: 30 },
+      { repeat: { count: 2, steps: [{ if: { difficulty: ["normal", "hard"], then: [fanFire(1), { wait: 5 }] } }] } },
+      { loop: 0 },
+    ],
+  }, ["normal", "hard"]);
+
+  assert.equal(loaded.ok, true, JSON.stringify(loaded.ok ? null : loaded.errors));
+  assert.deepEqual(warningsOf(loaded), []);
+});
+
+test("rejects malformed difficulty branches with nested schema paths", () => {
+  const loaded = loadWithPattern({
+    steps: [
+      { if: { difficulty: [], then: [fanFire(1)] } },
+      { if: { difficulty: ["easy"], then: [fanFire(1)], extra: true } },
+      { if: { difficulty: ["hard", "hard"], then: [] } },
+      { if: { difficulty: ["hard"], then: [{ loop: 0 }], else: "fire" } },
+      { if: "hard" },
+    ],
+  });
+
+  assert.deepEqual(errorsOf(loaded), [
+    ["definition.invalidShape", "content.patterns[0].steps[0].if.difficulty", "pattern.steps[].if.difficulty must be a non-empty array"],
+    ["definition.unknownField", "content.patterns[0].steps[1].if.extra", "Unknown field at pattern.steps[].if.extra"],
+    ["definition.invalidShape", "content.patterns[0].steps[1].if.difficulty", "pattern.steps[].if.difficulty must contain only normal or hard"],
+    ["definition.invalidShape", "content.patterns[0].steps[2].if.difficulty", "pattern.steps[].if.difficulty must not contain duplicates"],
+    ["definition.invalidShape", "content.patterns[0].steps[2].if.then", "pattern.steps[].if.then must contain at least 1 step"],
+    ["definition.invalidShape", "content.patterns[0].steps[3].if.then[0].loop", "pattern.steps[].if.then[].loop must not be placed inside repeat or if"],
+    ["definition.invalidShape", "content.patterns[0].steps[3].if.else", "pattern.steps[].if.else must be an array"],
+    ["definition.invalidShape", "content.patterns[0].steps[4].if", "pattern.steps[].if must be an object"],
+  ]);
+});
+
+test("requires a wait on both branches of an if for a loop range and nests if and repeat at most four deep", () => {
+  const oneSidedWait = loadWithPattern({
+    steps: [{ wait: 1 }, { if: { difficulty: ["hard"], then: [{ wait: 5 }], else: [fanFire(1)] } }, { loop: 1 }],
+  });
+  const nest = (depth: number): Record<string, unknown> => depth === 0
+    ? { wait: 1 }
+    : { if: { difficulty: ["normal"], then: [{ repeat: { count: 1, steps: [nest(depth - 1)] } }] } };
+
+  assert.deepEqual(errorsOf(oneSidedWait).map(([code, schemaPath]) => [code, schemaPath]), [
+    ["definition.invalidConstraint", "content.patterns[0].steps[2].loop"],
+  ]);
+  assert.equal(loadWithPattern({ steps: [nest(2), fanFire(1)] }).ok, true);
+  assert.deepEqual(errorsOf(loadWithPattern({ steps: [nest(3), fanFire(1)] })).map(([, schemaPath, message]) => [schemaPath, message]), [[
+    "content.patterns[0].steps[0].if.then[0].repeat.steps[0].if.then[0].repeat.steps[0].if",
+    "pattern.steps[].if.then[].repeat.steps[].if.then[].repeat.steps[].if must be nested at most 4 deep",
+  ]]);
+});
+
+test("checks the bullet budget for each difficulty of the stages using the pattern", () => {
+  // hard だけが 1 tick に 2,048 発を撃つ。normal だけの stage が使う pattern なら hard の枝は実行されない。
+  const hardBurst = {
+    steps: [{ if: { difficulty: ["hard"], then: Array.from({ length: 32 }, () => fanFire(64)), else: [fanFire(1)] } }, { wait: 60 }],
+  };
+
+  assert.deepEqual(errorsOf(loadWithPatternForDifficulties(hardBurst, ["normal", "hard"])), [[
+    "definition.invalidConstraint",
+    "content.patterns[0].steps",
+    "pattern.steps fire 2048 bullets in one tick, over the active enemy bullet budget 2000",
+  ]]);
+  assert.deepEqual(warningsOf(loadWithPatternForDifficulties(hardBurst, ["normal"])), [{
+    code: "pattern.unusedDifficulty",
+    message: "pattern.steps[].if.difficulty lists hard, which no stage using the pattern supports",
+    schemaPath: "content.patterns[0].steps[0].if.difficulty",
+    referrerId: "pattern.none",
+  }]);
+});
+
+test("warns about firing and reachability only when no difficulty fires or reaches", () => {
+  const hardOnlyFire = { steps: [{ wait: 5 }, { if: { difficulty: ["hard"], then: [fanFire(1)] } }, { loop: 0 }] };
+  const unusedPattern = createMinimumDefinition();
+
+  assert.deepEqual(warningsOf(loadWithPatternForDifficulties(hardOnlyFire, ["normal", "hard"])), []);
+  assert.deepEqual(warningsOf(loadWithPatternForDifficulties(hardOnlyFire, ["normal"])).map((warning) => warning.code), [
+    "pattern.neverFires",
+    "pattern.unusedDifficulty",
+  ]);
+  // どの stage も使わない pattern は、既知の difficulty すべてで見る。
+  assert.deepEqual(validateGameDefinitionWithWarnings({
+    ...unusedPattern,
+    content: {
+      ...unusedPattern.content,
+      patterns: [...unusedPattern.content.patterns, { id: "pattern.unused", version: 1, ...hardOnlyFire }],
+    },
+  }).warnings, []);
 });

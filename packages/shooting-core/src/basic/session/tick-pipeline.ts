@@ -18,6 +18,7 @@ import { advanceEnemyPatterns } from "../simulation/enemy-pattern-system.ts";
 import { advancePlayerMovement } from "../simulation/player-movement-system.ts";
 import { advancePlayerShotLifecycle } from "../simulation/player-shot-lifecycle-system.ts";
 import { spawnPlayerShotFromInput } from "../simulation/player-shot-system.ts";
+import type { PatternProgram } from "../patterns/pattern-program.ts";
 import { resolveStageStatusAfterTick } from "../simulation/stage-status.ts";
 import { advanceStageTimeline } from "../simulation/stage-timeline-system.ts";
 import { freezeEntitiesInIdOrder } from "../simulation/system-order.ts";
@@ -27,8 +28,10 @@ import type { CommittedStageState, WorkingStageState } from "../state/committed-
 /** tick pipeline が参照する load 済み content と、session の stage / player。 */
 export type StageTickContent = Pick<
   LoadedContentIndex,
-  "bulletsById" | "enemiesById" | "pathsById" | "patternProgramsById" | "patternsById" | "playerShotsById"
+  "bulletsById" | "enemiesById" | "pathsById" | "patternsById" | "playerShotsById"
 > & Readonly<{
+  /** session の difficulty で compile した、`steps` を持つ pattern の PatternProgram。 */
+  patternProgramsById: ReadonlyMap<string, PatternProgram>;
   stage: StageDefinition;
   player: PlayerDefinition;
 }>;

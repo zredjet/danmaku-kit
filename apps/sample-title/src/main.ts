@@ -6,6 +6,7 @@ import type { AssetStatus } from "./runtime/assets/asset-loading.ts";
 import { PHASE_2A_AUDIO_STATUS } from "./runtime/audio/audio-status.ts";
 import { KeyboardInputAdapter } from "./runtime/input/keyboard-input.ts";
 import { GameShell } from "./runtime/lifecycle/game-shell.ts";
+import { selectStageDifficulty } from "./runtime/lifecycle/stage-difficulty.ts";
 import { applyRenderScale } from "./runtime/phaser/render-scale.ts";
 import { startSampleTitleGame } from "./runtime/phaser/sample-title-game.ts";
 import { collectCollisionRadii } from "./runtime/view/collision-radii.ts";
@@ -34,9 +35,9 @@ if (!loaded.ok) {
   throw new Error(`Core rejected the validated game definition: ${loaded.errors.map((error) => error.code).join(", ")}`);
 }
 
-// stage select を置くまでは、title から最初の stage を最初の difficulty で始める。
+// stage select を置くまでは、title から最初の stage を `?difficulty=` の difficulty（stage が持たなければ最初の difficulty）で始める。
 const stage = gameDefinition.content.stages[0];
-const difficulty = stage?.difficulties[0];
+const difficulty = stage ? selectStageDifficulty(stage.difficulties, readQueryParameter("difficulty")) : null;
 if (!stage || !difficulty) {
   throw new Error("sample title content must define a stage with at least one difficulty");
 }
@@ -93,7 +94,12 @@ if (import.meta.env.MODE !== "production") {
 
 /** `?seed=` があれば毎回その seed で stage を始める。seed は debug HUD に出し、同じ入力の再現に使う。 */
 function readRequestedSeed(): string | null {
-  const requested = new URLSearchParams(window.location.search).get("seed");
+  return readQueryParameter("seed");
+}
+
+/** URL の query parameter。空白だけの値は指定がないものとする。 */
+function readQueryParameter(name: string): string | null {
+  const requested = new URLSearchParams(window.location.search).get(name);
   return requested !== null && requested.trim().length > 0 ? requested : null;
 }
 

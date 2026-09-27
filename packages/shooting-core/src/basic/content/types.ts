@@ -181,7 +181,7 @@ export type PatternStepDefinition =
     loop: number;
   };
 
-/** `repeat` の `steps` に置ける命令（`loop` 以外）。 */
+/** `repeat` と `if` の `steps` に置ける命令（`loop` 以外）。 */
 export type PatternRepeatStepDefinition =
   | {
     /** 次の命令を実行するまで待つ tick 数。 */
@@ -192,7 +192,22 @@ export type PatternRepeatStepDefinition =
   }
   | {
     repeat: PatternRepeatDefinition;
+  }
+  | {
+    if: PatternIfDefinition;
   };
+
+/**
+ * stage の difficulty で命令を選ぶ分岐。stage を始めるとき（restore では snapshot の difficulty で）に解決して PatternProgram に
+ * 展開するため、runner の状態は増えない。
+ */
+export type PatternIfDefinition = {
+  /** `then` を使う difficulty。重複なく 1 つ以上。 */
+  difficulty: readonly Difficulty[];
+  then: readonly PatternRepeatStepDefinition[];
+  /** difficulty が `difficulty` に含まれないときの命令。省略すると何もしない。 */
+  else?: readonly PatternRepeatStepDefinition[];
+};
 
 /**
  * `steps` を `count` 回続けて実行する命令。load 時に展開して PatternProgram の run に正規化するため、runner の状態は増えない。

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { LoadedGame } from "../../api-types.ts";
+import type { Difficulty } from "../../content/types.ts";
 import type { CoreErrorCode } from "../../result.ts";
 import { createEmptyInputFrame } from "../../input/input-frame.ts";
 import type { InputFrame } from "../../input/input-frame.ts";
@@ -11,6 +12,7 @@ import {
   createExitingPatternEnemyDefinition,
   createExtendedPatternDefinition,
   createAimedStreamCleanupDefinition,
+  createDifficultyBranchPatternDefinition,
 } from "../../test-support/definitions.ts";
 import { tableVelocity } from "../../test-support/geometry.ts";
 import { createMoveInputFrame, createShotInputFrame } from "../../test-support/input-frames.ts";
@@ -64,9 +66,14 @@ function wanderingInputs(ticks: number): InputFrame[] {
 }
 
 /** restore した session と元の session が後続 tick と最後の serialize で一致することを確かめる。 */
-function assertRestoresAndContinues(game: LoadedGame, inputs: readonly InputFrame[], restoreTicks: readonly number[]): void {
+function assertRestoresAndContinues(
+  game: LoadedGame,
+  inputs: readonly InputFrame[],
+  restoreTicks: readonly number[],
+  difficulty: Difficulty = "normal",
+): void {
   for (const restoreTick of restoreTicks) {
-    const source = startStageFromLoadedGame(game);
+    const source = startStageFromLoadedGame(game, difficulty);
     for (const input of inputs.slice(0, restoreTick)) {
       assertTickOk(source.tick(input), `source tick ${input.tick}`);
     }
@@ -119,6 +126,22 @@ test("restores pattern runners and aimed or fixed-angle pattern bullets at any t
 
 test("restores radial, stream and repeated pattern bullets and runners at any tick and continues identically", () => {
   assertRestoresAndContinues(loadGameFromDefinition(createExtendedPatternDefinition()), wanderingInputs(24), [1, 2, 3, 4, 5, 6, 8, 12, 13, 15, 20]);
+});
+
+test("restores difficulty branch runners and bullets with the stage's difficulty and continues identically", () => {
+  const game = loadGameFromDefinition(createDifficultyBranchPatternDefinition());
+
+  for (const difficulty of ["normal", "hard"] as const) {
+    assertRestoresAndContinues(game, wanderingInputs(20), [1, 3, 4, 5, 6, 7, 9, 12, 13, 15], difficulty);
+  }
+  // hard の弾と runner は normal の時刻表からは作れない。
+  const source = startStageFromLoadedGame(game, "hard");
+  for (const input of wanderingInputs(5)) {
+    assertTickOk(source.tick(input), `tick ${input.tick}`);
+  }
+  const restored = game.restore({ ...assertSerializeOk(source.serialize(), "serialize"), difficulty: "normal" });
+  assert.equal(restored.ok, false);
+  assert.equal(!restored.ok && restored.errors[0]?.code, "state.invalidShape");
 });
 
 test("restores aimed fan and stream bullets in allocation order after an earlier bullet of the same fire is gone", () => {

@@ -72,6 +72,6 @@ export function validateGameDefinitionWithWarnings(
     return { errors, warnings: [] };
   }
   // pattern の意味の検証は、shape と参照がすべて正しい content の program だけを見る。
-  const semantics = validatePatternSemantics(validated.content.patterns);
+  const semantics = validatePatternSemantics(validated.content.patterns, validated.content.stages);
   return { errors: [...semantics.errors], warnings: semantics.errors.length > 0 ? [] : semantics.warnings };
 }

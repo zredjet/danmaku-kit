@@ -498,3 +498,49 @@ export function createAimedStreamCleanupDefinition(): GameDefinition {
     },
   };
 }
+
+/**
+ * difficulty の `if` で撃ち方が変わる enemy を出す definition。stage は normal と hard を持つ。
+ *
+ * `pattern.difficulty_branch` は hard だけ spawn tick に自機狙いの 3-way を撃ち、4 tick 待ってから normal は真下へ 1 発、hard は
+ * radial 4 方向を 2 回（間に 2 tick）撃って繰り返す。
+ */
+export function createDifficultyBranchPatternDefinition(): GameDefinition {
+  const definition = createMinimumDefinition();
+  const down = { bullet: "bullet.red_small", angleDeg: 90, speed: 2 } as const;
+  return {
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        difficulties: ["normal", "hard"],
+        timeline: [spawnScoutAt(0, "pattern.difficulty_branch", { x: 192, y: 100 })],
+      }],
+      patterns: [
+        ...definition.content.patterns,
+        {
+          id: "pattern.difficulty_branch",
+          version: 1,
+          steps: [
+            {
+              if: {
+                difficulty: ["hard"],
+                then: [{ fire: { bullet: "bullet.red_small", aim: "player", fan: { count: 3, spreadDeg: 30 }, speed: 2.5 } }],
+              },
+            },
+            { wait: 4 },
+            {
+              if: {
+                difficulty: ["hard"],
+                then: [{ repeat: { count: 2, steps: [{ fire: { ...down, radial: { count: 4 } } }, { wait: 2 }] } }],
+                else: [{ fire: down }],
+              },
+            },
+            { loop: 1 },
+          ],
+        },
+      ],
+    },
+  };
+}

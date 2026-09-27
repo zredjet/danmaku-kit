@@ -141,6 +141,7 @@ export class StageScene extends Scene {
       lifecycle: step.lifecycle.state,
       audioStatus: this.#options.audioStatus,
       seed: step.seed,
+      difficulty: step.difficulty,
       frame: step.frame,
       droppedTicksTotal: step.droppedTicksTotal,
       notes: [...sparkNotes, ...this.#assetNotes],
