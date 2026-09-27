@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1",
+  "contentRoot": "<content-root>",
+  "ok": true,
+  "diagnostics": [
+    {
+      "kind": "schema",
+      "code": "pattern.neverFires",
+      "severity": "warning",
+      "message": "pattern.steps never fire a bullet",
+      "path": "<content-root>/patterns/scout_three_way.yaml",
+      "line": 4,
+      "column": 3,
+      "endLine": 6,
+      "endColumn": 1,
+      "schemaPath": "content.patterns[1].steps",
+      "sourceId": "pattern.scout_three_way"
+    }
+  ],
+  "summary": {
+    "errors": 0,
+    "warnings": 1,
+    "infos": 0
+  }
+}

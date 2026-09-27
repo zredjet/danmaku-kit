@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { createMinimumDefinition } from "../../../../../tests/fixtures/minimum-game-definition.ts";
 import { loadUnknown } from "../test-support/stage-harness.ts";
+import { validateGameDefinitionWithWarnings } from "./validation.ts";
 
 const aimedFire = Object.freeze({ bullet: "bullet.red_small", aim: "player", speed: 2.5 });
 
@@ -177,4 +178,94 @@ test("rejects fire commands that reference missing or foreign bullets", () => {
     ["bullet.notFound", "content.patterns[0].steps[0].fire.bullet", "pattern.none", "bullet.missing"],
     ["id.invalidNamespace", "content.patterns[0].steps[2].fire.bullet", "pattern.none", "enemy.scout"],
   ]);
+});
+
+/** 基準の向きへ `count` 発の fan を撃つ step。 */
+function fanFire(count: number): Record<string, unknown> {
+  return { fire: { bullet: "bullet.red_small", angleDeg: 90, speed: 2, ...(count > 1 ? { fan: { count, spreadDeg: count - 1 } } : {}) } };
+}
+
+function warningsOf(loaded: ReturnType<typeof loadWithPattern>) {
+  assert.equal(loaded.ok, true);
+  return loaded.ok ? loaded.warnings : [];
+}
+
+test("loads a pattern without semantic issues with no warnings", () => {
+  assert.deepEqual(warningsOf(loadWithPattern({ steps: [{ wait: 20 }, fanFire(3), { wait: 50 }, { loop: 1 }] })), []);
+});
+
+test("warns about steps no run reaches and patterns that never fire, at the pattern's steps", () => {
+  const unreachable = loadWithPattern({ steps: [{ wait: 10 }, fanFire(1), { wait: 5 }, { loop: 0 }, { wait: 3 }, fanFire(1)] });
+  const silent = loadWithPattern({ steps: [{ wait: 10 }, { loop: 0 }] });
+
+  assert.deepEqual(warningsOf(unreachable), [4, 5].map((step) => ({
+    code: "pattern.unreachableStep",
+    message: `pattern.steps[${step}] is never executed from the spawn`,
+    schemaPath: `content.patterns[0].steps[${step}]`,
+    referrerId: "pattern.none",
+  })));
+  assert.deepEqual(warningsOf(silent), [{
+    code: "pattern.neverFires",
+    message: "pattern.steps never fire a bullet",
+    schemaPath: "content.patterns[0].steps",
+    referrerId: "pattern.none",
+  }]);
+  assert.equal(Object.isFrozen(warningsOf(unreachable)[0]), true);
+});
+
+test("rejects a pattern whose single tick fires more bullets than the active enemy bullet budget", () => {
+  // fan 64 発を 32 回続けて撃つと、1 tick に 2,048 発になる。
+  const overBudget = loadWithPattern({ steps: [...Array.from({ length: 32 }, () => fanFire(64)), { wait: 60 }] });
+
+  assert.deepEqual(errorsOf(overBudget), [[
+    "definition.invalidConstraint",
+    "content.patterns[0].steps",
+    "pattern.steps fire 2048 bullets in one tick, over the active enemy bullet budget 2000",
+  ]]);
+  assert.equal(loadWithPattern({ steps: [...Array.from({ length: 31 }, () => fanFire(64)), { wait: 60 }] }).ok, true);
+});
+
+test("counts only the runs the spawn reaches toward the bullet budget", () => {
+  // loop より後ろの run は 1 tick に 2,048 発を撃つが、spawn からは実行されないので load できる（到達しない step は warning）。
+  const unreachableBurst = loadWithPattern({
+    steps: [{ wait: 1 }, ...Array.from({ length: 31 }, () => fanFire(64)), { wait: 1 }, { loop: 1 }, fanFire(64), { loop: 1 }],
+  });
+
+  assert.deepEqual(warningsOf(unreachableBurst).map((warning) => warning.schemaPath), [
+    "content.patterns[0].steps[34]",
+    "content.patterns[0].steps[35]",
+  ]);
+});
+
+test("returns no semantic warnings while the content has errors", () => {
+  const definition = createMinimumDefinition();
+  const stage = definition.content.stages[0]!;
+  const afterLoop = { steps: [{ wait: 10 }, fanFire(1), { loop: 0 }, { wait: 3 }] };
+  const overBudgetAndAfterLoop = validateGameDefinitionWithWarnings({
+    ...definition,
+    content: {
+      ...definition.content,
+      patterns: [
+        { id: "pattern.none", version: 1, steps: [...Array.from({ length: 32 }, () => fanFire(64)), { wait: 60 }] },
+        { id: "pattern.after_loop", version: 1, ...afterLoop },
+      ],
+    },
+  });
+  const brokenReference = validateGameDefinitionWithWarnings({
+    ...definition,
+    content: {
+      ...definition.content,
+      patterns: [{ id: "pattern.none", version: 1, ...afterLoop }],
+      stages: [{ ...stage, timeline: [{ ...stage.timeline[0]!, action: { ...stage.timeline[0]!.action, enemy: "enemy.missing" } }] }],
+    },
+  });
+
+  assert.deepEqual(
+    [overBudgetAndAfterLoop, brokenReference].map(({ errors, warnings }) => [errors.map((error) => error.code), warnings]),
+    [[["definition.invalidConstraint"], []], [["enemy.notFound"], []]],
+  );
+  assert.deepEqual(validateGameDefinitionWithWarnings({
+    ...definition,
+    content: { ...definition.content, patterns: [{ id: "pattern.none", version: 1, ...afterLoop }] },
+  }).warnings.map((warning) => warning.code), ["pattern.unreachableStep"]);
 });

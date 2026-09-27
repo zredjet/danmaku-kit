@@ -14,6 +14,8 @@ type GoldenCaseName =
   | "budget-error"
   | "pattern-error"
   | "pattern-warning"
+  | "pattern-silent"
+  | "pattern-budget-error"
   | "asset-manifest-error"
   | "game-definition-error"
   | "argument-error";
@@ -40,6 +42,8 @@ const GOLDEN_CASES: readonly Readonly<{
   Object.freeze({ name: "budget-error", exitCode: 1 }),
   Object.freeze({ name: "pattern-error", exitCode: 1 }),
   Object.freeze({ name: "pattern-warning", exitCode: 0 }),
+  Object.freeze({ name: "pattern-silent", exitCode: 0 }),
+  Object.freeze({ name: "pattern-budget-error", exitCode: 1 }),
   Object.freeze({ name: "asset-manifest-error", exitCode: 1 }),
   Object.freeze({ name: "game-definition-error", exitCode: 1 }),
   Object.freeze({ name: "argument-error", exitCode: 2 }),
@@ -85,6 +89,16 @@ after(async () => {
   await replaceGoldenDirectory(generatedGoldens);
 });
 
+const SILENT_PATTERN_YAML = "id: pattern.scout_three_way\nversion: 1\nsteps:\n  - wait: 20\n  - loop: 0\n";
+const BURST_PATTERN_YAML = [
+  "id: pattern.scout_three_way",
+  "version: 1",
+  "steps:",
+  ...Array.from({ length: 32 }, () => "  - fire: { bullet: bullet.red_small, angleDeg: 90, speed: 2, fan: { count: 64, spreadDeg: 63 } }"),
+  "  - wait: 60",
+  "",
+].join("\n");
+
 /** 静的minimum fixtureを隔離領域へ複製し、各失敗ケースの差分だけを適用する。 */
 async function prepareCaseFixture(
   context: Readonly<{ after: (callback: () => Promise<void>) => void }>,
@@ -112,6 +126,12 @@ async function prepareCaseFixture(
   } else if (name === "pattern-warning") {
     // loop より後ろの step は spawn からどの run でも実行されない。
     await replaceFixtureText(contentRoot, "patterns/scout_three_way.yaml", "  - loop: 0\n", "  - loop: 0\n  - wait: 5\n");
+  } else if (name === "pattern-silent") {
+    // 待つだけで一度も撃たない pattern。
+    await writeFile(path.join(contentRoot, "patterns", "scout_three_way.yaml"), SILENT_PATTERN_YAML, "utf8");
+  } else if (name === "pattern-budget-error") {
+    // fan 64 発を 32 回続けて撃ち、1 tick に 2,048 発になる pattern。
+    await writeFile(path.join(contentRoot, "patterns", "scout_three_way.yaml"), BURST_PATTERN_YAML, "utf8");
   } else if (name === "asset-manifest-error") {
     await replaceFixtureText(contentRoot, "assets/manifest.yaml", "    path: shot.png\n", "    path: /shot.png\n");
   } else if (name === "game-definition-error") {
@@ -222,7 +242,7 @@ function expectedDiagnosticPath(
   if (name === "schema-error" || name === "budget-error") {
     return path.join(fixture.contentRoot, "players", "default.yaml");
   }
-  if (name === "pattern-error" || name === "pattern-warning") {
+  if (name === "pattern-error" || name === "pattern-warning" || name === "pattern-silent" || name === "pattern-budget-error") {
     return path.join(fixture.contentRoot, "patterns", "scout_three_way.yaml");
   }
   if (name === "asset-manifest-error") {

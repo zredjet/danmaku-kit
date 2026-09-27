@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1",
+  "contentRoot": "<content-root>",
+  "ok": false,
+  "diagnostics": [
+    {
+      "kind": "schema",
+      "code": "definition.invalidConstraint",
+      "severity": "error",
+      "message": "pattern.steps fire 2048 bullets in one tick, over the active enemy bullet budget 2000",
+      "path": "<content-root>/patterns/scout_three_way.yaml",
+      "line": 4,
+      "column": 3,
+      "endLine": 37,
+      "endColumn": 1,
+      "schemaPath": "content.patterns[1].steps",
+      "sourceId": "pattern.scout_three_way"
+    }
+  ],
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "infos": 0
+  }
+}

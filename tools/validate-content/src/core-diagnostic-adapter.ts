@@ -102,16 +102,13 @@ function createSchemaDiagnostic(
   severity: "error" | "warning",
   sourceIndex: ContentSourceIndex,
 ): ParseOrSchemaContentDiagnostic {
-  const schemaPath = "schemaPath" in error && error.schemaPath !== undefined
-    ? error.schemaPath
-    : inferSchemaPath(error.code, error.message);
-  const referrerId = "referrerId" in error ? error.referrerId : undefined;
+  const schemaPath = error.schemaPath ?? inferSchemaPath(error.code, error.message);
   return freezeSchemaDiagnostic(
     error.code,
     severity,
     error.message,
     schemaPath,
-    sourceIndex.locateSchemaPath(schemaPath, referrerId),
+    sourceIndex.locateSchemaPath(schemaPath, error.referrerId),
   );
 }
 
