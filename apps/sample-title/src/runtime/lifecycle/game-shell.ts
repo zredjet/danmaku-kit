@@ -22,10 +22,14 @@ import { StageStartTimer, STAGE_START_DURATION_MS } from "./stage-start-timer.ts
 
 type ShellInput = Pick<KeyboardInputAdapter, "handleKeyEvent" | "sampleTicks" | "reset" | "takeUiInput" | "latchedEdgeCount">;
 
-export type GameShellOptions = Readonly<{
+/** stage を始める content。dev server の hot reload で `replaceContent()` が差し替える。 */
+export type GameShellContent = Readonly<{
   loadedGame: Pick<LoadedGame, "startStage">;
   /** title から始める stage。seed は stage を始めるたびに `nextSeed()` で決める。 */
   stage: Omit<StartStageOptions, "seed">;
+}>;
+
+export type GameShellOptions = GameShellContent & Readonly<{
   nextSeed: () => string;
   input: ShellInput;
   startDurationMs?: number;
@@ -81,6 +85,7 @@ const NO_EVENTS: readonly GameEvent[] = Object.freeze([]);
  */
 export class GameShell {
   readonly #options: GameShellOptions;
+  #content: GameShellContent;
   #lifecycle: GameLifecycle = INITIAL_GAME_LIFECYCLE;
   #stage: ActiveStage | null = null;
   #stageChanged = false;
@@ -89,6 +94,7 @@ export class GameShell {
 
   constructor(options: GameShellOptions) {
     this.#options = options;
+    this.#content = { loadedGame: options.loadedGame, stage: options.stage };
     this.#debugOverlay = options.debugOverlay ?? false;
   }
 
@@ -141,6 +147,16 @@ export class GameShell {
   /** keyboard event を入力 adapter へ渡し、割り当てのある key なら true を返す（呼び出し側が既定動作を止める）。 */
   handleKeyEvent(event: KeyboardInputEvent): boolean {
     return this.#options.input.handleKeyEvent(event);
+  }
+
+  /**
+   * dev server の content の hot reload。以後の stage は `content` で始め、stage の中なら新しい content と新しい seed で stage を最初から
+   * 始め直す（入力と開始演出は捨て、前の stage の入力の記録には混ぜない）。title と loading では次の stage から使う。Core の error で
+   * 止まった後は何もしない。
+   */
+  replaceContent(content: GameShellContent): void {
+    this.#content = content;
+    this.#apply({ type: "contentReloaded" });
   }
 
   /** asset と view pool の準備を始める。 */
@@ -252,7 +268,8 @@ export class GameShell {
       this.#stage?.timer.suspend();
     }
     const next = this.#lifecycle.state;
-    if (next === previous) {
+    // content の hot reload は、開始演出の途中でも stage を作り直す。
+    if (next === previous && event.type !== "contentReloaded") {
       return;
     }
     if (next === "stageStarting") {
@@ -265,8 +282,8 @@ export class GameShell {
 
   #startStage(): void {
     const seed = this.#options.nextSeed();
-    const start = Object.freeze({ ...this.#options.stage, seed });
-    const session = this.#options.loadedGame.startStage(start);
+    const start = Object.freeze({ ...this.#content.stage, seed });
+    const session = this.#content.loadedGame.startStage(start);
     if (!session.ok) {
       this.#failure = Object.freeze({ ok: false, errors: Object.freeze([...session.errors]) });
       return;

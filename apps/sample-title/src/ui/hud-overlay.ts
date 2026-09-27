@@ -15,6 +15,7 @@ export class HudOverlay implements HudPort {
   readonly #bannerDetail: HTMLElement;
   readonly #debug: HTMLElement;
   readonly #error: HTMLElement;
+  readonly #contentError: HTMLElement;
   #lastView = "";
   #lastDebug = "";
 
@@ -31,7 +32,9 @@ export class HudOverlay implements HudPort {
     this.#debug = element("pre", "hud-debug");
     this.#error = element("div", "hud-error");
     this.#error.hidden = true;
-    root.append(top, this.#banner, this.#debug, this.#error);
+    this.#contentError = element("pre", "hud-content-error");
+    this.#contentError.hidden = true;
+    root.append(top, this.#banner, this.#debug, this.#error, this.#contentError);
     container.append(root);
     this.element = root;
     this.render({ score: null, lives: null, banner: null });
@@ -57,6 +60,15 @@ export class HudOverlay implements HudPort {
       this.#lastDebug = text;
       this.#debug.textContent = text;
     }
+  }
+
+  /**
+   * dev server の content の検証 error（hot reload）を出す。stage は古い content のまま動かし続けるので、見出しや error と重ならない
+   * 下端に出す。null で消す。
+   */
+  showContentError(message: string | null): void {
+    this.#contentError.textContent = message === null ? "" : `Content error (still running the previous content)\n${message}`;
+    this.#contentError.hidden = message === null;
   }
 
   showError(title: string, lines: readonly string[]): void {

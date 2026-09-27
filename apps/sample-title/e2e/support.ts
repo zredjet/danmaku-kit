@@ -31,9 +31,15 @@ export async function readReplay(page: Page): Promise<BrowserReplayRecord> {
   return record;
 }
 
-/** lifecycle が `state` になるまで待つ。loading は view pool の準備を含むので長めに待つ。 */
+/**
+ * lifecycle が `state` になるまで待つ。loading は view pool の準備を含むので長めに待つ。page を読み込み直している間は debug hook がまだ
+ * ないので、hook ができるまで待ち続ける。
+ */
 export async function waitForLifecycle(page: Page, state: GameLifecycleState): Promise<void> {
-  await expect.poll(async () => (await readDump(page)).lifecycle, { timeout: 30_000 }).toBe(state);
+  await expect.poll(
+    async () => page.evaluate(() => window.__SHOOTING_DEBUG_STATE__?.().lifecycle ?? null),
+    { timeout: 30_000 },
+  ).toBe(state);
 }
 
 /** 今の tick から `ticks` だけ進むまで待ち、進んだ後の dump を返す。 */

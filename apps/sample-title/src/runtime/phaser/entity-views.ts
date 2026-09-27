@@ -21,7 +21,7 @@ const PLAYER_HITBOX_DEPTH = 5;
 /** Phaser が必ず持つ texture。pool の view は使う直前に definition の texture へ差し替える。 */
 const PLACEHOLDER_TEXTURE = "__DEFAULT";
 
-type EntityView = Readonly<{ kind: ViewKind; image: GameObjects.Image }>;
+type EntityView = Readonly<{ kind: ViewKind; definitionId: string; image: GameObjects.Image }>;
 type EntityId = ViewEntity["id"];
 
 export type EntityViewsOptions = Readonly<{
@@ -111,7 +111,7 @@ export class EntityViews {
         .setPosition(entity.position.x, entity.position.y)
         .setVisible(true)
         .setActive(true);
-      this.#views.set(entity.id, { kind: entity.kind, image });
+      this.#views.set(entity.id, { kind: entity.kind, definitionId: entity.definitionId, image });
     }
     for (const entity of diff.updated) {
       this.#views.get(entity.id)?.image.setPosition(entity.position.x, entity.position.y);
@@ -131,13 +131,20 @@ export class EntityViews {
     return null;
   }
 
+  /** texture を読み直した後に、表示中の view へ texture を当て直す（content の hot reload の asset の変更）。 */
+  refreshTextures(): void {
+    for (const view of this.#views.values()) {
+      view.image.setTexture(this.#textureOf(view));
+    }
+  }
+
   /** entity を直前の `sync()` で描いた位置。描いていない entity は null。 */
   positionOf(id: EntityId): Readonly<{ x: number; y: number }> | null {
     const image = this.#views.get(id)?.image;
     return image ? { x: image.x, y: image.y } : null;
   }
 
-  #textureOf(entity: ViewEntity): string {
+  #textureOf(entity: Pick<ViewEntity, "definitionId">): string {
     const texture = this.#options.textures.get(entity.definitionId);
     if (texture === undefined) {
       throw new Error(`No texture for ${entity.definitionId}`);

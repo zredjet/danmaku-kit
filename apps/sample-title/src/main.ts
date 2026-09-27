@@ -3,13 +3,15 @@ import { pickupFeature } from "@shooting-sample/shooting-core/features/pickup";
 import gameDefinition, { assetManifest } from "virtual:sample-title/game-definition";
 
 import { installDebugStateHook } from "./debug/debug-state-hook.ts";
-import type { AssetStatus } from "./runtime/assets/asset-loading.ts";
+import { planAssetLoads, type AssetStatus } from "./runtime/assets/asset-loading.ts";
 import { PHASE_2A_AUDIO_STATUS } from "./runtime/audio/audio-status.ts";
+import { CONTENT_UPDATE_EVENT, type ContentUpdate } from "./runtime/content/content-update.ts";
+import { decideHotReload } from "./runtime/content/hot-reload.ts";
 import { KeyboardInputAdapter } from "./runtime/input/keyboard-input.ts";
 import { GameShell } from "./runtime/lifecycle/game-shell.ts";
-import { selectStageDifficulty } from "./runtime/lifecycle/stage-difficulty.ts";
+import { selectStartStage } from "./runtime/lifecycle/stage-difficulty.ts";
 import { applyRenderScale } from "./runtime/phaser/render-scale.ts";
-import { startSampleTitleGame } from "./runtime/phaser/sample-title-game.ts";
+import { reloadSampleTitleTextures, startSampleTitleGame } from "./runtime/phaser/sample-title-game.ts";
 import { collectCollisionRadii } from "./runtime/view/collision-radii.ts";
 import { collectDefinitionAssets } from "./runtime/view/definition-assets.ts";
 import { planViewPoolCapacities } from "./runtime/view/view-pool-plan.ts";
@@ -38,16 +40,16 @@ if (!loaded.ok) {
 }
 
 // stage select を置くまでは、title から最初の stage を `?difficulty=` の difficulty（stage が持たなければ最初の difficulty）で始める。
-const stage = gameDefinition.content.stages[0];
-const difficulty = stage ? selectStageDifficulty(stage.difficulties, readQueryParameter("difficulty")) : null;
-if (!stage || !difficulty) {
+const requestedDifficulty = readQueryParameter("difficulty");
+const stage = selectStartStage(gameDefinition, requestedDifficulty);
+if (!stage) {
   throw new Error("sample title content must define a stage with at least one difficulty");
 }
 
 const requestedSeed = readRequestedSeed();
 const shell = new GameShell({
   loadedGame: loaded.value,
-  stage: { stageId: stage.id, difficulty },
+  stage,
   nextSeed: () => requestedSeed ?? createRandomSeed(),
   input: new KeyboardInputAdapter(),
   // dev server では debug overlay を最初から出す。どの build でも ` / F3 で切り替えられる。
@@ -64,7 +66,7 @@ const game = startSampleTitleGame({
     assetManifest,
     baseUrl: import.meta.env.BASE_URL,
     definitionAssets: collectDefinitionAssets(gameDefinition),
-    viewPoolPlan: planViewPoolCapacities(gameDefinition, stage.id, gameDefinition.defaultPlayerId),
+    viewPoolPlan: planViewPoolCapacities(gameDefinition, stage.stageId, gameDefinition.defaultPlayerId),
     svgRasterScale: svgRasterScaleFor(initialLayout.renderScale),
     shell,
     hud,
@@ -81,6 +83,44 @@ const game = startSampleTitleGame({
   },
 });
 viewport.onLayoutChange((layout) => applyRenderScale(game, layout.renderScale));
+
+// dev server の content の hot reload（design 19）。content plugin が検証して分類した変更を受け、stage を新しい content で始め直すか、
+// sprite を読み直すか、page を読み込み直す。検証に失敗した変更は HUD の下端に出し、古い content のまま動かし続ける。
+if (import.meta.hot) {
+  let current = { definition: gameDefinition, assetManifest };
+  import.meta.hot.on(CONTENT_UPDATE_EVENT, (update: ContentUpdate) => {
+    const action = decideHotReload(update, { core, ...current, requestedDifficulty });
+    switch (action.type) {
+      case "clearError":
+        hud.showContentError(null);
+        break;
+      case "showError":
+        hud.showContentError(action.message);
+        break;
+      case "reloadTextures": {
+        const requests = planAssetLoads(action.assetManifest, import.meta.env.BASE_URL, svgRasterScaleFor(initialLayout.renderScale))
+          .requests.filter((request) => action.keys.includes(request.key));
+        if (!reloadSampleTitleTextures(game, requests)) {
+          window.location.reload();
+          break;
+        }
+        current = { ...current, assetManifest: action.assetManifest };
+        hud.showContentError(null);
+        break;
+      }
+      case "restartStage":
+        console.info("[sample-title] content changed: restarting the stage with the new content");
+        shell.replaceContent(action.content);
+        current = { ...current, definition: action.definition };
+        hud.showContentError(null);
+        break;
+      case "reloadPage":
+        console.info(`[sample-title] content changed: reloading the page because ${action.reason}`);
+        window.location.reload();
+        break;
+    }
+  });
+}
 
 // debug state dump の hook は dev server と test build（`vite build --mode test`）にだけ置く。production build では MODE が
 // "production" に置き換わって分岐ごと消え、hook の module も bundle に入らない（vite/debug-state-hook-build.test.ts）。

@@ -1,4 +1,6 @@
-import { Scene, Scenes } from "phaser";
+import { Loader, Scene, Scenes } from "phaser";
+
+import type { AssetLoadRequest } from "../assets/asset-loading.ts";
 
 import type { AudioStatus } from "../audio/audio-status.ts";
 import { buildDebugHudLines } from "../hud/debug-lines.ts";
@@ -156,6 +158,30 @@ export class StageScene extends Scene {
       droppedTicksTotal: step.droppedTicksTotal,
       notes: [...sparkNotes, ...this.#assetNotes],
     });
+  }
+
+  /**
+   * content の hot reload で asset manifest の sprite の path が変わったとき、その texture を読み直して表示中の view に当て直す。stage は
+   * 続ける。view をまだ作っていなければ false を返す（呼び出し側は page を読み込み直す）。
+   */
+  reloadTextures(requests: readonly AssetLoadRequest[]): boolean {
+    const views = this.#views;
+    if (!views || this.#halted) {
+      return false;
+    }
+    for (const request of requests) {
+      if (this.textures.exists(request.key)) {
+        this.textures.remove(request.key);
+      }
+      if (request.format === "svg") {
+        this.load.svg(request.key, request.url, { scale: request.rasterScale });
+      } else {
+        this.load.image(request.key, request.url);
+      }
+    }
+    this.load.once(Loader.Events.COMPLETE, () => views.refreshTextures());
+    this.load.start();
+    return true;
   }
 
   /** Core の error や runtime の fatal で scene を止め、HUD に出す。Phase 2A は dev と本番のどちらも止める。 */

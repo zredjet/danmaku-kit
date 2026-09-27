@@ -4,6 +4,7 @@ import { PLAYFIELD_BACKGROUND_COLOR } from "../view/playfield.ts";
 import { BootScene, type BootSceneOptions } from "./boot-scene.ts";
 import { renderSizeOf } from "./render-scale.ts";
 import { StageScene, type StageSceneOptions } from "./stage-scene.ts";
+import type { AssetLoadRequest } from "../assets/asset-loading.ts";
 
 export type SampleTitleGameOptions = Readonly<{
   parent: HTMLElement;
@@ -35,4 +36,10 @@ export function startSampleTitleGame(options: SampleTitleGameOptions): Game {
     // 配列の最初の scene だけが起動し、stage scene は boot scene が loading を終えてから始める。
     scene: [new BootScene(boot), new StageScene(stage)],
   });
+}
+
+/** content の hot reload で、stage scene に sprite の texture を読み直させる。stage scene がまだ view を作っていなければ false。 */
+export function reloadSampleTitleTextures(game: Game, requests: readonly AssetLoadRequest[]): boolean {
+  const scene = game.scene.getScene("stage");
+  return scene instanceof StageScene && scene.reloadTextures(requests);
 }

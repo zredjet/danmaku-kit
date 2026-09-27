@@ -11,9 +11,11 @@ import { loadValidatedGameDefinition } from "@shooting-sample/validate-content";
 
 import {
   GAME_DEFINITION_MODULE_ID,
+  classifyContentUpdate,
   createGameDefinitionModule,
   isContentSourceFile,
   listContentSourcePaths,
+  loadValidatedContent,
   sampleTitleContentPlugin,
 } from "./content-plugin.ts";
 
@@ -115,4 +117,27 @@ test("treats the game definition file and files under the content root as conten
     cases.map(([file]) => isContentSourceFile(sampleTitlePaths, file)),
     cases.map(([, expected]) => expected),
   );
+});
+
+test("classifies a re-validated content against the content the app has", async () => {
+  const current = await loadValidatedContent(sampleTitlePaths);
+  assert.ok(current.ok);
+  const { definition, assetManifest } = current;
+  const changedDefinition = { ...definition, content: { ...definition.content, version: "sample-title@content.x" } };
+  const changedManifest = {
+    ...assetManifest,
+    assets: { ...assetManifest.assets, "enemy.drone": { ...assetManifest.assets["enemy.drone"]!, path: "assets/sprites/other.svg" } },
+  };
+
+  assert.deepEqual(classifyContentUpdate(current, current), { kind: "unchanged" });
+  assert.deepEqual(classifyContentUpdate(current, { ...current, definition: changedDefinition }), {
+    kind: "content",
+    definition: changedDefinition,
+    assetManifest,
+  });
+  assert.deepEqual(classifyContentUpdate(current, { ...current, assetManifest: changedManifest }), {
+    kind: "assets",
+    assetManifest: changedManifest,
+  });
+  assert.deepEqual(classifyContentUpdate(current, { ok: false, error: "broken" }), { kind: "error", message: "broken" });
 });

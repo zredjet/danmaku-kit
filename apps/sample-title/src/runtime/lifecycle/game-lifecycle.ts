@@ -34,7 +34,8 @@ export type LifecycleEvent =
   | Readonly<{ type: "pauseToggled" }>
   | Readonly<{ type: "focusLost" }>
   | Readonly<{ type: "stageEnded"; outcome: "stageCleared" | "gameOver" }>
-  | Readonly<{ type: "returnToTitle" }>;
+  | Readonly<{ type: "returnToTitle" }>
+  | Readonly<{ type: "contentReloaded" }>;
 
 /**
  * 1 つの出来事を当てた結果。
@@ -62,6 +63,8 @@ const PAUSABLE_STATES: readonly GameLifecycleState[] = Object.freeze(["playing",
  * - focus lost / visibility change と `paused` の出入りでは、どの状態でも accumulator と入力を捨てる。
  * - loading を終えて `title` へ進むとき、`stageStarting` へ進むとき、`title` へ戻るときも入力を捨て、前の画面で押した key を次の画面へ
  *   持ち越さない。
+ * - dev server の content の hot reload（`contentReloaded`）は、stage の中（開始演出から stage の終わりまで）なら新しい content で
+ *   stage を始め直すため `stageStarting` へ進め、それ以外（loading、title）では状態を変えない。
  */
 export function transitionLifecycle(current: GameLifecycle, event: LifecycleEvent): LifecycleTransition {
   switch (event.type) {
@@ -92,8 +95,13 @@ export function transitionLifecycle(current: GameLifecycle, event: LifecycleEven
       return current.state === "stageCleared" || current.state === "gameOver" || current.state === "result"
         ? moveTo("title", { discardInput: true })
         : stay(current);
+    case "contentReloaded":
+      return STAGE_STATES.includes(current.state) ? moveTo("stageStarting", { discardInput: true }) : stay(current);
   }
 }
+
+/** stage の中の状態。content の hot reload で stage を始め直す。 */
+const STAGE_STATES: readonly GameLifecycleState[] = Object.freeze(["stageStarting", "playing", "paused", "stageCleared", "gameOver", "result"]);
 
 function isPausable(state: GameLifecycleState): state is PausableLifecycleState {
   return PAUSABLE_STATES.includes(state);

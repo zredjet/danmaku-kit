@@ -284,3 +284,26 @@ test("records the inputs the Core accepted so a headless replay reaches the same
   unrecorded.advance(TICK_MS);
   assert.equal(unrecorded.replayRecord(), null);
 });
+
+test("restarts a running stage with the reloaded content and a new seed, and uses it for the next start from the title", () => {
+  const { shell, seeds } = createPlayingShell();
+  const reloaded = createScriptedGame();
+  shell.advance(TICK_MS * 3);
+
+  shell.replaceContent({ loadedGame: reloaded.loadedGame, stage: { stageId: "stage.stage_02", difficulty: "hard" } });
+  const restarted = expectOk(shell.advance(0));
+
+  assert.deepEqual([restarted.lifecycle.state, restarted.stageChanged, restarted.frame, restarted.difficulty], ["stageStarting", true, null, "hard"]);
+  assert.deepEqual([seeds, reloaded.seeds], [["seed-1"], ["seed-2"]]);
+  // 開始演出の途中の reload も stage を作り直す。
+  shell.replaceContent({ loadedGame: reloaded.loadedGame, stage: { stageId: "stage.stage_02", difficulty: "hard" } });
+  assert.deepEqual(reloaded.seeds, ["seed-2", "seed-3"]);
+
+  const atTitle = createShellAtTitle();
+  const next = createScriptedGame();
+  atTitle.shell.replaceContent({ loadedGame: next.loadedGame, stage: { stageId: "stage.stage_01", difficulty: "normal" } });
+  assert.deepEqual([atTitle.shell.lifecycle.state, next.seeds], ["title", []]);
+  press(atTitle.input, "Enter");
+  atTitle.shell.advance(0);
+  assert.deepEqual([atTitle.seeds, next.seeds], [[], ["seed-1"]]);
+});

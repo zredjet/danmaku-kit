@@ -105,3 +105,17 @@ test("ignores events that do not apply to the current state", () => {
   }
   assert.deepEqual(run([{ type: "loadingFinished" }]), INITIAL_GAME_LIFECYCLE);
 });
+
+test("restarts the stage on a content reload inside a stage and keeps the other states", () => {
+  for (const state of ["stageStarting", "playing", "stageCleared", "gameOver", "result"] as const) {
+    assert.deepEqual(transitionLifecycle(at(state), { type: "contentReloaded" }), {
+      lifecycle: at("stageStarting"),
+      discardInput: true,
+      suspendStartTimer: false,
+    }, state);
+  }
+  assert.deepEqual(transitionLifecycle(at("paused", "playing"), { type: "contentReloaded" }).lifecycle, at("stageStarting"));
+  for (const state of ["booting", "loading", "title"] as const) {
+    assert.deepEqual(transitionLifecycle(at(state), { type: "contentReloaded" }).lifecycle, at(state), state);
+  }
+});
