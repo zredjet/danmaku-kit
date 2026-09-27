@@ -1809,14 +1809,30 @@ hash algorithm は `xxHash64`、seed は safe integer に丸めず `0x53484f4f54
 
 Pattern DSL と Stage timeline は、単純な構造検証に加えて意味検証を行う。
 
-Parse 後は `PatternProgram` として正規化する。
+Parse 後は `PatternProgram` として正規化する（`packages/shooting-core/src/basic/patterns/pattern-program.ts`）。命令列に分岐や乱数はないため、runner が止まる位置（cursor）ごとに、次の `wait` か末尾まで実行する命令のまとまり（run）を load 時に 1 度だけ求める。
 
 ```ts
 type PatternProgram = {
-  id: string;
-  commands: PatternCommand[];
-  labels: Record<string, number>;
-  staticBudget: PatternBudget;
+  patternId: PatternId;
+  length: number;
+  runs: readonly PatternRun[]; // cursor 0〜length の run
+};
+
+type PatternRun = {
+  fires: readonly PatternFireCommand[];
+  bulletCount: number;
+  executedCommands: number;
+  executedSteps: readonly number[];
+  next: { cursor: number; waitTicks: number } | null;
+};
+
+// spawn から実行する run の時刻表から求める静的な予算（patterns/pattern-budget.ts）。
+type PatternStaticBudget = {
+  maxBulletsPerRun: number;
+  maxCommandsPerRun: number;
+  firstFireTicks: number | null;
+  cycle: { durationTicks: number; bullets: number } | null;
+  unreachableSteps: readonly number[];
 };
 ```
 
@@ -1829,6 +1845,13 @@ type PatternProgram = {
 - 静的に判定できないループは runtime budget を持ち、1 tick 内の pattern command 実行数が上限を超えたら content error として停止する。
 
 Phase 2A-5 の最小 subset（`wait` / `fire` / `loop`）では、`loop` が前の step へだけ戻り、戻り先から loop までの間に `wait` を含むことを validation で要求して静的な無限ループを拒否する。1 tick の命令数は 2,000 を runtime budget とし、超えた tick は `pattern.budgetExceeded` の fatal にする。
+
+Phase 2B-1 の意味の検証（`content/validation/pattern-semantics.ts`）: shape と参照の検証に通った content の各 pattern を `PatternProgram` にし、spawn から実行する run だけを見て静的な予算を求める。
+
+- 1 run の弾数が敵弾の active 上限（2,000）を超える pattern は、撃った tick に必ず fatal になるため `definition.invalidConstraint` の load error にする。loop より後ろのように spawn から実行されない run は数えない。
+- 一度も撃たない pattern（`pattern.neverFires`）と、spawn からどの run でも実行されない step（`pattern.unreachableStep`、`loop` より後ろの step など）は、動作はするが書き間違いの可能性が高いため warning にする。warning は `CoreResult.warnings` で返し、content に error がある間は返さない。
+- `CoreWarning` は error と同じく optional の `schemaPath` と `referrerId` を持ち、validate-content は warning を YAML の該当 step（never fires は `steps` 全体）へ向けて exit code 0 の schema diagnostic として出す（CLI golden の `pattern-warning`、`pattern-silent`、`pattern-budget-error`）。
+- 静的な予算は runtime の状態を変えないため、state hash と replay は変わらない。
 
 ### 21.4 Golden Test
 
