@@ -2080,7 +2080,7 @@ Phase 2A-12 の Browser test（`apps/sample-title/e2e/`、`npm run test:browser`
 Phase 2B-14 の browser regression test:
 
 - `e2e/preview-regression.spec.ts` は Preview を start paused で開き、N を押すたびに render frame を待って tick 0 から 1 tick ずつ進め、gunship の弾幕（扇、狙い弾、radial の輪）、path を進む scout、撃ち落とした drone の pickup の決定的な画面を、dump の entity 数と playfield の screenshot で確かめる。screenshot は panel、debug HUD、状態の見出しを CSS で隠し、差を 16 画素まで許す（1 つの sprite が消えれば超える）。difficulty を hard に切り替えて輪が 24 方向になること、paused の checkbox が URL に残ることも確かめる。Preview の選択、pause、step、restart、seed は `e2e/preview.spec.ts`、cheat は同じ file の cheat の test が確かめる。
-- CI（`.github/workflows/ci.yml`）は `npm run check` と別の job で `npx playwright install --with-deps chromium` の後に `npm run test:browser` を実行する。screenshot の baseline は platform ごとで、Linux の baseline は手動の `.github/workflows/browser-baselines.yml`（`--update-snapshots=missing`）で作って artifact から commit する。commit するまでの CI は `ALLOW_MISSING_BROWSER_BASELINES=1` で baseline のない screenshot を比べずに skip し（`e2e/support.ts` の `expectScreenshot()`）、darwin の baseline に対応する Linux の baseline がないものを warning で出す。判定の正本の dump と replay の検査は常に走る。
+- CI（`.github/workflows/ci.yml`）は `npm run check` と別の job で `npx playwright install --with-deps chromium` の後に `npm run test:browser` を実行する。screenshot の baseline は platform ごとで、Linux の baseline は手動の `.github/workflows/browser-baselines.yml`（`--update-snapshots=missing`）で作って artifact から commit する。CI は Linux の baseline と比べ、baseline のない screenshot は失敗し、darwin の baseline に対応する Linux の baseline がないものを warning でも出す（`ALLOW_MISSING_BROWSER_BASELINES=1` を付けた実行だけは skip する。Linux の baseline を作る前の一時的な逃げ道で、CI は付けない）。判定の正本の dump と replay の検査は常に走る。
 
 CI artifact path は `artifacts/debug-state/<test-name>-tick-<tick>.json` とする。`test-name` は 1..128 文字の lower-case ASCII slug とし、英数字の区間を `.`, `_`, `-` のいずれか1文字で区切る。test helper はこの規則と non-negative safe integer tick を検証し、`/`、`\\`、`..` を artifact path へ流さない。JSON artifact は schema 固定の property order、2-space indent、末尾 LF で固定し、caller object の property 挿入順へ依存させない。
 
@@ -2258,7 +2258,7 @@ Phase 2B の成果物には sample content spec を含める。sample stage は 
 
 Phase 2B のタスク分割と範囲の決定（Pattern DSL は load 時に run へ展開できる `repeat`、`radial`、`stream`、difficulty の `if` までにすること、pickup を最初の feature module にして drops を乱数なしで出すこと、scoring rule は `advancedScoring` と一緒に後へ回すこと、Preview の overlay は公開の `serialize()` から読めるものに限ること）は `docs/implementation-plan.md` の「Phase 2B タスク分割」に置いた。
 
-Phase 2B（Authoring / content expansion）は完了した。上の 9 項目を test と確認に対応付けた判定は `docs/implementation-plan.md` の「Phase 2B 完了判定」にある。Linux の screenshot baseline は remote で CI を実行できるようになってから作る。
+Phase 2B（Authoring / content expansion）は完了した。上の 9 項目を test と確認に対応付けた判定は `docs/implementation-plan.md` の「Phase 2B 完了判定」にある。判定の後、GitHub の remote で CI（check と browser test）を実行し、Browser baselines workflow で作った Linux の screenshot baseline を commit した。
 
 ### Phase 3: プレイフィール
 

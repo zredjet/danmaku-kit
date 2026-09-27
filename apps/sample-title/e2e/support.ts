@@ -80,10 +80,10 @@ export async function playerCenterRgb(page: Page): Promise<[number, number, numb
 }
 
 /**
- * screenshot を platform ごとの baseline と比べる（補助の検査、design 21.5）。`ALLOW_MISSING_BROWSER_BASELINES=1`（Linux の baseline
- * を commit するまでの CI）では、今の platform の baseline がまだない screenshot を比べずに skip する（CI は baseline のない
- * screenshot を warning で知らせ、`.github/workflows/browser-baselines.yml` で作る）。それ以外は Playwright の既定どおり、baseline が
- * なければ書き出して失敗する（中身を確かめてから commit する）。
+ * screenshot を platform ごとの baseline と比べる（補助の検査、design 21.5）。baseline がなければ Playwright の既定どおり、書き出して
+ * 失敗する（中身を確かめてから commit する。Linux の baseline は `.github/workflows/browser-baselines.yml` で作る）。
+ * `ALLOW_MISSING_BROWSER_BASELINES=1` を付けた実行だけは、今の platform の baseline がない screenshot を比べずに skip する（Linux の
+ * baseline を作る前に一時的に使う逃げ道で、CI は付けない）。
  */
 export async function expectScreenshot(
   target: Page | Locator,
