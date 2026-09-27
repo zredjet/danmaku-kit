@@ -4,9 +4,12 @@ import type {} from "../src/debug/debug-state-hook.ts";
 import type { BrowserDebugStateDump } from "../src/runtime/debug/browser-debug-state.ts";
 import type { BrowserReplayRecord } from "../src/runtime/debug/browser-replay-record.ts";
 import type { GameLifecycleState } from "../src/runtime/lifecycle/game-lifecycle.ts";
+import { PLAYFIELD_BACKGROUND_COLOR } from "../src/runtime/view/playfield.ts";
 
-/** 背景色（sample-title-game.ts の backgroundColor）。canvas に何も描かれていない画素の色。 */
-export const BACKGROUND_RGB = Object.freeze([0x0b, 0x0d, 0x1a] as const);
+/** playfield の背景色の RGB。canvas に何も描かれていない画素の色。 */
+export const BACKGROUND_RGB: readonly [number, number, number] = Object.freeze([1, 3, 5].map((start) => (
+  Number.parseInt(PLAYFIELD_BACKGROUND_COLOR.slice(start, start + 2), 16)
+)) as [number, number, number]);
 
 /** `window.__SHOOTING_DEBUG_STATE__()` を読む。 */
 export function readDump(page: Page): Promise<BrowserDebugStateDump> {

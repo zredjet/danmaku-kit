@@ -6,6 +6,7 @@ const PORT = 4173;
  * browser smoke test（design 21.5、Phase 2A-12）。`npm run test:browser` で実行し、node:test の `npm test` とは分ける。
  *
  * debug state dump の hook は production build に入らないため、`vite build --mode test` の bundle を `vite preview` で配って試す。
+ * 古い bundle や別の app を試さないよう、実行のたびに build して server を起こし、port が塞がっていれば `--strictPort` で失敗させる。
  * screenshot diff は補助で、font の描画が OS で違うため baseline は platform ごとに commit する。baseline のない platform では最初の
  * 実行が失敗して baseline を書き出すので、中身を確かめてから commit する（`npm run test:browser -- --update-snapshots` でも作れる）。
  */
@@ -31,7 +32,7 @@ export default defineConfig({
   webServer: {
     command: "npm run build:test && npm run preview:test",
     url: `http://127.0.0.1:${PORT}`,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });

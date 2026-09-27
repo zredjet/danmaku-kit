@@ -55,6 +55,9 @@ export function expandInputScript(segments: readonly InputScriptSegment[], tickC
  * shot を押し続けながら、`periodTicks` ごとに左右の向きを変えて往復する script。最初の半周期は左へ動き、往復を開始位置の中央にそろえる。
  */
 export function weavingShotScript(periodTicks: number, tickCount: number): readonly InputScriptSegment[] {
+  if (!Number.isSafeInteger(periodTicks) || periodTicks < 2) {
+    throw new RangeError("the weaving period must be a safe integer of at least 2 ticks");
+  }
   const segments: InputScriptSegment[] = [{ fromTick: 0, moveX: -1, held: ["shot"] }];
   let direction: -1 | 1 = -1;
   for (let tick = Math.floor(periodTicks / 2); tick < tickCount; tick += periodTicks) {

@@ -55,10 +55,12 @@ test("draws the player, moves it with the arrow keys and shows the hitbox at the
   await page.keyboard.down("ArrowRight");
   const focusFrom = await waitForTicks(page, 3);
   const focusTo = await waitForTicks(page, 10);
-  // 低速移動は 1.8 px / tick。focus 中は自機の中心に当たり判定（白）を重ねる。
+  // 低速移動は 1.8 px / tick。
   expect(focusTo.playerPosition!.x - focusFrom.playerPosition!.x).toBeCloseTo(1.8 * (focusTo.tick - focusFrom.tick), 6);
-  expect(isWhite(await playerCenterRgb(page))).toBe(true);
+  // focus 中は自機の中心に当たり判定（白）を重ねる。dump を読んでから screenshot を撮るまでに動かないよう、Shift だけを押したまま止める。
   await page.keyboard.up("ArrowRight");
+  await waitForTicks(page, 2);
+  expect(isWhite(await playerCenterRgb(page))).toBe(true);
   await page.keyboard.up("Shift");
 });
 

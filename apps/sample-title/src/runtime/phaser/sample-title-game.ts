@@ -1,5 +1,6 @@
 import { AUTO, Game, Scale } from "phaser";
 
+import { PLAYFIELD_BACKGROUND_COLOR } from "../view/playfield.ts";
 import { BootScene, type BootSceneOptions } from "./boot-scene.ts";
 import { renderSizeOf } from "./render-scale.ts";
 import { StageScene, type StageSceneOptions } from "./stage-scene.ts";
@@ -28,7 +29,7 @@ export function startSampleTitleGame(options: SampleTitleGameOptions): Game {
     parent,
     width,
     height,
-    backgroundColor: "#0b0d1a",
+    backgroundColor: PLAYFIELD_BACKGROUND_COLOR,
     scale: { mode: Scale.NONE },
     input: { keyboard: false },
     // 配列の最初の scene だけが起動し、stage scene は boot scene が loading を終えてから始める。
