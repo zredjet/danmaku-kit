@@ -2113,6 +2113,8 @@ Phase 2A の完了条件を初期 playable milestone とする。Phase 2A は 2A
 
 Phase 2B の成果物には sample content spec を含める。sample stage は schema、golden test、browser smoke、docs の例と同期させ、仕様の実質的な正本として扱える品質にする。
 
+Phase 2B のタスク分割と範囲の決定（Pattern DSL は load 時に run へ展開できる `repeat`、`radial`、`stream`、difficulty の `if` までにすること、pickup を最初の feature module にして drops を乱数なしで出すこと、scoring rule は `advancedScoring` と一緒に後へ回すこと、Preview の overlay は公開の `serialize()` から読めるものに限ること）は `docs/implementation-plan.md` の「Phase 2B タスク分割」に置いた。
+
 ### Phase 3: プレイフィール
 
 - グレイズ
