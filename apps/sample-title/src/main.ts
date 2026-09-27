@@ -3,6 +3,7 @@ import { pickupFeature } from "@shooting-sample/shooting-core/features/pickup";
 import gameDefinition, { assetManifest } from "virtual:sample-title/game-definition";
 
 import { installDebugStateHook } from "./debug/debug-state-hook.ts";
+import { PreviewMode } from "./preview/preview-mode.ts";
 import { planAssetLoads, type AssetStatus } from "./runtime/assets/asset-loading.ts";
 import { PHASE_2A_AUDIO_STATUS } from "./runtime/audio/audio-status.ts";
 import { CONTENT_UPDATE_EVENT, type ContentUpdate } from "./runtime/content/content-update.ts";
@@ -11,10 +12,11 @@ import { KeyboardInputAdapter } from "./runtime/input/keyboard-input.ts";
 import { GameShell } from "./runtime/lifecycle/game-shell.ts";
 import { selectStartStage } from "./runtime/lifecycle/stage-difficulty.ts";
 import { applyRenderScale } from "./runtime/phaser/render-scale.ts";
+import { PreviewSelection } from "./runtime/preview/preview-selection.ts";
 import { isSampleTitleHalted, reloadSampleTitleTextures, startSampleTitleGame } from "./runtime/phaser/sample-title-game.ts";
 import { collectCollisionRadii } from "./runtime/view/collision-radii.ts";
 import { collectDefinitionAssets } from "./runtime/view/definition-assets.ts";
-import { planViewPoolCapacities } from "./runtime/view/view-pool-plan.ts";
+import { planPreviewViewPoolCapacities, planViewPoolCapacities } from "./runtime/view/view-pool-plan.ts";
 import { svgRasterScaleFor } from "./runtime/view/viewport-layout.ts";
 import { HudOverlay } from "./ui/hud-overlay.ts";
 import { fitStageToViewport } from "./ui/viewport-fit.ts";
@@ -47,10 +49,23 @@ if (!stage) {
 }
 
 const requestedSeed = readRequestedSeed();
+// Preview（design 19）は dev server と test build で `?preview` を付けたときだけ開く。production build では MODE が "production" に
+// 置き換わって分岐ごと消え、Preview の module も bundle に入らない（vite/dev-only-build.test.ts）。
+const previewSelection = import.meta.env.MODE !== "production" && new URLSearchParams(window.location.search).has("preview")
+  ? new PreviewSelection(gameDefinition, {
+    targetParameter: new URLSearchParams(window.location.search).get("preview") ?? "",
+    seed: requestedSeed ?? createRandomSeed(),
+    requestedDifficulty,
+  })
+  : null;
+const previewStart = previewSelection?.compose(core);
+if (previewStart && !previewStart.ok) {
+  throw new Error(`Core rejected the preview content: ${previewStart.errors.join(", ")}`);
+}
 const shell = new GameShell({
-  loadedGame: loaded.value,
-  stage,
-  nextSeed: () => requestedSeed ?? createRandomSeed(),
+  ...(previewStart?.content ?? { loadedGame: loaded.value, stage }),
+  // Preview は seed を panel で変えるまで同じ seed で始め直し、同じ再生を繰り返せるようにする。
+  nextSeed: () => previewSelection?.seed ?? requestedSeed ?? createRandomSeed(),
   input: new KeyboardInputAdapter(),
   // dev server では debug overlay を最初から出す。どの build でも ` / F3 で切り替えられる。
   debugOverlay: import.meta.env.DEV,
@@ -61,7 +76,12 @@ const shell = new GameShell({
 let assetStatus: AssetStatus = "loading";
 // hot reload で stage を始め直した content。debug HUD の version と、次の変更との比較に使う。
 let current = { definition: gameDefinition, assetManifest };
-const viewPoolPlan = planViewPoolCapacities(gameDefinition, stage.stageId, gameDefinition.defaultPlayerId);
+// Preview は対象を選び直しても view pool を作り直さないよう、どの対象でも足りる capacity を持つ。
+const viewPoolPlan = (previewSelection ? planPreviewViewPoolCapacities : planViewPoolCapacities)(
+  gameDefinition,
+  stage.stageId,
+  gameDefinition.defaultPlayerId,
+);
 const game = startSampleTitleGame({
   parent: stageRoot,
   renderScale: initialLayout.renderScale,
@@ -86,6 +106,10 @@ const game = startSampleTitleGame({
   },
 });
 viewport.onLayoutChange((layout) => applyRenderScale(game, layout.renderScale));
+
+const preview = import.meta.env.MODE !== "production" && previewSelection
+  ? new PreviewMode({ panelParent: document.body, stageRoot, shell, core, selection: previewSelection })
+  : null;
 
 // dev server の content の hot reload（design 19）。content plugin が検証した content を今の content と比べ、stage を新しい content で
 // 始め直すか、sprite を読み直すか、page を読み込み直す。検証に失敗した変更は HUD の下端に出し、古い content のまま動かし続ける。
@@ -120,7 +144,11 @@ if (import.meta.hot && viewPoolPlan.ok) {
       }
       case "restartStage":
         console.info("[sample-title] content changed: restarting the stage with the new content");
-        shell.replaceContent(action.content);
+        if (preview) {
+          preview.applyDefinition(action.definition);
+        } else {
+          shell.replaceContent(action.content);
+        }
         current = { ...current, definition: action.definition };
         hud.showContentError(null);
         break;
@@ -133,7 +161,7 @@ if (import.meta.hot && viewPoolPlan.ok) {
 }
 
 // debug state dump の hook は dev server と test build（`vite build --mode test`）にだけ置く。production build では MODE が
-// "production" に置き換わって分岐ごと消え、hook の module も bundle に入らない（vite/debug-state-hook-build.test.ts）。
+// "production" に置き換わって分岐ごと消え、hook の module も bundle に入らない（vite/dev-only-build.test.ts）。
 if (import.meta.env.MODE !== "production") {
   installDebugStateHook({
     shell,

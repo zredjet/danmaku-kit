@@ -116,3 +116,16 @@ test("stops at the tick that ends the stage and then stays idle on the last fram
   });
   assert.deepEqual(ticked, [0, 1, 2]);
 });
+
+test("steps exactly one tick without the clock and keeps the clock's leftover time", async () => {
+  const loop = new StageLoop(await startSampleTitleStage("stage-loop-step"), new KeyboardInputAdapter());
+
+  loop.advance(TICK_MS / 2);
+  const stepped = loop.stepTick();
+  assert.deepEqual(stepped.ok && [stepped.ticks, stepped.latestFrame?.tick], [1, 0]);
+  const next = loop.stepTick();
+  assert.deepEqual(next.ok && [next.ticks, next.latestFrame?.tick, next.events.map((event) => event.type)], [1, 1, ["tickAdvanced"]]);
+  // clock に残った半 tick は、次の advance で足りた分だけ tick になる。
+  const resumed = loop.advance(TICK_MS / 2);
+  assert.deepEqual(resumed.ok && [resumed.ticks, resumed.latestFrame?.tick], [1, 2]);
+});

@@ -102,7 +102,8 @@ const SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES = Object.freeze(["hash/", "testing/
  * path は `apps/sample-title/src/` からの相対で、表記は `SHOOTING_CORE_LAYER_RULES` と同じ。
  */
 const SAMPLE_TITLE_PACKAGE_IMPORT_RULES = Object.freeze([
-  { specifier: "@shooting-sample/shooting-core", allowedImporters: ["main.ts", "runtime/", "virtual-modules.d.ts"] },
+  // dev / test build 専用の Preview（`preview/`）は、選んだ対象を合成した content を Core で load する。
+  { specifier: "@shooting-sample/shooting-core", allowedImporters: ["main.ts", "runtime/", "preview/", "virtual-modules.d.ts"] },
   // Core を作る entry だけが optional feature を登録する。
   { specifier: "@shooting-sample/shooting-core/features/pickup", allowedImporters: ["main.ts"] },
   { specifier: "phaser", allowedImporters: ["main.ts", "runtime/phaser/"] },
@@ -115,7 +116,8 @@ const SAMPLE_TITLE_IMPORT_META_READERS = Object.freeze(["main.ts"]);
 /**
  * sample app `src/` の依存方向。`target` を import してよいのは同じ layer と `allowedImporters` だけ。
  *
- * DOM の overlay（`ui/`）、dev / test build 専用の debug hook（`debug/`）、Phaser adapter（`runtime/phaser/`）は entry だけが組み立て、
+ * DOM の overlay（`ui/`）、dev / test build 専用の debug hook（`debug/`）と Preview の panel（`preview/`）、Phaser adapter
+ * （`runtime/phaser/`）は entry だけが組み立て、
  * それ以外の runtime module は DOM と Phaser なしで node:test から検査できる形に保つ。型 import も含め、path の表記は
  * `SHOOTING_CORE_LAYER_RULES` と同じ。
  */
@@ -123,6 +125,7 @@ const SAMPLE_TITLE_LAYER_RULES = Object.freeze([
   { target: "main.ts", allowedImporters: [] },
   { target: "ui/", allowedImporters: ["main.ts"] },
   { target: "debug/", allowedImporters: ["main.ts"] },
+  { target: "preview/", allowedImporters: ["main.ts"] },
   { target: "runtime/phaser/", allowedImporters: ["main.ts"] },
 ]);
 

@@ -65,6 +65,24 @@ export class StageLoop {
       return this.#step([], 0, 0);
     }
     const { ticks, droppedTicks } = this.#clock.advance(deltaMs);
+    return this.#runTicks(ticks, droppedTicks);
+  }
+
+  /**
+   * clock を使わずに 1 tick だけ進める（Preview の 1 tick 送り、design 19）。入力は通常の tick と同じく adapter から sampling する。
+   * stage が終わっていれば何もしない。
+   */
+  stepTick(): StageLoopStep {
+    if (this.#failure) {
+      return this.#failure;
+    }
+    if (this.ended) {
+      return this.#step([], 0, 0);
+    }
+    return this.#runTicks(1, 0);
+  }
+
+  #runTicks(ticks: number, droppedTicks: number): StageLoopStep {
     const events: GameEvent[] = [];
     let executedTicks = 0;
     for (const input of this.#input.sampleTicks(this.#nextTick, ticks)) {

@@ -217,6 +217,10 @@ export class StageScene extends Scene {
   #listenToBrowser(): void {
     const { shell } = this.#options;
     const onKey = (event: KeyboardEvent): void => {
+      // Preview の panel の入力欄へ打つ key は game の入力にしない（keyup は押したままの key が残らないよう受ける）。
+      if (event.type === "keydown" && isFormField(event.target)) {
+        return;
+      }
       if (shell.handleKeyEvent(event)) {
         event.preventDefault();
       }
@@ -250,4 +254,8 @@ export class StageScene extends Scene {
     this.events.once(Scenes.Events.SHUTDOWN, removeListeners);
     this.events.once(Scenes.Events.DESTROY, removeListeners);
   }
+}
+
+function isFormField(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName));
 }

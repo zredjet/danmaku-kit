@@ -6,7 +6,7 @@ import type { GameDefinition } from "@shooting-sample/shooting-core";
 import { loadSampleTitleDefinition } from "../../test-support/sample-title-game.ts";
 import { collectDefinitionAssets, resolveDefinitionTextures } from "./definition-assets.ts";
 import { collectCollisionRadii } from "./collision-radii.ts";
-import { planViewPoolCapacities } from "./view-pool-plan.ts";
+import { VIEW_POOL_BUDGET, planPreviewViewPoolCapacities, planViewPoolCapacities } from "./view-pool-plan.ts";
 
 function withPlayerShot(definition: GameDefinition, lifetimeTicks: number, intervalTicks: number): GameDefinition {
   return {
@@ -111,4 +111,19 @@ test("maps every entity definition to a loaded texture or names the missing asse
       "shot.player_basic",
     ],
   });
+});
+
+test("sizes the preview pools to the runtime budget so that any target fits", async () => {
+  const definition = await loadSampleTitleDefinition();
+  const stagePlan = planViewPoolCapacities(definition, "stage.stage_01", "player.default");
+  assert.ok(stagePlan.ok);
+
+  assert.deepEqual(planPreviewViewPoolCapacities(definition, "stage.stage_01", "player.default"), {
+    ok: true,
+    capacities: { ...stagePlan.capacities, enemy: VIEW_POOL_BUDGET.enemy, enemyBullet: VIEW_POOL_BUDGET.enemyBullet, pickup: VIEW_POOL_BUDGET.pickup },
+  });
+  const withoutPickups = { ...definition, enabledFeatures: [] };
+  const plan = planPreviewViewPoolCapacities(withoutPickups, "stage.stage_01", "player.default");
+  assert.equal(plan.ok && plan.capacities.pickup, 0);
+  assert.equal(planPreviewViewPoolCapacities(definition, "stage.missing", "player.default").ok, false);
 });

@@ -337,3 +337,57 @@ test("ignores a content reload after the Core failed", () => {
   shell.replaceContent({ loadedGame: reloaded.loadedGame, stage: { stageId: "stage.stage_01", difficulty: "normal" } });
   assert.deepEqual([shell.advance(0).ok, reloaded.seeds], [false, []]);
 });
+
+test("steps a paused stage one tick at a time and reports the stepped ticks with the next render frame", () => {
+  const { shell, input } = createPlayingShell();
+  shell.advance(TICK_MS * 2);
+  press(input, "KeyP");
+  const paused = expectOk(shell.advance(0));
+  assert.equal(paused.lifecycle.state, "paused");
+
+  assert.equal(shell.stepPausedTick(), true);
+  assert.equal(shell.stepPausedTick(), true);
+  const stepped = expectOk(shell.advance(TICK_MS * 10));
+  assert.deepEqual([stepped.lifecycle.state, stepped.ticks, stepped.frame?.tick], ["paused", 2, 3]);
+  assert.equal(expectOk(shell.advance(0)).ticks, 0);
+
+  press(input, "KeyP");
+  shell.advance(0);
+  assert.equal(shell.stepPausedTick(), false);
+});
+
+test("toggles the pause from the preview panel like the pause key", () => {
+  const { shell } = createPlayingShell();
+  shell.togglePause();
+  assert.equal(shell.lifecycle.state, "paused");
+  assert.equal(shell.stepPausedTick(), true);
+  shell.togglePause();
+  assert.equal(shell.lifecycle.state, "playing");
+
+  const atTitle = createShellAtTitle();
+  atTitle.shell.togglePause();
+  assert.equal(atTitle.shell.lifecycle.state, "title");
+});
+
+test("starts the stage from the title or restarts it with new content for the preview", () => {
+  const atTitle = createShellAtTitle();
+  const previewGame = createScriptedGame();
+
+  atTitle.shell.startOrRestart({ loadedGame: previewGame.loadedGame, stage: { stageId: "stage.preview", difficulty: "normal" } });
+  assert.deepEqual([atTitle.shell.lifecycle.state, previewGame.seeds], ["stageStarting", ["seed-1"]]);
+  atTitle.shell.startOrRestart({ loadedGame: previewGame.loadedGame, stage: { stageId: "stage.preview", difficulty: "hard" } });
+  assert.deepEqual([atTitle.shell.lifecycle.state, previewGame.seeds], ["stageStarting", ["seed-1", "seed-2"]]);
+});
+
+test("serializes the current stage of the Core for the preview overlay", async () => {
+  const { shell, input } = createShell(await loadSampleTitleGame());
+  assert.equal(shell.serializeStage(), null);
+  shell.beginLoading();
+  shell.finishLoading();
+  press(input, "Enter");
+  shell.advance(0);
+  shell.advance(START_MS);
+  shell.advance(TICK_MS * 3);
+
+  assert.equal(shell.serializeStage()?.expectedTick, 3);
+});

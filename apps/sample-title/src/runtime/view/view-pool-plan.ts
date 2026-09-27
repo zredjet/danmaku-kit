@@ -68,3 +68,24 @@ export function planViewPoolCapacities(definition: GameDefinition, stageId: Stag
     }),
   });
 }
+
+/**
+ * Preview（design 19）の view pool の capacity。Preview は page を読み込み直さずに stage、enemy、pattern、path を選び直すため、どの対象
+ * でも足りるよう enemy、enemy bullet、pickup（pickup feature が有効なときだけ）を runtime budget まで持つ。player と player shot は
+ * `planViewPoolCapacities()` と同じ。
+ */
+export function planPreviewViewPoolCapacities(definition: GameDefinition, stageId: StageId, playerId: PlayerId): ViewPoolPlan {
+  const plan = planViewPoolCapacities(definition, stageId, playerId);
+  if (!plan.ok) {
+    return plan;
+  }
+  return Object.freeze({
+    ok: true,
+    capacities: Object.freeze({
+      ...plan.capacities,
+      enemy: VIEW_POOL_BUDGET.enemy,
+      enemyBullet: VIEW_POOL_BUDGET.enemyBullet,
+      pickup: enabledPickups(definition).length > 0 ? VIEW_POOL_BUDGET.pickup : 0,
+    }),
+  });
+}

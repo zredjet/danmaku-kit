@@ -5,6 +5,7 @@ import type {
   GameFrame,
   InputFrame,
   LoadedGame,
+  SerializedGameState,
   StartStageOptions,
 } from "@shooting-sample/shooting-core";
 
@@ -93,6 +94,9 @@ export class GameShell {
   #debugOverlay: boolean;
   /** browser の focus を失っているか。focus がない間に始めた stage（content の hot reload）の開始演出は、focus が戻るまで進めない。 */
   #focusLost = false;
+  /** pause 中に 1 tick 送りで進めた tick と event。次の `advance()` の結果に含め、scene が view を同期できるようにする。 */
+  #steppedEvents: GameEvent[] = [];
+  #steppedTicks = 0;
 
   constructor(options: GameShellOptions) {
     this.#options = options;
@@ -161,6 +165,46 @@ export class GameShell {
     this.#apply({ type: "contentReloaded" });
   }
 
+  /**
+   * Preview（design 19）の restart。以後の stage は `content` で始め、stage の中なら始め直し、title なら stage を始める。
+   */
+  startOrRestart(content: GameShellContent): void {
+    this.#content = content;
+    this.#apply(this.#lifecycle.state === "title" ? { type: "startRequested" } : { type: "contentReloaded" });
+  }
+
+  /** Preview の panel の pause button。`pause` の UI action と同じく、stage の中なら pause を切り替える。 */
+  togglePause(): void {
+    this.#apply({ type: "pauseToggled" });
+  }
+
+  /**
+   * Preview の 1 tick 送り。pause 中の stage を 1 tick だけ進め、進めた tick と event は次の `advance()` の結果に含める。pause 中でなければ
+   * 何もせず false を返す。
+   */
+  stepPausedTick(): boolean {
+    const stage = this.#stage;
+    if (this.#failure || !stage || this.#lifecycle.state !== "paused") {
+      return false;
+    }
+    const step = stage.loop.stepTick();
+    if (!step.ok) {
+      this.#failure = step;
+      return true;
+    }
+    stage.frame = step.latestFrame;
+    stage.latestInput = step.latestInput;
+    this.#steppedEvents.push(...step.events);
+    this.#steppedTicks += step.ticks;
+    return true;
+  }
+
+  /** 現在の stage の state を serialize する（Preview の overlay の pattern cursor と PRNG state）。stage の外や失敗なら null。 */
+  serializeStage(): SerializedGameState | null {
+    const serialized = this.#stage?.loop.serialize();
+    return serialized?.ok ? serialized.value : null;
+  }
+
   /** asset と view pool の準備を始める。 */
   beginLoading(): void {
     this.#apply({ type: "loadingStarted" });
@@ -201,8 +245,10 @@ export class GameShell {
         this.#apply(event);
       }
     }
-    let events = NO_EVENTS;
-    let ticks = 0;
+    let events: readonly GameEvent[] = this.#steppedEvents.length > 0 ? Object.freeze(this.#steppedEvents) : NO_EVENTS;
+    let ticks = this.#steppedTicks;
+    this.#steppedEvents = [];
+    this.#steppedTicks = 0;
     const stage = this.#stage;
     if (!this.#failure && stage && this.#lifecycle.state === "stageStarting") {
       if (stage.timer.advance(deltaMs)) {
@@ -213,7 +259,8 @@ export class GameShell {
       if (!step.ok) {
         this.#failure = step;
       } else {
-        ({ events, ticks } = step);
+        events = events.length > 0 ? Object.freeze([...events, ...step.events]) : step.events;
+        ticks += step.ticks;
         stage.frame = step.latestFrame;
         stage.latestInput = step.latestInput;
         const status = step.latestFrame?.state.status;
@@ -293,6 +340,8 @@ export class GameShell {
   }
 
   #startStage(): void {
+    this.#steppedEvents = [];
+    this.#steppedTicks = 0;
     const seed = this.#options.nextSeed();
     const start = Object.freeze({ ...this.#content.stage, seed });
     const session = this.#content.loadedGame.startStage(start);

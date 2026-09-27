@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 import { build, type Rolldown } from "vite";
 
 const sampleTitleRoot = fileURLToPath(new URL("../", import.meta.url));
-const HOOK_NAMES = ["__SHOOTING_DEBUG_STATE__", "__SHOOTING_DEBUG_REPLAY__"];
+/** debug state dump の hook と、Preview（panel の class 名と合成する stage の id）。 */
+const DEV_ONLY_MARKERS = ["__SHOOTING_DEBUG_STATE__", "__SHOOTING_DEBUG_REPLAY__", "preview-panel", "stage.preview"];
 
 /** sample app を `mode` で build し、出力した JavaScript をつなげて返す（file には書かない）。 */
 async function buildJavaScript(mode: string): Promise<string> {
@@ -23,11 +24,11 @@ async function buildJavaScript(mode: string): Promise<string> {
     .join("\n");
 }
 
-test("defines the browser debug hooks in test builds but not in production builds", async () => {
+test("puts the browser debug hooks and the preview in test builds but not in production builds", async () => {
   const [production, testBuild] = [await buildJavaScript("production"), await buildJavaScript("test")];
 
-  for (const name of HOOK_NAMES) {
-    assert.equal(production.includes(name), false, `production build must not define ${name}`);
-    assert.equal(testBuild.includes(name), true, `test build must define ${name}`);
+  for (const marker of DEV_ONLY_MARKERS) {
+    assert.equal(production.includes(marker), false, `production build must not contain ${marker}`);
+    assert.equal(testBuild.includes(marker), true, `test build must contain ${marker}`);
   }
 });
