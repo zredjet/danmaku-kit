@@ -1,0 +1,8 @@
+# game-definition: content の全体の設定。validate-content は --game-definition でこの file を読む。
+schemaVersion: "1"
+# optional feature。pickup を使う content は pickup を有効にする。
+enabledFeatures: [pickup]
+# stage を始めるときの自機。content/players/ の id。
+defaultPlayerId: player.example
+# content 全体の version。変えた content を見分けるための文字列。
+contentVersion: examples@content.1

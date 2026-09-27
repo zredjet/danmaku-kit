@@ -1,0 +1,13 @@
+# 敵。動きは stage の spawn が選ぶ path、弾は pattern が決める。
+id: enemy.example
+version: 1
+asset: enemy.example
+collision:
+  radius: 10
+hp: 10
+score: 100
+# 撃破したときに落とす pickup（pickup feature）。spread は落とす位置の広がり（px）。
+drops:
+  - pickup: pickup.example
+    count: 2
+    spread: 12

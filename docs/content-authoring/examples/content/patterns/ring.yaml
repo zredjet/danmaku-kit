@@ -1,0 +1,31 @@
+# 敵の pattern: repeat、radial、stream と、stage の difficulty で分ける if。
+id: pattern.example_ring
+version: 1
+steps:
+  - wait: 20
+  # repeat は steps を count 回続けて実行する（load 時に展開する）。
+  - repeat:
+      count: 3
+      steps:
+        - fire:
+            bullet: bullet.example
+            angleDeg: 90
+            speed: 2
+            # radial は 1 周を count 等分した向きに並べる（360 / count が 0.25° の倍数になる数）。
+            radial: { count: 12 }
+        - wait: 20
+  # if は stage の difficulty で命令を選ぶ。else は省略できる。
+  - if:
+      difficulty: [hard]
+      then:
+        - fire:
+            bullet: bullet.example
+            aim: player
+            speed: 2
+            # stream は各向きに、speed から speedStep ずつ速くした弾を count 発重ねる。
+            stream: { count: 3, speedStep: 0.5 }
+      else:
+        - fire:
+            bullet: bullet.example
+            aim: player
+            speed: 2

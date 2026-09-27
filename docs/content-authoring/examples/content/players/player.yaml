@@ -1,0 +1,16 @@
+# 自機。
+id: player.example
+version: 1
+asset: player.example
+movement:
+  # 1 tick に動く px。focusSpeed は低速移動（Shift）の速さ。
+  speed: 4
+  focusSpeed: 1.8
+collision:
+  radius: 3
+life:
+  initialLives: 3
+  # 被弾してから次に被弾するまでの無敵の tick。
+  invincibleTicksAfterHit: 120
+shot:
+  definition: playerShot.example

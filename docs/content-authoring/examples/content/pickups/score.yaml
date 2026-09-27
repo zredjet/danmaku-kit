@@ -1,0 +1,11 @@
+# pickup（pickup feature）: 撃破した敵が落とし、自機が回収すると score を足す。
+id: pickup.example
+version: 1
+asset: pickup.example
+score: 10
+# 自機の中心からこの距離で回収する。
+collectRadius: 12
+# 省略できる。この距離に入ると自機へ吸い寄せる。
+magnetRadius: 64
+# 落ちる速さ（px / tick）。
+velocity: { x: 0, y: 1.25 }

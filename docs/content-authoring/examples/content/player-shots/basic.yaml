@@ -1,0 +1,13 @@
+# 自機の shot。shot を押している間、intervalTicks ごとに 1 発撃つ。
+id: playerShot.example
+version: 1
+asset: shot.example
+collision:
+  radius: 5
+damage: 5
+fire:
+  intervalTicks: 3
+projectile:
+  # 1 tick に動く px（上が -y）。
+  velocity: { x: 0, y: -8 }
+  lifetimeTicks: 60
