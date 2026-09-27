@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { GameFrame, SerializedGameState, StageDefinition } from "@shooting-sample/shooting-core";
 
-import { describePreviewState, labeledEntities, upcomingSpawns } from "./preview-state.ts";
+import { describePreviewState, labeledEntities, previewInfoKey, upcomingSpawns } from "./preview-state.ts";
 
 test("lists the spawns of the timeline in the upcoming window", () => {
   const spawn = (tick: number, x: number) => ({
@@ -44,7 +44,19 @@ test("describes the tick, the PRNG state and each pattern runner from the serial
     },
   } as unknown as SerializedGameState;
 
-  assert.deepEqual(describePreviewState(serialized), ["tick 42  prng 1234abcd", "enemy.5 pattern.scout_three_way cursor 3 wait 12"]);
+  assert.deepEqual(describePreviewState(serialized), ["next tick 42  prng 1234abcd", "enemy.5 pattern.scout_three_way cursor 3 wait 12"]);
   assert.deepEqual(describePreviewState({ ...serialized, state: { ...serialized.state, patternRunnerStates: [] } }).at(-1), "no pattern runner");
   assert.deepEqual(describePreviewState(null), []);
+});
+
+test("redraws the panel text every few ticks while playing and on every change otherwise", () => {
+  const keys = (lifecycle: string, ticks: readonly (number | null)[]) => ticks.map((tick) => previewInfoKey(lifecycle, tick, 6));
+
+  assert.equal(new Set(keys("playing", [6, 7, 11])).size, 1);
+  assert.notEqual(previewInfoKey("playing", 11, 6), previewInfoKey("playing", 12, 6));
+  // pause した frame、1 tick 送り、stage の終わりは、playing の同じ tick の文字を描き直す。
+  assert.notEqual(previewInfoKey("paused", 7, 6), previewInfoKey("playing", 7, 6));
+  assert.equal(new Set(keys("paused", [7, 8, 9])).size, 3);
+  assert.notEqual(previewInfoKey("stageCleared", 9, 6), previewInfoKey("paused", 9, 6));
+  assert.equal(previewInfoKey("stageStarting", null, 6), "stageStarting -");
 });

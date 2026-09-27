@@ -7,6 +7,7 @@ import {
   formatPreviewTarget,
   listPreviewChoices,
   parsePreviewTarget,
+  previewDifficulties,
   type PreviewTarget,
 } from "./preview-definition.ts";
 
@@ -24,7 +25,7 @@ export type PreviewComposition =
 
 /**
  * Preview（design 19）の選択（対象、seed、difficulty）。DOM と Phaser に依存せず、panel はこれを変えて `compose()` の content で stage を
- * 始め直す。difficulty は合成した stage が持つものに合わせる（持たなければ stage の最初の difficulty）。
+ * 始め直す。difficulty は対象で選べるもの（`difficulties()`）に合わせる（なければ最初の difficulty）。
  */
 export class PreviewSelection {
   #definition: GameDefinition;
@@ -79,24 +80,40 @@ export class PreviewSelection {
     this.#difficulty = difficulty;
   }
 
-  /** content の hot reload。今の対象が新しい content になければ最初の stage にする。 */
-  replaceDefinition(definition: GameDefinition): void {
+  /**
+   * content の hot reload。新しい content で今の対象（新しい content になければ最初の stage）を合成し、load できたときだけ選択を新しい
+   * content に移す。load できなければ選択を変えずに error を返す。
+   */
+  replaceDefinition(definition: GameDefinition, core: Pick<ShootingCore, "load">): PreviewComposition {
+    const previous = { definition: this.#definition, target: this.#target };
     this.#definition = definition;
     this.#target = parsePreviewTarget(formatPreviewTarget(this.#target), definition) ?? firstStageTarget(definition);
+    const composed = this.compose(core);
+    if (!composed.ok) {
+      this.#definition = previous.definition;
+      this.#target = previous.target;
+    }
+    return composed;
   }
 
-  /** 今の対象の stage が持つ difficulty（panel の選択肢）。 */
+  /** 今の対象で選べる difficulty（panel の選択肢）。stage はその stage の difficulty、他は content の stage の difficulty すべて。 */
   difficulties(): readonly Difficulty[] {
-    return composedStage(composePreviewDefinition(this.#definition, this.#target))?.difficulties ?? [];
+    const target = this.#target;
+    return target.kind === "stage"
+      ? this.#definition.content.stages.find((stage) => stage.id === target.stageId)?.difficulties ?? []
+      : previewDifficulties(this.#definition);
   }
 
   /** 今の対象を合成した definition を `core` で load し、stage を始める content にする。 */
   compose(core: Pick<ShootingCore, "load">): PreviewComposition {
-    const composed = composePreviewDefinition(this.#definition, this.#target);
-    const stage = composedStage(composed);
-    const difficulty = stage ? selectStageDifficulty(stage.difficulties, this.#difficulty) : null;
-    if (!stage || difficulty === null) {
-      return Object.freeze({ ok: false, errors: Object.freeze([`${composed.stageId} has no difficulty to preview`]) });
+    const difficulty = selectStageDifficulty(this.difficulties(), this.#difficulty);
+    if (difficulty === null) {
+      return Object.freeze({ ok: false, errors: Object.freeze([`${formatPreviewTarget(this.#target)} has no difficulty to preview`]) });
+    }
+    const composed = composePreviewDefinition(this.#definition, this.#target, difficulty);
+    const stage = composed.definition.content.stages.find((candidate) => candidate.id === composed.stageId);
+    if (!stage) {
+      return Object.freeze({ ok: false, errors: Object.freeze([`${composed.stageId} is not in the content`]) });
     }
     const loaded = core.load(composed.definition);
     if (!loaded.ok) {
@@ -126,8 +143,4 @@ function firstStageTarget(definition: GameDefinition): PreviewTarget {
     throw new Error("Preview needs content with at least one stage");
   }
   return Object.freeze({ kind: "stage", stageId: stage.id });
-}
-
-function composedStage(composed: ReturnType<typeof composePreviewDefinition>): StageDefinition | undefined {
-  return composed.definition.content.stages.find((stage) => stage.id === composed.stageId);
 }

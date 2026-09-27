@@ -179,12 +179,13 @@ export class GameShell {
   }
 
   /**
-   * Preview の 1 tick 送り。pause 中の stage を 1 tick だけ進め、進めた tick と event は次の `advance()` の結果に含める。pause 中でなければ
-   * 何もせず false を返す。
+   * Preview の 1 tick 送り。pause 中の stage を 1 tick だけ進め、進めた tick と event は次の `advance()` の結果に含める。pause 中でない
+   * とき、stage が終わった後は何もせず false を返す。1 tick 送りで stage が終わったら pause のまま止め、pause を解いたときに stage の
+   * 終わりへ進める。
    */
   stepPausedTick(): boolean {
     const stage = this.#stage;
-    if (this.#failure || !stage || this.#lifecycle.state !== "paused") {
+    if (this.#failure || !stage || this.#lifecycle.state !== "paused" || endedStatus(stage.frame) !== null) {
       return false;
     }
     const step = stage.loop.stepTick();
@@ -255,16 +256,19 @@ export class GameShell {
         this.#apply({ type: "stageStartFinished" });
       }
     } else if (!this.#failure && stage && this.#lifecycle.state === "playing") {
-      const step = stage.loop.advance(deltaMs);
-      if (!step.ok) {
+      // pause 中の 1 tick 送りで終わった stage は、終わった後の tick を Core に渡さずに終わりへ進める。
+      const step = endedStatus(stage.frame) === null ? stage.loop.advance(deltaMs) : null;
+      if (step && !step.ok) {
         this.#failure = step;
       } else {
-        events = events.length > 0 ? Object.freeze([...events, ...step.events]) : step.events;
-        ticks += step.ticks;
-        stage.frame = step.latestFrame;
-        stage.latestInput = step.latestInput;
-        const status = step.latestFrame?.state.status;
-        if (status === "stageCleared" || status === "gameOver") {
+        if (step) {
+          events = events.length > 0 ? Object.freeze([...events, ...step.events]) : step.events;
+          ticks += step.ticks;
+          stage.frame = step.latestFrame;
+          stage.latestInput = step.latestInput;
+        }
+        const status = endedStatus(stage.frame);
+        if (status !== null) {
           this.#apply({ type: "stageEnded", outcome: status });
         }
       }
@@ -359,4 +363,10 @@ export class GameShell {
     };
     this.#stageChanged = true;
   }
+}
+
+/** frame の stage が終わっていれば、その結果。 */
+function endedStatus(frame: GameFrame | null): "stageCleared" | "gameOver" | null {
+  const status = frame?.state.status;
+  return status === "stageCleared" || status === "gameOver" ? status : null;
 }

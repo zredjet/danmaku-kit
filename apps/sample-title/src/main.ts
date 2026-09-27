@@ -145,7 +145,12 @@ if (import.meta.hot && viewPoolPlan.ok) {
       case "restartStage":
         console.info("[sample-title] content changed: restarting the stage with the new content");
         if (preview) {
-          preview.applyDefinition(action.definition);
+          // Preview は選んでいる対象を新しい content で合成し直す。合成した content を Core が拒めば、前の content のまま動かす。
+          const error = preview.applyDefinition(action.definition);
+          if (error !== null) {
+            hud.showContentError(error);
+            break;
+          }
         } else {
           shell.replaceContent(action.content);
         }

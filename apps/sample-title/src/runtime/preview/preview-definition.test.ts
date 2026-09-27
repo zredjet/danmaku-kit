@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import type { GameDefinition } from "@shooting-sample/shooting-core";
+
 import { createSampleTitleCore, loadSampleTitleDefinition } from "../../test-support/sample-title-game.ts";
 import {
   PREVIEW_HOLD_PATH_ID,
@@ -11,18 +13,19 @@ import {
   formatPreviewTarget,
   listPreviewChoices,
   parsePreviewTarget,
+  previewDifficulties,
   type PreviewTarget,
 } from "./preview-definition.ts";
 
 test("keeps the content for a stage and adds a one-spawn stage for an enemy, a pattern or a path", async () => {
   const definition = await loadSampleTitleDefinition();
 
-  assert.deepEqual(composePreviewDefinition(definition, { kind: "stage", stageId: "stage.stage_01" }), {
+  assert.deepEqual(composePreviewDefinition(definition, { kind: "stage", stageId: "stage.stage_01" }, "normal"), {
     definition,
     stageId: "stage.stage_01",
   });
   const spawnOf = (target: PreviewTarget) => {
-    const composed = composePreviewDefinition(definition, target);
+    const composed = composePreviewDefinition(definition, target, "normal");
     const stage = composed.definition.content.stages.find((candidate) => candidate.id === composed.stageId)!;
     assert.equal(composed.stageId, PREVIEW_STAGE_ID);
     assert.deepEqual(stage.difficulties, ["normal"]);
@@ -67,4 +70,28 @@ test("parses and formats preview targets from the URL and rejects ids the conten
   }
   assert.deepEqual(listPreviewChoices(definition).stages, ["stage.stage_01"]);
   assert.equal(listPreviewChoices(definition).patterns.includes("pattern.gunship_barrage"), true);
+});
+
+test("keeps the added ids apart from the content ids and gives the added stage only the selected difficulty", async () => {
+  const definition = await loadSampleTitleDefinition();
+  const [stage] = definition.content.stages;
+  const colliding: GameDefinition = {
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [...definition.content.stages, { ...stage!, id: PREVIEW_STAGE_ID, difficulties: ["normal", "hard"] }],
+      paths: [...definition.content.paths, { id: PREVIEW_HOLD_PATH_ID, version: 1 }],
+      patterns: [...definition.content.patterns, { id: PREVIEW_SILENT_PATTERN_ID, version: 1 }],
+    },
+  };
+
+  const composed = composePreviewDefinition(colliding, { kind: "pattern", patternId: "pattern.gunship_barrage" }, "hard");
+  const added = composed.definition.content.stages.at(-1)!;
+  assert.deepEqual([composed.stageId, added.id, added.difficulties], ["stage.preview_2", "stage.preview_2", ["hard"]]);
+  assert.deepEqual([added.timeline[0]!.action.path, composed.definition.content.paths.at(-1)!.id], ["path.preview_hold_2", "path.preview_hold_2"]);
+  assert.equal(composed.definition.content.patterns.at(-1)!.id, "pattern.preview_silent_2");
+  const loaded = createSampleTitleCore().load(composed.definition);
+  assert.ok(loaded.ok, JSON.stringify(loaded.ok ? null : loaded.errors));
+  assert.equal(loaded.value.startStage({ stageId: composed.stageId, difficulty: "hard", seed: "preview" }).ok, true);
+  assert.deepEqual(previewDifficulties(colliding), ["normal", "hard"]);
 });

@@ -17,7 +17,7 @@ export type PreviewTarget =
   | Readonly<{ kind: "pattern"; patternId: PatternId }>
   | Readonly<{ kind: "path"; pathId: PathId }>;
 
-/** Preview が stage 以外の対象を出すために合成する stage。 */
+/** Preview が stage 以外の対象を出すために合成する stage（content が同じ id を持てば、持たない id になるまで suffix を付ける）。 */
 export const PREVIEW_STAGE_ID: StageId = "stage.preview";
 /** 合成した stage が対象を出す tick。開始演出の後、少し待ってから出す。 */
 export const PREVIEW_SPAWN_TICK = 30;
@@ -37,35 +37,59 @@ const DEFAULT_SPAWN_POSITION = Object.freeze({ x: PLAYFIELD_WIDTH / 2, y: -16 })
  * - stage はそのまま（`stageId` だけを返す）。
  * - enemy、pattern、path は、それだけを tick `PREVIEW_SPAWN_TICK` に 1 体出す stage（`PREVIEW_STAGE_ID`）を足す。stage で最初に
  *   使われている spawn の enemy と位置を借りる。pattern は止めた enemy に撃たせ（`PREVIEW_HOLD_PATH_ID`）、path は撃たない enemy
- *   （`PREVIEW_SILENT_PATTERN_ID`）で動かす。stage は content の stage が持つ difficulty をすべて持つ。
+ *   （`PREVIEW_SILENT_PATTERN_ID`）で動かす。足す stage、path、pattern の id は content の id と重ならないようにする。
+ * - 足す stage は `difficulty` だけを持つ。Core は stage が持つ difficulty ごとに pattern の予算を検査するので、他の difficulty の
+ *   使われない枝が予算を超える pattern も、選んだ difficulty では再生できる。
  */
 export function composePreviewDefinition(
   definition: GameDefinition,
   target: PreviewTarget,
+  difficulty: Difficulty,
 ): Readonly<{ definition: GameDefinition; stageId: StageId }> {
   if (target.kind === "stage") {
     return Object.freeze({ definition, stageId: target.stageId });
   }
-  const action = previewAction(definition, target);
-  const difficulties = [...new Set(definition.content.stages.flatMap((stage) => stage.difficulties))] as Difficulty[];
+  const { content } = definition;
+  const stageId = unusedId(PREVIEW_STAGE_ID, content.stages);
+  const ids = {
+    holdPath: unusedId(PREVIEW_HOLD_PATH_ID, content.paths),
+    silentPattern: unusedId(PREVIEW_SILENT_PATTERN_ID, content.patterns),
+  };
+  const action = previewAction(definition, target, ids);
   return Object.freeze({
     definition: {
       ...definition,
       content: {
-        ...definition.content,
-        stages: [
-          ...definition.content.stages,
-          { id: PREVIEW_STAGE_ID, version: 1, difficulties, timeline: [{ tick: PREVIEW_SPAWN_TICK, action }] },
-        ],
-        paths: [...definition.content.paths, { id: PREVIEW_HOLD_PATH_ID, version: 1 }],
-        patterns: [...definition.content.patterns, { id: PREVIEW_SILENT_PATTERN_ID, version: 1 }],
+        ...content,
+        stages: [...content.stages, { id: stageId, version: 1, difficulties: [difficulty], timeline: [{ tick: PREVIEW_SPAWN_TICK, action }] }],
+        paths: [...content.paths, { id: ids.holdPath, version: 1 }],
+        patterns: [...content.patterns, { id: ids.silentPattern, version: 1 }],
       },
     },
-    stageId: PREVIEW_STAGE_ID,
+    stageId,
   });
 }
 
-function previewAction(definition: GameDefinition, target: Exclude<PreviewTarget, { kind: "stage" }>): StageTimelineAction {
+/** Preview の stage 以外の対象で選べる difficulty（content の stage が持つ difficulty すべて）。 */
+export function previewDifficulties(definition: GameDefinition): readonly Difficulty[] {
+  return Object.freeze([...new Set(definition.content.stages.flatMap((stage) => stage.difficulties))]);
+}
+
+/** `base` が `definitions` の id になければ `base`、あれば `_2` から順に suffix を付けて、ない id にする。 */
+function unusedId<T extends string>(base: T, definitions: readonly Readonly<{ id: string }>[]): T {
+  const used = new Set(definitions.map((definition) => definition.id));
+  let id = base;
+  for (let suffix = 2; used.has(id); suffix += 1) {
+    id = `${base}_${suffix}` as T;
+  }
+  return id;
+}
+
+function previewAction(
+  definition: GameDefinition,
+  target: Exclude<PreviewTarget, { kind: "stage" }>,
+  ids: Readonly<{ holdPath: PathId; silentPattern: PatternId }>,
+): StageTimelineAction {
   const actions = definition.content.stages.flatMap((stage) => stage.timeline.map((step) => step.action));
   const firstEnemy = definition.content.enemies[0]?.id ?? "enemy.preview";
   switch (target.kind) {
@@ -84,7 +108,7 @@ function previewAction(definition: GameDefinition, target: Exclude<PreviewTarget
       return {
         type: "spawnEnemy",
         enemy: usage?.enemy ?? firstEnemy,
-        path: PREVIEW_HOLD_PATH_ID,
+        path: ids.holdPath,
         pattern: target.patternId,
         position: PATTERN_PREVIEW_POSITION,
       };
@@ -95,7 +119,7 @@ function previewAction(definition: GameDefinition, target: Exclude<PreviewTarget
         type: "spawnEnemy",
         enemy: usage?.enemy ?? firstEnemy,
         path: target.pathId,
-        pattern: PREVIEW_SILENT_PATTERN_ID,
+        pattern: ids.silentPattern,
         position: usage?.position ?? DEFAULT_SPAWN_POSITION,
       };
     }

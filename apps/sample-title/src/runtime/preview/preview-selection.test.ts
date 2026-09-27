@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { GameDefinition } from "@shooting-sample/shooting-core";
+import type { GameDefinition, ShootingCore } from "@shooting-sample/shooting-core";
 
 import { createSampleTitleCore, loadSampleTitleDefinition } from "../../test-support/sample-title-game.ts";
 import { PREVIEW_STAGE_ID } from "./preview-definition.ts";
@@ -74,18 +74,36 @@ test("keeps the difficulty to the ones the composed stage has", async () => {
 test("ignores a blank seed and falls back to the first stage when a reload removes the target", async () => {
   const definition = await loadSampleTitleDefinition();
   const selection = new PreviewSelection(definition, { ...OPTIONS, targetParameter: "path:path.drone_dive" });
+  const core = createSampleTitleCore();
 
   assert.equal(selection.setSeed("  "), false);
   assert.equal(selection.setSeed("other"), true);
   assert.equal(selection.seed, "other");
 
-  selection.replaceDefinition(definition);
+  assert.equal(selection.replaceDefinition(definition, core).ok, true);
   assert.deepEqual(selection.target, { kind: "path", pathId: "path.drone_dive" });
-  selection.replaceDefinition({
+  const withoutPath = {
     ...definition,
-    content: { ...definition.content, paths: definition.content.paths.filter((path) => path.id !== "path.drone_dive") },
-  });
-  assert.deepEqual(selection.target, { kind: "stage", stageId: "stage.stage_01" });
+    content: {
+      ...definition.content,
+      paths: definition.content.paths.filter((path) => path.id !== "path.drone_dive"),
+      stages: [{ ...definition.content.stages[0]!, timeline: [] }],
+    },
+  };
+  assert.equal(selection.replaceDefinition(withoutPath, core).ok, true);
+  assert.deepEqual([selection.target, selection.definition], [{ kind: "stage", stageId: "stage.stage_01" }, withoutPath]);
+});
+
+test("keeps the selection on the previous content when the reloaded content cannot be composed", async () => {
+  const definition = await loadSampleTitleDefinition();
+  const selection = new PreviewSelection(definition, { ...OPTIONS, targetParameter: "path:path.drone_dive" });
+  const failing: Pick<ShootingCore, "load"> = {
+    load: () => ({ ok: false, errors: [{ code: "definition.invalidShape", message: "broken" }] }),
+  };
+
+  const reloaded = selection.replaceDefinition({ ...definition, content: { ...definition.content, paths: [] } }, failing);
+  assert.deepEqual(reloaded, { ok: false, errors: ["definition.invalidShape: broken"] });
+  assert.deepEqual([selection.target, selection.definition], [{ kind: "path", pathId: "path.drone_dive" }, definition]);
 });
 
 test("reports the load errors of the composed content", async () => {

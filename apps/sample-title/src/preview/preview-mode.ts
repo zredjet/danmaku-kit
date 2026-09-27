@@ -1,14 +1,20 @@
-import type { GameDefinition, ShootingCore, StageDefinition } from "@shooting-sample/shooting-core";
+import type { GameDefinition, GameFrame, ShootingCore, StageDefinition } from "@shooting-sample/shooting-core";
 
 import type { GameShell } from "../runtime/lifecycle/game-shell.ts";
 import { formatPreviewTarget, listPreviewChoices, type PreviewTarget } from "../runtime/preview/preview-definition.ts";
-import { firstPreviewTarget, type PreviewSelection } from "../runtime/preview/preview-selection.ts";
-import { describePreviewState, labeledEntities, upcomingSpawns, type UpcomingSpawn } from "../runtime/preview/preview-state.ts";
+import { firstPreviewTarget, type PreviewComposition, type PreviewSelection } from "../runtime/preview/preview-selection.ts";
+import {
+  describePreviewState,
+  labeledEntities,
+  previewInfoKey,
+  upcomingSpawns,
+  type UpcomingSpawn,
+} from "../runtime/preview/preview-state.ts";
 import { PLAYFIELD_HEIGHT, PLAYFIELD_WIDTH } from "../runtime/view/playfield.ts";
 
 /** overlay に spawn 位置の印を出す、これから出る spawn の範囲（tick）。 */
 const UPCOMING_SPAWN_WINDOW_TICKS = 120;
-/** playing 中に overlay の文字（`serialize()` を読む）を描き直す間隔（tick）。pause 中と 1 tick 送りでは毎回描き直す。 */
+/** playing 中に panel の文字（`serialize()` を読む）を描き直す間隔（tick）。pause 中と 1 tick 送りでは毎回描き直す。 */
 const INFO_INTERVAL_TICKS = 6;
 /** playfield の端に寄せた spawn の印を、右端と下端で見切れない程度に内側へ置く幅（px）。上端は HUD の score の行の下に置く。 */
 const SPAWN_MARKER_EDGE = 12;
@@ -33,19 +39,22 @@ export type PreviewModeOptions = Readonly<{
  * Preview（design 19、Phase 2B-9）の panel と overlay。dev server と test build で `?preview` を付けたときだけ `src/main.ts` が作る。
  *
  * panel は対象（stage、enemy と path と pattern、pattern、path）、seed、difficulty の選択と、restart（R）、pause（P）、pause 中の 1 tick
- * 送り（N）を持ち、選択を変えると `PreviewSelection` の合成した content で stage を始め直す。playfield の overlay は player、enemy、
- * pickup の entity id と、これから出る spawn の位置を出し、panel は tick、PRNG state、pattern runner の cursor を出す（公開の
- * `serialize()` から読む）。Preview の操作は Runtime の操作で、Core へ渡す入力には混ぜない。
+ * 送り（N）を持ち、選択を変えると `PreviewSelection` の合成した content で stage を始め直し、選択を URL（`?preview=`、`seed`、
+ * `difficulty`）に書いて、page を読み込み直しても同じ選択で開く。playfield の overlay は player、enemy、pickup の entity id と、これから
+ * 出る spawn の位置を出し、panel は tick、PRNG state、pattern runner の cursor を出す（公開の `serialize()` から読む）。Preview の操作は
+ * Runtime の操作で、Core へ渡す入力には混ぜない。
  */
 export class PreviewMode {
   readonly #options: PreviewModeOptions;
   readonly #panel = element("div", "preview-panel");
   readonly #overlay = element("div", "preview-overlay");
   readonly #info = element("pre", "preview-info");
+  #seedInput: HTMLInputElement | null = null;
   #stage: StageDefinition | null = null;
   #error: string | null = null;
-  #renderedTick: number | null = null;
-  #infoTick: number | null = null;
+  /** overlay を描いた frame（undefined は始め直した後でまだ描いていない）。 */
+  #renderedFrame: GameFrame | null | undefined = undefined;
+  #infoKey: string | null = null;
   #started = false;
 
   constructor(options: PreviewModeOptions) {
@@ -64,27 +73,52 @@ export class PreviewMode {
 
   /** 今の選択で stage を始め直す（title なら始める）。合成した content を load できなければ始め直さずに error を出す。 */
   restart(): void {
-    const composed = this.#options.selection.compose(this.#options.core);
-    this.#renderedTick = null;
-    this.#infoTick = null;
+    const { selection } = this.#options;
+    // 入力中の seed は、Enter を押したり focus を外したりする前に Restart を押しても使う。
+    const seed = this.#seedInput;
+    if (seed && seed.value !== selection.seed && !selection.setSeed(seed.value)) {
+      seed.value = selection.seed;
+    }
+    this.#start(selection.compose(this.#options.core));
+  }
+
+  /**
+   * content の hot reload。新しい content で今の対象を合成して始め直す。合成した content を load できなければ、前の content のまま動かし
+   * 続けて error の文字を返す。
+   */
+  applyDefinition(definition: GameDefinition): string | null {
+    const composed = this.#options.selection.replaceDefinition(definition, this.#options.core);
+    const error = this.#start(composed);
+    this.#renderPanel();
+    return error;
+  }
+
+  #start(composed: PreviewComposition): string | null {
+    this.#renderedFrame = undefined;
+    this.#infoKey = null;
     if (!composed.ok) {
       this.#error = ["Preview could not load the composed content", ...composed.errors].join("\n");
-      return;
+      return this.#error;
     }
     this.#error = null;
     this.#stage = composed.stage;
     this.#options.shell.startOrRestart(composed.content);
+    this.#writeUrl();
+    return null;
   }
 
-  /** content の hot reload。新しい content で選択肢を作り直し、今の対象を始め直す。 */
-  applyDefinition(definition: GameDefinition): void {
-    this.#options.selection.replaceDefinition(definition);
-    this.#renderPanel();
-    this.restart();
+  /** 選択を URL に書く（history は増やさない）。`src/main.ts` が page の読み込みで同じ parameter を読む。 */
+  #writeUrl(): void {
+    const { selection } = this.#options;
+    const url = new URL(window.location.href);
+    url.searchParams.set("preview", formatPreviewTarget(selection.target));
+    url.searchParams.set("seed", selection.seed);
+    url.searchParams.set("difficulty", selection.difficulty ?? "");
+    window.history.replaceState(window.history.state, "", url);
   }
 
   #onKeyDown(event: KeyboardEvent): void {
-    if (event.repeat || isFormField(event.target)) {
+    if (event.repeat || event.metaKey || event.ctrlKey || event.altKey || isFormField(event.target)) {
       return;
     }
     if (event.code === "KeyR") {
@@ -109,6 +143,7 @@ export class PreviewMode {
     const seed = element("input", "preview-seed") as HTMLInputElement;
     seed.value = selection.seed;
     seed.spellcheck = false;
+    this.#seedInput = seed;
     const difficulty = select(selection.difficulties(), selection.difficulty ?? "", "preview-difficulty");
     this.#panel.replaceChildren(
       field("target", kind),
@@ -121,32 +156,32 @@ export class PreviewMode {
         button("Pause (P)", "preview-pause", () => this.#options.shell.togglePause()),
         button("Step (N)", "preview-step", () => this.#options.shell.stepPausedTick()),
       ]),
-      element("div", "preview-hint", "?preview=" + formatPreviewTarget(target)),
       this.#info,
     );
 
+    // 対象を変えたら、選べる difficulty が変わるので始め直した後に panel を作り直す。
     onChange(kind, () => {
       const next = firstPreviewTarget(kind.value as PreviewTarget["kind"], selection.definition);
       if (next) {
         selection.selectTarget(formatPreviewTarget(next));
       }
-      this.#renderPanel();
       this.restart();
+      this.#renderPanel();
     });
     for (const control of [id, path, pattern]) {
       onChange(control, () => {
         selection.selectTarget(target.kind === "enemy"
           ? `enemy:${id.value},${path.value},${pattern.value}`
           : `${target.kind}:${id.value}`);
-        this.#renderPanel();
         this.restart();
+        this.#renderPanel();
       });
     }
+    // Restart で確定済みの seed なら、後から focus を外したときの change では始め直さない。
     onChange(seed, () => {
-      if (!selection.setSeed(seed.value)) {
-        seed.value = selection.seed;
+      if (seed.value !== selection.seed) {
+        this.restart();
       }
-      this.restart();
     });
     onChange(difficulty, () => {
       selection.setDifficulty(difficulty.value);
@@ -162,19 +197,17 @@ export class PreviewMode {
       this.restart();
     }
     const frame = shell.latestFrame;
-    const tick = frame?.tick ?? null;
-    if (tick === this.#renderedTick && this.#infoTick !== null) {
-      return;
+    if (frame !== this.#renderedFrame) {
+      this.#renderedFrame = frame;
+      const nextTick = frame === null ? 0 : frame.tick + 1;
+      this.#overlay.replaceChildren(
+        ...labeledEntities(frame).map((label) => positioned("preview-entity-id", `#${label.id}`, label.position)),
+        ...spawnMarkers(this.#stage ? upcomingSpawns(this.#stage, nextTick, UPCOMING_SPAWN_WINDOW_TICKS) : []),
+      );
     }
-    this.#renderedTick = tick;
-    const nextTick = tick === null ? 0 : tick + 1;
-    this.#overlay.replaceChildren(
-      ...labeledEntities(frame).map((label) => positioned("preview-entity-id", `#${label.id}`, label.position)),
-      ...spawnMarkers(this.#stage ? upcomingSpawns(this.#stage, nextTick, UPCOMING_SPAWN_WINDOW_TICKS) : []),
-    );
-    const playing = shell.lifecycle.state === "playing";
-    if (!playing || this.#infoTick === null || tick === null || Math.abs(tick - this.#infoTick) >= INFO_INTERVAL_TICKS) {
-      this.#infoTick = tick ?? -1;
+    const infoKey = previewInfoKey(shell.lifecycle.state, frame?.tick ?? null, INFO_INTERVAL_TICKS);
+    if (infoKey !== this.#infoKey) {
+      this.#infoKey = infoKey;
       const { selection } = this.#options;
       this.#info.textContent = [
         `seed ${selection.seed}  ${selection.difficulty ?? "-"}`,
@@ -294,7 +327,6 @@ function previewStyle(): HTMLStyleElement {
     .preview-field > select, .preview-field > input { min-width: 0; font: inherit; }
     .preview-buttons { display: flex; gap: 4px; }
     .preview-buttons > button { flex: 1; font: inherit; }
-    .preview-hint { color: #64748b; overflow-wrap: anywhere; }
     .preview-overlay { position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }
     .preview-entity-id, .preview-spawn {
       position: absolute; top: 0; left: 0; margin: 6px 0 0 6px; white-space: nowrap;

@@ -267,6 +267,10 @@ test("records the inputs the Core accepted so a headless replay reaches the same
   key("keyup", "ArrowLeft");
   key("keydown", "ArrowRight");
   shell.advance(TICK_MS * 45);
+  // Preview で pause 中に 1 tick ずつ進めた tick も、通常の tick と同じく記録する。
+  shell.togglePause();
+  shell.stepPausedTick();
+  shell.stepPausedTick();
   const record = shell.replayRecord();
   assert.ok(record !== null);
 
@@ -354,6 +358,31 @@ test("steps a paused stage one tick at a time and reports the stepped ticks with
   press(input, "KeyP");
   shell.advance(0);
   assert.equal(shell.stepPausedTick(), false);
+});
+
+test("stops stepping once a stepped tick ends the stage and ends it when the pause is lifted", () => {
+  const { shell } = createPlayingShell({ tick: 2, status: "stageCleared" });
+  shell.advance(TICK_MS * 2);
+  shell.togglePause();
+
+  assert.equal(shell.stepPausedTick(), true);
+  assert.equal(shell.stepPausedTick(), false);
+  assert.deepEqual([shell.lifecycle.state, shell.latestFrame?.state.status], ["paused", "stageCleared"]);
+  shell.togglePause();
+  const ended = expectOk(shell.advance(TICK_MS * 5));
+  assert.deepEqual([ended.lifecycle.state, ended.ticks, ended.frame?.tick], ["stageCleared", 1, 2]);
+});
+
+test("drops the stepped ticks and events of a stage restarted before the next render frame", () => {
+  const { shell, seeds } = createPlayingShell();
+  shell.advance(TICK_MS * 2);
+  shell.togglePause();
+  shell.stepPausedTick();
+
+  shell.startOrRestart({ loadedGame: createScriptedGame().loadedGame, stage: { stageId: "stage.preview", difficulty: "normal" } });
+  const restarted = expectOk(shell.advance(0));
+  assert.deepEqual([restarted.lifecycle.state, restarted.ticks, restarted.events, restarted.frame], ["stageStarting", 0, [], null]);
+  assert.deepEqual(seeds, ["seed-1"]);
 });
 
 test("toggles the pause from the preview panel like the pause key", () => {
