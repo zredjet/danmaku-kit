@@ -29,8 +29,11 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      # `--update-snapshots=missing` は足りない baseline を書き出したうえで、その test を失敗として報告する。書き出した baseline を
+      # artifact にするのが目的なので、この step の失敗では job を止めない（書き出せたかは artifact の中身で確かめる）。
       - name: Write missing screenshot baselines
         run: npm run test:browser -- --update-snapshots=missing
+        continue-on-error: true
 
       - name: Upload Linux screenshot baselines
         if: always()

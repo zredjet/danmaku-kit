@@ -102,3 +102,25 @@ test("jumps into the stage with an invincible player and reopens the same cheats
   await expect(page.locator(".hud-lives")).toHaveText("LIVES ▲▲▲");
   expect(pageErrors).toEqual([]);
 });
+
+test("previews a path alone with its spawn marker and switches the target kind from the panel", async ({ page }) => {
+  await page.goto("/?preview=path:path.drone_swoop_right&seed=preview-path&paused=1");
+  await waitForLifecycle(page, "paused");
+  // 次の 120 tick に出る spawn の位置に、敵と tick の印を出す（合成した stage は tick 30 に 1 体だけ出す）。
+  await expect(page.locator(".preview-spawn")).toHaveText(["enemy.drone @30"]);
+
+  for (let tick = 0; tick < 40; tick += 1) {
+    await page.keyboard.press("n");
+  }
+  await expect.poll(async () => (await readDump(page)).tick).toBe(40);
+  // path の単体再生は撃たない敵で動かす。出た後は spawn の印が消え、敵に id の印が付く。
+  expect((await readDump(page)).entityCounts).toMatchObject({ enemy: 1, enemyBullet: 0 });
+  await expect(page.locator(".preview-spawn")).toHaveCount(0);
+  await expect(page.locator(".preview-entity-id")).toHaveCount(2);
+
+  await page.locator(".preview-kind").selectOption("enemy");
+  await expect.poll(() => new URL(page.url()).searchParams.get("preview")).toMatch(/^enemy:/u);
+  expect((await readReplay(page)).stage.stageId).toBe("stage.preview");
+  await waitForLifecycle(page, "paused");
+  await expect(page.locator(".preview-spawn")).toHaveCount(1);
+});
