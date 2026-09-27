@@ -1,4 +1,6 @@
-import { expect, type Page } from "@playwright/test";
+import { existsSync } from "node:fs";
+
+import { expect, test, type Locator, type Page, type PageAssertionsToHaveScreenshotOptions } from "@playwright/test";
 
 import type {} from "../src/debug/debug-state-hook.ts";
 import type { BrowserDebugStateDump } from "../src/runtime/debug/browser-debug-state.ts";
@@ -75,4 +77,23 @@ export async function playerCenterRgb(page: Page): Promise<[number, number, numb
   }
   const center = toViewportPoint(dump, dump.playerPosition);
   return rgbAt(decodePng(await page.screenshot()), center.x, center.y);
+}
+
+/**
+ * screenshot を platform ごとの baseline と比べる（補助の検査、design 21.5）。CI で今の platform の baseline がまだなければ、比べずに
+ * skip して baseline を作る workflow（`.github/workflows/browser-baselines.yml`）を案内する。その workflow（`UPDATE_BROWSER_BASELINES=1`）
+ * と手元では Playwright の既定どおり、baseline がなければ書き出して失敗する（中身を確かめてから commit する）。
+ */
+export async function expectScreenshot(
+  target: Page | Locator,
+  name: string,
+  options: PageAssertionsToHaveScreenshotOptions = {},
+): Promise<void> {
+  const baseline = test.info().snapshotPath(name);
+  if (process.env.CI && process.env.UPDATE_BROWSER_BASELINES !== "1" && !existsSync(baseline)) {
+    test.info().annotations.push({ type: "missing baseline", description: `${baseline}: run the browser-baselines workflow` });
+    test.skip(true, `no ${process.platform} baseline for ${name}`);
+    return;
+  }
+  await expect(target).toHaveScreenshot(name, options);
 }

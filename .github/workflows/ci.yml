@@ -24,3 +24,34 @@ jobs:
 
       - name: Check
         run: npm run check
+
+  # browser smoke / regression test（design 21.5）。screenshot の baseline は platform ごとで、Linux の baseline がまだない screenshot は
+  # 比べずに skip する（browser-baselines workflow で作って commit する）。判定の正本の dump と replay の検査は常に走る。
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser test
+        run: npm run test:browser
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: apps/sample-title/test-results
+          retention-days: 7

@@ -385,6 +385,21 @@ test("drops the stepped ticks and events of a stage restarted before the next re
   assert.deepEqual(seeds, ["seed-1"]);
 });
 
+test("pauses a stage that starts paused before its first tick and steps it from tick 0", () => {
+  const { shell, input } = createShellAtTitle();
+  shell.setPauseOnStageStart(true);
+  press(input, "Enter");
+  shell.advance(0);
+  const started = expectOk(shell.advance(START_MS + TICK_MS * 10));
+
+  assert.deepEqual([started.lifecycle.state, started.ticks, started.frame], ["paused", 0, null]);
+  shell.stepPausedTick();
+  assert.equal(shell.latestFrame?.tick, 0);
+  shell.togglePause();
+  shell.setPauseOnStageStart(false);
+  assert.equal(expectOk(shell.advance(TICK_MS)).lifecycle.state, "playing");
+});
+
 test("toggles the pause from the preview panel like the pause key", () => {
   const { shell } = createPlayingShell();
   shell.togglePause();

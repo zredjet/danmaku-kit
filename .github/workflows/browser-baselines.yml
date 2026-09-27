@@ -1,0 +1,37 @@
+name: Browser baselines
+
+# Linux の screenshot baseline を作る（手動で実行する）。CI の browser job と同じ環境で `--update-snapshots` を付けて browser test を
+# 走らせ、`apps/sample-title/e2e/__screenshots__` を artifact にする。中身を確かめてから `*-linux.png` を commit する。
+on:
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Update screenshot baselines
+        run: npm run test:browser -- --update-snapshots
+        env:
+          UPDATE_BROWSER_BASELINES: "1"
+
+      - name: Upload screenshot baselines
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-baselines-linux
+          path: apps/sample-title/e2e/__screenshots__
+          retention-days: 7

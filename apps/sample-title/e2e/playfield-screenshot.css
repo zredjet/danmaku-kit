@@ -1,0 +1,6 @@
+/* playfield の screenshot（e2e/preview-regression.spec.ts）で、重なり得る Preview の panel、debug HUD、状態の見出しを隠す。 */
+.preview-panel,
+.hud-debug,
+.hud-banner {
+  visibility: hidden !important;
+}

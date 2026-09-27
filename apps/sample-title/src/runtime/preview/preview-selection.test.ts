@@ -56,7 +56,7 @@ test("keeps the difficulty to the ones the composed stage has", async () => {
   const selection = new PreviewSelection(definition, { ...OPTIONS, requestedDifficulty: "normal" });
   const core = createSampleTitleCore();
 
-  assert.deepEqual(selection.difficulties(), ["normal"]);
+  assert.deepEqual(selection.difficulties(), definition.content.stages[0]!.difficulties);
   selection.selectTarget("stage:stage.hard_only");
   assert.deepEqual(selection.difficulties(), ["hard"]);
   const composed = selection.compose(core);

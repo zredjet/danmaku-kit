@@ -51,6 +51,11 @@ test("keeps the content for a stage and adds a one-spawn stage for an enemy, a p
   // enemy は選んだ path と pattern で、その enemy を使う最初の spawn の位置に出す。
   const enemy = spawnOf({ kind: "enemy", enemyId: "enemy.scout", pathId: "path.drone_dive", patternId: "pattern.scout_three_way" });
   assert.deepEqual([enemy.enemy, enemy.path, enemy.pattern], ["enemy.scout", "path.drone_dive", "pattern.scout_three_way"]);
+  // 位置は同じ enemy と path の spawn、同じ path の spawn、同じ enemy の spawn の順に借り、path が画面に入る向きに合わせる。
+  const position = (pathId: `path.${string}`) =>
+    spawnOf({ kind: "enemy", enemyId: "enemy.scout", pathId, patternId: "pattern.scout_three_way" }).position;
+  assert.deepEqual(position("path.scout_sweep_left"), { x: 408, y: 112 });
+  assert.deepEqual(position("path.drone_dive"), { x: 96, y: -16 });
 });
 
 test("parses and formats preview targets from the URL and rejects ids the content does not have", async () => {

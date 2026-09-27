@@ -5,7 +5,7 @@ sample title（`apps/sample-title/`）の stage 1 の仕様。基盤の機能を
 ## 狙い
 
 - 自機の移動、低速移動、shot、被弾と無敵時間、lives、score、stage clear までを通して遊べる。golden の run（全滅させる）で約 37 秒、敵を倒さなくても全員が退場して約 42 秒で終わる。
-- 敵の pattern で、自機狙い（`aim`）、扇（`fan`）、向きを決めた発射（`angleDeg`）、1 周の輪（`radial`）、繰り返し（`loop`）を見せる。
+- 敵の pattern で、自機狙い（`aim`）、扇（`fan`）、向きを決めた発射（`angleDeg`）、1 周の輪（`radial`）、繰り返し（`loop`）、difficulty による分岐（`if`）を見せる。stage は normal と hard を持ち、違いは gunship の輪の弾数だけにする（golden は normal で固定する）。
 - 敵の path で、直進、折れ線の横切り、sine の揺れ、留まってからの退場を見せる。
 - pickup feature で、撃破した drone が score の pickup を落とし、近づいた自機に吸い寄せられて回収されるまでを見せる。
 - 入力が決まれば結果も決まる（seed に依存する乱数を使わない）ので、golden の入力で clear まで固定できる。golden の入力は shot を押し続け、最初の 40 tick は左へ、その後は 80 tick ごとに左右の向きを変える。
@@ -34,7 +34,7 @@ sample title（`apps/sample-title/`）の stage 1 の仕様。基盤の機能を
 
 - `pattern.drone_aimed_shot`: spawn から 45 tick 後に、自機狙いの赤い弾を 1 発（2.5）。
 - `pattern.scout_three_way`: 60 tick 後から、自機狙いの赤い 3-way（30°、3）を 40 tick ごと。
-- `pattern.gunship_barrage`: 90 tick 後から 30 tick ごとに、真下を中心にした青い 7-way の扇（90°、2）、自機狙いの赤い 3-way（20°、3.5）、青い 16 方向の輪（`radial`、扇より遅い 1.5）、自機狙いの赤い 3-way を繰り返す。
+- `pattern.gunship_barrage`: 90 tick 後から 30 tick ごとに、真下を中心にした青い 7-way の扇（90°、2）、自機狙いの赤い 3-way（20°、3.5）、青い輪（`radial`、扇より遅い 1.5。difficulty の `if` で normal は 16 方向、hard は 24 方向）、自機狙いの赤い 3-way を繰り返す。
 
 ## pickup
 
@@ -62,7 +62,7 @@ golden の入力では、26 体すべてを倒し、drone が落とした pickup
 ```json sample-content-spec
 {
   "stage": "stage.stage_01",
-  "difficulties": ["normal"],
+  "difficulties": ["normal", "hard"],
   "player": {"id": "player.default", "movement": {"speed": 4, "focusSpeed": 1.8}, "collision": {"radius": 3}, "life": {"initialLives": 3, "invincibleTicksAfterHit": 120}, "shot": "playerShot.basic"},
   "playerShot": {"id": "playerShot.basic", "collision": {"radius": 5}, "damage": 5, "fire": {"intervalTicks": 3}, "projectile": {"velocity": {"x": 0, "y": -8}, "lifetimeTicks": 60}},
   "bullets": {"bullet.blue_large": {"radius": 6}, "bullet.red_small": {"radius": 4}},
@@ -83,7 +83,7 @@ golden の入力では、26 体すべてを倒し、drone が落とした pickup
       {"wait": 30},
       {"fire": {"bullet": "bullet.red_small", "aim": "player", "fan": {"count": 3, "spreadDeg": 20}, "speed": 3.5}},
       {"wait": 30},
-      {"fire": {"bullet": "bullet.blue_large", "angleDeg": 90, "radial": {"count": 16}, "speed": 1.5}},
+      {"if": {"difficulty": ["hard"], "then": [{"fire": {"bullet": "bullet.blue_large", "angleDeg": 90, "radial": {"count": 24}, "speed": 1.5}}], "else": [{"fire": {"bullet": "bullet.blue_large", "angleDeg": 90, "radial": {"count": 16}, "speed": 1.5}}]}},
       {"wait": 30},
       {"fire": {"bullet": "bullet.red_small", "aim": "player", "fan": {"count": 3, "spreadDeg": 20}, "speed": 3.5}},
       {"wait": 30},

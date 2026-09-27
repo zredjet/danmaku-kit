@@ -2,6 +2,7 @@ id: stage.stage_01
 version: 1
 difficulties:
   - normal
+  - hard
 timeline:
   # wave 1: 自機の列へまっすぐ降りる drone が 1 発ずつ狙って撃つ
   - tick: 90

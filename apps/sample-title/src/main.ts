@@ -111,7 +111,14 @@ const game = startSampleTitleGame({
 viewport.onLayoutChange((layout) => applyRenderScale(game, layout.renderScale));
 
 const preview = import.meta.env.MODE !== "production" && previewSelection
-  ? new PreviewMode({ panelParent: document.body, stageRoot, shell, core, selection: previewSelection })
+  ? new PreviewMode({
+    panelParent: document.body,
+    stageRoot,
+    shell,
+    core,
+    selection: previewSelection,
+    startPaused: readQueryParameter("paused") === "1",
+  })
   : null;
 
 // dev server の content の hot reload（design 19）。content plugin が検証した content を今の content と比べ、stage を新しい content で

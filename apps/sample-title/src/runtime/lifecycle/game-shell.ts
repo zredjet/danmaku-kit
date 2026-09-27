@@ -97,6 +97,7 @@ export class GameShell {
   /** pause 中に 1 tick 送りで進めた tick と event。次の `advance()` の結果に含め、scene が view を同期できるようにする。 */
   #steppedEvents: GameEvent[] = [];
   #steppedTicks = 0;
+  #pauseOnStageStart = false;
 
   constructor(options: GameShellOptions) {
     this.#options = options;
@@ -171,6 +172,14 @@ export class GameShell {
   startOrRestart(content: GameShellContent): void {
     this.#content = content;
     this.#apply(this.#lifecycle.state === "title" ? { type: "startRequested" } : { type: "contentReloaded" });
+  }
+
+  /**
+   * Preview の start paused。有効なら、開始演出を終えた render frame で tick を進めずに pause し、tick 0 から 1 tick 送りで進められる
+   * ようにする（browser regression の決定的な画面、Phase 2B-14）。
+   */
+  setPauseOnStageStart(enabled: boolean): void {
+    this.#pauseOnStageStart = enabled;
   }
 
   /** Preview の panel の pause button。`pause` の UI action と同じく、stage の中なら pause を切り替える。 */
@@ -254,6 +263,9 @@ export class GameShell {
     if (!this.#failure && stage && this.#lifecycle.state === "stageStarting") {
       if (stage.timer.advance(deltaMs)) {
         this.#apply({ type: "stageStartFinished" });
+        if (this.#pauseOnStageStart) {
+          this.#apply({ type: "pauseToggled" });
+        }
       }
     } else if (!this.#failure && stage && this.#lifecycle.state === "playing") {
       // pause 中の 1 tick 送りで終わった stage は、終わった後の tick を Core に渡さずに終わりへ進める。

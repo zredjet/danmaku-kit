@@ -1,4 +1,4 @@
 schemaVersion: "1"
 enabledFeatures: [pickup]
 defaultPlayerId: player.default
-contentVersion: sample-title@content.10
+contentVersion: sample-title@content.11

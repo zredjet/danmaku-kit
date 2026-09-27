@@ -24,7 +24,10 @@ const SPAWN_MARKER_TOP = 24;
 const SPAWN_MARKER_CELL = Object.freeze({ width: 96, height: 16 });
 const PREVIEW_KINDS: readonly PreviewTarget["kind"][] = Object.freeze(["stage", "enemy", "pattern", "path"]);
 
-type PreviewShell = Pick<GameShell, "lifecycle" | "latestFrame" | "startOrRestart" | "togglePause" | "stepPausedTick" | "serializeStage">;
+type PreviewShell = Pick<
+  GameShell,
+  "lifecycle" | "latestFrame" | "startOrRestart" | "togglePause" | "stepPausedTick" | "serializeStage" | "setPauseOnStageStart"
+>;
 
 export type PreviewModeOptions = Readonly<{
   /** panel を置く要素（transform root の外）。 */
@@ -34,15 +37,17 @@ export type PreviewModeOptions = Readonly<{
   shell: PreviewShell;
   core: Pick<ShootingCore, "load">;
   selection: PreviewSelection;
+  /** 開始演出の後、tick を進めずに pause して始める（`?paused=1`）。tick 0 から 1 tick ずつ進めた決定的な画面を作れる。 */
+  startPaused: boolean;
 }>;
 
 /**
  * Preview（design 19、Phase 2B-9）の panel と overlay。dev server と test build で `?preview` を付けたときだけ `src/main.ts` が作る。
  *
  * panel は対象（stage、enemy と path と pattern、pattern、path）、seed、difficulty、dev-only の cheat（invincible と stage の jump、
- * Phase 2B-10）の選択と、restart（R）、pause（P）、pause 中の 1 tick 送り（N）を持ち、選択を変えると `PreviewSelection` の合成した
- * content で stage を始め直し、選択を URL（`?preview=`、`seed`、`difficulty`、`invincible`、`jump`）に書いて、page を読み込み直しても
- * 同じ選択で開く。playfield の overlay は player、enemy、pickup の entity id と、これから
+ * Phase 2B-10）、start paused（Phase 2B-14）の選択と、restart（R）、pause（P）、pause 中の 1 tick 送り（N）を持ち、選択を変えると
+ * `PreviewSelection` の合成した content で stage を始め直し、選択を URL（`?preview=`、`seed`、`difficulty`、`invincible`、`jump`、
+ * `paused`）に書いて、page を読み込み直しても同じ選択で開く。playfield の overlay は player、enemy、pickup の entity id と、これから
  * 出る spawn の位置を出し、panel は tick、PRNG state、pattern runner の cursor を出す（公開の `serialize()` から読む）。Preview の操作は
  * Runtime の操作で、Core へ渡す入力には混ぜない。
  */
@@ -58,9 +63,12 @@ export class PreviewMode {
   #renderedFrame: GameFrame | null | undefined = undefined;
   #infoKey: string | null = null;
   #started = false;
+  #startPaused: boolean;
 
   constructor(options: PreviewModeOptions) {
     this.#options = options;
+    this.#startPaused = options.startPaused;
+    options.shell.setPauseOnStageStart(options.startPaused);
     document.head.append(previewStyle());
     options.panelParent.append(this.#panel);
     options.stageRoot.append(this.#overlay);
@@ -119,6 +127,7 @@ export class PreviewMode {
     url.searchParams.set("difficulty", selection.difficulty ?? "");
     setOrDelete(url.searchParams, "invincible", cheats.invincible ? "1" : null);
     setOrDelete(url.searchParams, "jump", cheats.jumpTick > 0 ? String(cheats.jumpTick) : null);
+    setOrDelete(url.searchParams, "paused", this.#startPaused ? "1" : null);
     window.history.replaceState(window.history.state, "", url);
   }
 
@@ -150,6 +159,9 @@ export class PreviewMode {
     seed.spellcheck = false;
     this.#seedInput = seed;
     const difficulty = select(selection.difficulties(), selection.difficulty ?? "", "preview-difficulty");
+    const startPaused = element("input", "preview-start-paused") as HTMLInputElement;
+    startPaused.type = "checkbox";
+    startPaused.checked = this.#startPaused;
     const invincible = element("input", "preview-invincible") as HTMLInputElement;
     invincible.type = "checkbox";
     invincible.checked = selection.cheats.invincible;
@@ -162,6 +174,7 @@ export class PreviewMode {
       field("seed", seed),
       field("difficulty", difficulty),
       field("invincible", invincible),
+      field("paused", startPaused),
       // stage jump は stage の対象だけが持つ（timeline の spawn の tick から選ぶ）。
       ...(jumpTicks.length > 0 ? [field("jump", jump)] : []),
       buttons([
@@ -198,6 +211,11 @@ export class PreviewMode {
     });
     onChange(difficulty, () => {
       selection.setDifficulty(difficulty.value);
+      this.restart();
+    });
+    onChange(startPaused, () => {
+      this.#startPaused = startPaused.checked;
+      this.#options.shell.setPauseOnStageStart(this.#startPaused);
       this.restart();
     });
     onChange(invincible, () => {
