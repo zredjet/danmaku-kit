@@ -1,4 +1,4 @@
-import type { Difficulty, GameDefinition, StartStageOptions } from "@shooting-sample/shooting-core";
+import type { Difficulty, GameDefinition, StartStageOptions } from "@danmaku-kit/core";
 
 /**
  * title から始める stage の difficulty を決める。`?difficulty=` の値（`requested`）を stage が持っていればそれを、なければ stage の

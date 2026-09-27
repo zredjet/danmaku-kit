@@ -1,4 +1,4 @@
-import type { Difficulty, GameDefinition, ShootingCore, StageDefinition } from "@shooting-sample/shooting-core";
+import type { DanmakuCore, Difficulty, GameDefinition, StageDefinition } from "@danmaku-kit/core";
 
 import type { GameShellContent } from "../lifecycle/game-shell.ts";
 import { selectStageDifficulty } from "../lifecycle/stage-difficulty.ts";
@@ -132,7 +132,7 @@ export class PreviewSelection {
    * content の hot reload。新しい content で今の対象（新しい content になければ最初の stage）を合成し、load できたときだけ選択を新しい
    * content に移す。load できなければ選択を変えずに error を返す。
    */
-  replaceDefinition(definition: GameDefinition, core: Pick<ShootingCore, "load">): PreviewComposition {
+  replaceDefinition(definition: GameDefinition, core: Pick<DanmakuCore, "load">): PreviewComposition {
     const previous = { definition: this.#definition, target: this.#target, jumpTick: this.#jumpTick };
     this.#definition = definition;
     const target = parsePreviewTarget(formatPreviewTarget(this.#target), definition);
@@ -156,7 +156,7 @@ export class PreviewSelection {
   }
 
   /** 今の対象を合成した definition を `core` で load し、stage を始める content にする。 */
-  compose(core: Pick<ShootingCore, "load">): PreviewComposition {
+  compose(core: Pick<DanmakuCore, "load">): PreviewComposition {
     const difficulty = selectStageDifficulty(this.difficulties(), this.#difficulty);
     if (difficulty === null) {
       return Object.freeze({ ok: false, errors: Object.freeze([`${formatPreviewTarget(this.#target)} has no difficulty to preview`]) });

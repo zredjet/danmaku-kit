@@ -1,4 +1,4 @@
-import type { CoreError, CoreErrorCode, CoreWarning } from "@shooting-sample/shooting-core";
+import type { CoreError, CoreErrorCode, CoreWarning } from "@danmaku-kit/core";
 
 import type { ContentSourceContext } from "./content-source-index.ts";
 import type { ValidateContentDiagnosticCode } from "./diagnostic-codes.ts";

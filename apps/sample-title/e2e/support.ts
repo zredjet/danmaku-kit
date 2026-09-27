@@ -14,10 +14,10 @@ export const BACKGROUND_RGB: readonly [number, number, number] = Object.freeze([
   Number.parseInt(PLAYFIELD_BACKGROUND_COLOR.slice(start, start + 2), 16)
 )) as [number, number, number]);
 
-/** `window.__SHOOTING_DEBUG_STATE__()` を読む。 */
+/** `window.__DANMAKU_KIT_DEBUG_STATE__()` を読む。 */
 export function readDump(page: Page): Promise<BrowserDebugStateDump> {
   return page.evaluate(() => {
-    const read = window.__SHOOTING_DEBUG_STATE__;
+    const read = window.__DANMAKU_KIT_DEBUG_STATE__;
     if (!read) {
       throw new Error("the debug state hook is not installed; run the test build");
     }
@@ -25,9 +25,9 @@ export function readDump(page: Page): Promise<BrowserDebugStateDump> {
   });
 }
 
-/** `window.__SHOOTING_DEBUG_REPLAY__()` を読む。 */
+/** `window.__DANMAKU_KIT_DEBUG_REPLAY__()` を読む。 */
 export async function readReplay(page: Page): Promise<BrowserReplayRecord> {
-  const record = await page.evaluate(() => window.__SHOOTING_DEBUG_REPLAY__?.() ?? null);
+  const record = await page.evaluate(() => window.__DANMAKU_KIT_DEBUG_REPLAY__?.() ?? null);
   if (!record) {
     throw new Error("no replay record: the stage has not started or inputs are not recorded");
   }
@@ -41,7 +41,7 @@ export async function readReplay(page: Page): Promise<BrowserReplayRecord> {
 export async function waitForLifecycle(page: Page, state: GameLifecycleState): Promise<void> {
   await expect.poll(
     // 読み込み直しの途中で page の context が入れ替わると evaluate が失敗するので、そのときも待ち続ける。
-    async () => page.evaluate(() => window.__SHOOTING_DEBUG_STATE__?.().lifecycle ?? null).catch(() => null),
+    async () => page.evaluate(() => window.__DANMAKU_KIT_DEBUG_STATE__?.().lifecycle ?? null).catch(() => null),
     { timeout: 30_000 },
   ).toBe(state);
 }

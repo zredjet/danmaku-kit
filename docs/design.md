@@ -9,7 +9,7 @@
 - ゲームルール、描画、入力、UI、データ定義を分離し、保守性を高める。
 - ステージ、敵、弾幕、出現タイムラインをコードの外側で定義できるようにする。
 - 斑鳩や東方のような、精密操作、弾幕の読みやすさ、演出の気持ちよさを重視する。
-- 別タイトルへ流用できる `shooting-core` と、タイトル固有の `content` を分ける。
+- 別タイトルへ流用できる `@danmaku-kit/core` と、タイトル固有の `content` を分ける。
 
 この設計ではブラウザ向け 2D ゲームを前提に、Phaser + TypeScript + Vite を第一候補とする。ただし、ゲームルールの中核は Phaser に依存させない。
 
@@ -34,7 +34,7 @@
 
 ### 2.3 Core はタイトル固有表現を知らない
 
-`shooting-core` は以下を知らない。
+`@danmaku-kit/core` は以下を知らない。
 
 - 固有キャラクター名
 - 固有ステージ名
@@ -71,7 +71,7 @@ Core が扱うのは、抽象化されたプレイヤー、敵、弾、パター
 
 ```text
 packages/
-  shooting-core/
+  core/
     src/
       basic/
         content/
@@ -147,7 +147,7 @@ apps/
 docs/
 ```
 
-実装初期は単一リポジトリ内で進めるが、Core は `packages/shooting-core` として切り出せる境界を維持する。Sample title は `apps/sample-title` に置き、Core から title 固有の asset、UI、シナリオ、テーマを参照しない。
+実装初期は単一リポジトリ内で進めるが、Core は `packages/core` として切り出せる境界を維持する。Sample title は `apps/sample-title` に置き、Core から title 固有の asset、UI、シナリオ、テーマを参照しない。
 
 Sample app の module 構成（Phase 2B 完了時点）:
 
@@ -160,7 +160,7 @@ Sample app の module 構成（Phase 2B 完了時点）:
 | `src/runtime/` | Phaser と DOM に依存しない runtime（loop、input、lifecycle と `GameShell`、view の計画と pool、asset の読み込み判断、HUD の内容、dump と再生記録の組み立て、audio status、content の hot reload の判断（`content/`）、Preview の definition の合成、選択、cheat、overlay の文字（`preview/`））。node:test で検査する |
 | `src/runtime/phaser/` | Phaser の scene、entity view、演出、render scale。`phaser` を import してよいのはここと entry だけ |
 | `src/ui/` | DOM overlay の HUD と viewport への配置 |
-| `src/debug/` | dev / test build だけが置く `window.__SHOOTING_DEBUG_STATE__` と `window.__SHOOTING_DEBUG_REPLAY__` |
+| `src/debug/` | dev / test build だけが置く `window.__DANMAKU_KIT_DEBUG_STATE__` と `window.__DANMAKU_KIT_DEBUG_REPLAY__` |
 | `src/preview/` | dev / test build だけが作る Preview の DOM の panel と playfield の overlay |
 | `src/sample-content/` | sample content の参照・撃破・headless replay golden の test と、`docs/sample-content-spec.md` との照合 |
 | `src/test-support/` | 複数の test が使う helper（sample の load、fake session と frame、headless replay） |
@@ -168,14 +168,14 @@ Sample app の module 構成（Phase 2B 完了時点）:
 
 依存方向は、`ui/`、`debug/`、`preview/`、`runtime/phaser/` を import してよいのは `src/main.ts` だけで、`tests/module-graph.test.mjs` の `SAMPLE_TITLE_LAYER_RULES` が検査する。package の import（Core は root export と、entry だけが optional feature の subpath export、`phaser` は entry と `runtime/phaser/` だけ）は `SAMPLE_TITLE_PACKAGE_IMPORT_RULES` が検査する。
 
-Core package の module 構成（公開 surface は root の `src/basic/index.ts` の export と、optional feature ごとの `./features/<feature>`（`src/features/<feature>/index.ts`）だけで、root の value export は `createShootingCore` のみ）:
+Core package の module 構成（公開 surface は root の `src/basic/index.ts` の export と、optional feature ごとの `./features/<feature>`（`src/features/<feature>/index.ts`）だけで、root の value export は `createDanmakuCore` のみ）:
 
 ```text
-packages/shooting-core/src/
+packages/core/src/
   basic/
     index.ts                   root public export
-    core.ts                    createShootingCore() / load() facade
-    api-types.ts               ShootingCore、LoadedGame、StageSession、GameFrame などの公開型
+    core.ts                    createDanmakuCore() / load() facade
+    api-types.ts               DanmakuCore、LoadedGame、StageSession、GameFrame などの公開型
     result.ts                  CoreResult / CoreError
     content/
       types.ts                 GameDefinition / ContentRegistry
@@ -199,7 +199,7 @@ packages/shooting-core/src/
         restore.ts             restore で受け付ける key 一覧と検証
     simulation/                entity id、PRNG、stage timeline / player / shot / enemy bullet / collision system、system order
     extension/
-      feature-module.ts        optional feature の module（FeatureModule）、defineFeature()、ShootingCoreFeature、登録の解決
+      feature-module.ts        optional feature の module（FeatureModule）、defineFeature()、DanmakuCoreFeature、登録の解決
     session/
       loaded-game.ts           startStage() / restore()
       start-stage-options.ts   StartStageOptions parse
@@ -224,10 +224,10 @@ packages/shooting-core/src/
     patterns/                  Phase 2A 以降: PatternProgram runner / commands
   features/                    Phase 2B-5 以降（pickup から）
     <feature>/
-      index.ts                 package entry（`@shooting-sample/shooting-core/features/<feature>`）。defineFeature() で作った feature を export する
+      index.ts                 package entry（`@danmaku-kit/core/features/<feature>`）。defineFeature() で作った feature を export する
 ```
 
-依存方向は `core.ts` → `session/` → `serialization/restore/` / `state/` → 下位 module（`content/`、`simulation/`、`hash/` など）→ `shared/` とし、下位 module から上位 layer を import しない。`instrumentation/` は `core.ts`、`session/`、`testing/` だけが使う session の差し込み口で、通常 runtime から到達してよい。runtime entity は kind ごとに `entities/<kind>/` の model / snapshot / restore へ縦に分け、各 file はそれぞれの layer に属する。`entities/*/snapshot.ts` は `serialization/types.ts`、`state/`、`hash/`、kind 別 restore から、`entities/*/restore.ts` は `serialization/restore/` からだけ使い、kind directory 同士は import しない。非 test source について、`core.ts`、`session/`、`serialization/restore/`、`state/`、`instrumentation/`、`hash/`、`testing/`、`entities/*/snapshot.ts`、`entities/*/restore.ts` を import してよい module と、kind directory 同士が import しないこと、`shared/` が他 module を import しないことは型 import も含めて、runtime import cycle と `index.ts` から `hash/` / `testing/` へ実行時に到達しないことは実行時 import で、`tests/module-graph.test.mjs` が検査する。同じ test は rule の path が実在する module を指すことと、shooting-core / validate-content の非 test source が `*.test.ts` / `test-support/` を import しないこと、shooting-core の非 test source が同じ `src/` 配下の module だけを相対 path で import し、npm package、`node:`、triple-slash reference directive を型 import も含めて使わないことも検査する。state hash と headless debug dump の digest は test helper 側で計算する。
+依存方向は `core.ts` → `session/` → `serialization/restore/` / `state/` → 下位 module（`content/`、`simulation/`、`hash/` など）→ `shared/` とし、下位 module から上位 layer を import しない。`instrumentation/` は `core.ts`、`session/`、`testing/` だけが使う session の差し込み口で、通常 runtime から到達してよい。runtime entity は kind ごとに `entities/<kind>/` の model / snapshot / restore へ縦に分け、各 file はそれぞれの layer に属する。`entities/*/snapshot.ts` は `serialization/types.ts`、`state/`、`hash/`、kind 別 restore から、`entities/*/restore.ts` は `serialization/restore/` からだけ使い、kind directory 同士は import しない。非 test source について、`core.ts`、`session/`、`serialization/restore/`、`state/`、`instrumentation/`、`hash/`、`testing/`、`entities/*/snapshot.ts`、`entities/*/restore.ts` を import してよい module と、kind directory 同士が import しないこと、`shared/` が他 module を import しないことは型 import も含めて、runtime import cycle と `index.ts` から `hash/` / `testing/` へ実行時に到達しないことは実行時 import で、`tests/module-graph.test.mjs` が検査する。同じ test は rule の path が実在する module を指すことと、core / validate-content の非 test source が `*.test.ts` / `test-support/` を import しないこと、core の非 test source が同じ `src/` 配下の module だけを相対 path で import し、npm package、`node:`、triple-slash reference directive を型 import も含めて使わないことも検査する。state hash と headless debug dump の digest は test helper 側で計算する。
 
 `extension/` は optional feature が basic に差し込む口（Phase 2B-4）で、`content/types.ts`、`content/runtime-budgets.ts`（playfield の大きさ、feature は `extension/playfield.ts` を通して使う）、`content/validation/` の field / schema path / reference の helper（feature は `extension/content-validation.ts` を通して使う）、`entities/runtime-entity.ts` と `events/game-event.ts` と `simulation/entity.ts` の型、`result.ts`、`serialization/types.ts`、`shared/` だけを import し、`core.ts`、`api-types.ts`、`index.ts`、`session/`、`state/`、`serialization/restore/`、`instrumentation/`、`testing/` から使う。basic は `src/features/` を import せず、feature は同じ feature の directory と basic の `extension/`、`shared/`、`result.ts`、`content/types.ts`、`serialization/types.ts` だけを型 import も含めて import し、feature 同士は import しない（`tests/module-graph.test.mjs`）。package の export map は root と、`src/features/` の directory ごとの `./features/<feature>` だけを持つ（`tests/package-boundary.test.mjs`）。
 
@@ -258,7 +258,7 @@ packages/shooting-core/src/
 - バージョン差分の吸収
 - タイトル固有 content と core API の接続
 
-YAML の読み込み、ファイル探索、行番号付きエラー整形は `apps/sample-title` または `validate-content` CLI の責務とする。`packages/shooting-core` はファイルシステム、Vite の asset base、ブラウザ fetch に依存しない。`apps/sample-title` は dev server / build 時に Vite plugin から validate-content の Node API を呼んで content を検証・組み立て、検証済み `GameDefinition` と asset manifest だけを browser へ渡す。browser には YAML parser と filesystem access を持ち込まない。
+YAML の読み込み、ファイル探索、行番号付きエラー整形は `apps/sample-title` または `validate-content` CLI の責務とする。`packages/core` はファイルシステム、Vite の asset base、ブラウザ fetch に依存しない。`apps/sample-title` は dev server / build 時に Vite plugin から validate-content の Node API を呼んで content を検証・組み立て、検証済み `GameDefinition` と asset manifest だけを browser へ渡す。browser には YAML parser と filesystem access を持ち込まない。
 
 ### 5.3 `core/patterns`
 
@@ -791,7 +791,7 @@ Phase 1 の Simulation 座標は JavaScript の finite number として保持し
 
 ### 9.9 Pickup 定義例
 
-Enemy の drops から参照する回収アイテムは、`content/pickups/` の定義として管理する。Pickup は Phase 2B の content authoring 拡張とし、Phase 1A / Phase 2A の minimum playable には含めない。Phase 2B-5 で pickup feature（`@shooting-sample/shooting-core/features/pickup`）の content として実装した。`enabledFeatures: [pickup]` の content だけが使え、validate-content は `pickups/*.yaml` を `content.features.pickups` に入れる。
+Enemy の drops から参照する回収アイテムは、`content/pickups/` の定義として管理する。Pickup は Phase 2B の content authoring 拡張とし、Phase 1A / Phase 2A の minimum playable には含めない。Phase 2B-5 で pickup feature（`@danmaku-kit/core/features/pickup`）の content として実装した。`enabledFeatures: [pickup]` の content だけが使え、validate-content は `pickups/*.yaml` を `content.features.pickups` に入れる。
 
 ```yaml
 id: pickup.score_small
@@ -919,7 +919,7 @@ Affinity feature を有効にする Player は、`initialAffinity` と `availabl
 決定的な角度計算（Phase 2A-4）:
 
 - 角度は画面座標系で +x を 0°、+y（下）へ回る向きを正とし、1 周を 1,440 step（0.25°）に分ける。content の `angleDeg` / `spreadDeg` のような角度は 0.25° の倍数だけを受け付け、`angleStepsFromDegrees()` で整数 step に変換する（4 倍は 2 の冪の乗算なので丸めを伴わない）。
-- tick 中の sine / cosine は `simulation/sine-table.ts` の表だけから引き、host の `Math.sin` / `Math.cos` / `Math.atan2` を使わない。表は `packages/shooting-core/scripts/generate-sine-table.mjs`（`npm run generate-sine-table`）が 0〜90° の 361 entry を `round(sin(step * π / 720) * 2^30)` の整数として生成し、生成した整数 literal を正本として commit する。host の `Math.sin` は生成時にだけ使い、丸めは生成時の `Math.round` だけとする。tick は表を補間せずに引き、90° より先は対称性で広げる（sin 0° / 30° / 90° は 0 / 1/2 / 1 に一致し、180° は -0 にしない）。表の golden entry と checksum、対称性は test で固定する。
+- tick 中の sine / cosine は `simulation/sine-table.ts` の表だけから引き、host の `Math.sin` / `Math.cos` / `Math.atan2` を使わない。表は `packages/core/scripts/generate-sine-table.mjs`（`npm run generate-sine-table`）が 0〜90° の 361 entry を `round(sin(step * π / 720) * 2^30)` の整数として生成し、生成した整数 literal を正本として commit する。host の `Math.sin` は生成時にだけ使い、丸めは生成時の `Math.round` だけとする。tick は表を補間せずに引き、90° より先は対称性で広げる（sin 0° / 30° / 90° は 0 / 1/2 / 1 に一致し、180° は -0 にしない）。表の golden entry と checksum、対称性は test で固定する。
 - `aim: player` の向きは、発射元から自機への差分 vector に最も近い角度 step へそろえる（`angleStepsOfVector()`）。`Math.atan2` は使わず、0〜90° の表の方向との外積の符号で二分探索し、隣り合う 2 step のうち内積が大きい方を選ぶ（四則演算と比較だけ）。差分が零なら真下を向く。狙いも固定角度も整数 step で表すので、敵弾の速度は常に表の `(cos, sin) * speed` になり、各成分は `speed` を超えない。fan は基準 step に各弾の step 差を足して作る。ECMAScript は `Math.sqrt` を正確な平方根の丸め（𝔽）と定めているので Core で使ってよいが、`Math.hypot` と三角関数・指数関数は implementation-approximated なので使わない。
 - `tests/deterministic-math.test.mjs` が Core の非 test source に implementation-approximated な `Math` function と `**` 演算子（`Number::exponentiate` も implementation-approximated）が現れないことを検査する。
 
@@ -1312,7 +1312,7 @@ Phase 2B-9 の sample app の実装:
 - overlay は playfield（transform root の中）に player、enemy、pickup の entity id と、次の 120 tick に出る spawn の位置を出す（spawn の位置は playfield の外が多いので端へ寄せ、近い印はまとめる）。panel には次に実行する tick（debug dump の `tick` と同じ）、PRNG state、pattern runner ごとの cursor と待ちの tick を、公開の `serialize()` から読んで出す（playing の間は 6 tick ごと、pause と 1 tick 送りでは毎回描き直す）。collider は debug overlay（Backquote / F3）の円で見る。
 - 対象を選び直しても view pool を作り直さないよう、Preview の view pool は enemy、enemy bullet、pickup を runtime budget の capacity まで持つ（`planPreviewViewPoolCapacities()`）。
 - content の hot reload は、新しい content で今の対象（なくなっていれば最初の stage）を合成し直して始め直す。合成した content を Core が拒めば、前の content と選択のまま動かし続けて HUD の下端に error を出す。
-- Preview の stage の再生記録（`window.__SHOOTING_DEBUG_REPLAY__`）の `stage.stageId` は合成した stage を指すので、Node で再生するには同じ合成が要る。
+- Preview の stage の再生記録（`window.__DANMAKU_KIT_DEBUG_REPLAY__`）の `stage.stageId` は合成した stage を指すので、Node で再生するには同じ合成が要る。
 
 Phase 2B-10 の dev-only cheat（Preview の操作）:
 
@@ -1338,7 +1338,7 @@ CLI MVP input contract:
 schemaVersion: "1"
 enabledFeatures: []
 defaultPlayerId: player.default
-contentVersion: shooting-sample@content.1
+contentVersion: sample-title@content.1
 ```
 
 `contentVersion` は CLI input 専用 field であり、組み立て後は `GameDefinition.content.version` になる。`content` field を game-definition file に直接書くことは禁止し、`--content-root` 以下からだけ組み立てる。MVP は `.yaml` のみを受け付け、JSON と `.yml` は追加しない。
@@ -1477,7 +1477,7 @@ DSL の失敗時挙動:
 
 以下の型例は、現在実装済みの public method、現在実装済みの public DTO contract、
 future API を分けて示す。現在実装済みの public method は
-`ShootingCore.load()`、`LoadedGame.startStage()`、`LoadedGame.restore()`、`StageSession.tick()`、`StageSession.serialize()` である。
+`DanmakuCore.load()`、`LoadedGame.startStage()`、`LoadedGame.restore()`、`StageSession.tick()`、`StageSession.serialize()` である。
 Phase 1B-3 で `SerializedGameState` などの public DTO 型境界を追加し、Phase 1B-4 で
 root export 済みの `StageSession` 自体へ `serialize()` を追加済みである。Phase 1B-5A で
 root export 済みの `LoadedGame` 自体へ `restore()` を追加済みである。
@@ -1700,7 +1700,7 @@ type CoreResult<T> =
   | { ok: true; value: T; warnings: CoreWarning[] }
   | { ok: false; errors: CoreError[] };
 
-type ShootingCore = {
+type DanmakuCore = {
   coreVersion: string;
   load(definition: GameDefinition): CoreResult<LoadedGame>;
 };
@@ -1729,7 +1729,7 @@ type ReplaySession = {
 
 Runtime は `tick()` の戻り値に含まれる `GameFrame.events` を読んで描画する。
 
-`SerializedPrngSnapshot` は public DTO とし、`state` は platform-independent な non-zero uint32 とする。Core 内部で使う旧 `SerializedPrngState` 相当の型名は root export せず、public snapshot の名前は `SerializedPrngSnapshot` に統一する。PRNG algorithm を変更する場合は snapshot field を暗黙変換せず、`ShootingCore.coreVersion` と restore compatibility policy で扱う。
+`SerializedPrngSnapshot` は public DTO とし、`state` は platform-independent な non-zero uint32 とする。Core 内部で使う旧 `SerializedPrngState` 相当の型名は root export せず、public snapshot の名前は `SerializedPrngSnapshot` に統一する。PRNG algorithm を変更する場合は snapshot field を暗黙変換せず、`DanmakuCore.coreVersion` と restore compatibility policy で扱う。
 
 `SerializedPendingEvent` は `GameFrame.events` の `GameEvent` と用途を分ける。`GameFrame.events` はその tick で発生して runtime adapter が消費する通知であり、`SerializedPendingEvent` は serialize / restore をまたいで未処理のまま再通知する queue だけを表す。Phase 1B では startStage 直後に残り得る tick 0 の `stageStarted` のみに限定し、`entitySpawned`、`playerShotsSpawnedBatch`、`enemyBulletsSpawnedBatch`、`playerHit`、`entityDestroyed`、`scoreChanged`、`tickAdvanced` は drain 済み frame event として pending queue へ保存しない。Phase 1B の restore は `expectedTick === 0` の snapshot では同一 `stageId` の `stageStarted` 1 件だけを要求し、`expectedTick > 0` では `pendingEvents` を空に限定する。feature / progression event は、restore 後にも pending として残る実装上の正本を持つ slice でだけ `SerializedPendingEvent` へ追加する。EnemyBullet の serialized state は Phase 2A-3 で `velocity`、`spawnPosition`、`ageTicks` を追加し、`stateHashVersion` を 3 に上げた。restore は現在座標から移動を逆算せず、処理済み timeline の `fireOnSpawn` と同じ弾・生成位置・速度で、`ageTicks` が生成 tick から `expectedTick` までの tick 数、`position` が `spawnPosition + velocity * ageTicks` と完全一致する spawn を選ぶ。等速直線運動の各座標は tick に対して単調なので、1 tick 目と現在の位置がどちらも cleanup 境界の内側であることで、途中で cleanup されずに残る敵弾だけを受け付ける。enemy bullet の `damage` と lifetime は Core runtime が正本を持つ slice で追加し、それまでの restore は `projectile` のような未知 field を `state.invalidShape` として拒否する。
 
@@ -1737,7 +1737,7 @@ Runtime は `tick()` の戻り値に含まれる `GameFrame.events` を読んで
 
 `SerializedRuntimeEntityState` は現行 runtime が正本を持つ state だけを含める。Phase 2A-2 で PathRunner の segment index、segment start `p0`、segment 内経過 tick `t` を enemy の `pathRunnerState` として追加し、`stateHashVersion` を 2 に上げた（sine offset の phase などは、その state を持つ slice で同じく追加する）。現在座標、`pathId`、`patternId` だけから path movement を逆算して restore することは禁止する。restore は `pathRunnerState` の shape と segment 数に収まる範囲を検証したうえで、処理済み timeline の spawn 位置から spawn tick 〜 `expectedTick` の tick 数だけ path を進めた runner と位置を求め、restore した `pathRunnerState` と `position` が完全一致する spawn を選ぶ。一致する spawn がない enemy と、path を終えて cleanup 境界の外にいるはずの enemy は `state.invalidShape` として拒否する。
 
-`SerializedPatternRunnerState.runnerId` は `patternRunner.${string}` の namespace 付き ID とし、`patternRunner.` のような空 suffix は restore で拒否する。同一 snapshot 内で一意にし、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は top-level `enabledFeatures` と同じ canonical feature order で出力する。`runnerId` の比較に `localeCompare` や JavaScript の UTF-16 code unit order を使わない。canonical feature order は `["bomb", "graze", "affinity", "rank", "pickup", "advancedScoring"]` の順に固定し、実装はこの順序を `KNOWN_ENABLED_FEATURES` の正本として扱う。ただし root package の value export は `createShootingCore` に限定し、feature order は schema / type contract と test で固定する。restore は型、shape、top-level `enabledFeatures` と `enabledFeatureStates` の重複や canonical order 違反を `state.invalidShape`、loaded content との top-level feature 差分や unknown feature、feature state の extra / missing / wrong feature と `stateVersion` の不一致を `state.featureMismatch` として分類する。Phase 2B-4 で、有効な feature は必ず 1 つの state を持つことにした（実行時の状態を持たない feature は `null` の payload）。
+`SerializedPatternRunnerState.runnerId` は `patternRunner.${string}` の namespace 付き ID とし、`patternRunner.` のような空 suffix は restore で拒否する。同一 snapshot 内で一意にし、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は top-level `enabledFeatures` と同じ canonical feature order で出力する。`runnerId` の比較に `localeCompare` や JavaScript の UTF-16 code unit order を使わない。canonical feature order は `["bomb", "graze", "affinity", "rank", "pickup", "advancedScoring"]` の順に固定し、実装はこの順序を `KNOWN_ENABLED_FEATURES` の正本として扱う。ただし root package の value export は `createDanmakuCore` に限定し、feature order は schema / type contract と test で固定する。restore は型、shape、top-level `enabledFeatures` と `enabledFeatureStates` の重複や canonical order 違反を `state.invalidShape`、loaded content との top-level feature 差分や unknown feature、feature state の extra / missing / wrong feature と `stateVersion` の不一致を `state.featureMismatch` として分類する。Phase 2B-4 で、有効な feature は必ず 1 つの state を持つことにした（実行時の状態を持たない feature は `null` の payload）。
 
 `SerializedPatternRunnerState.payload` と `SerializedEnabledFeatureState.payload` は public な `SerializedJsonValue` だけを許可し、state hash では canonical encoding の対象にする。`number` は finite number のみ有効とし、`NaN` / `Infinity` は restore validation で `state.invalidShape` にする。hash では `-0` を `+0` に正規化し、finite number を IEEE-754 binary64 little-endian bytes として encode する。string は lone surrogate を含む場合に `state.invalidShape` として拒否し、payload の object key は UTF-8 byte sequence の lexicographic order で正規化する。module ごとの `stateVersion` は正の safe integer とし、未対応 version は module ごとの互換性 error で拒否する。Phase 1B-3 は型境界だけを固定し、basic core が実際に `patternRunnerStates: []` と `enabledFeatureStates: []` を出力する処理は Phase 1B-4 の serialize 実装で追加する。restore 時の top-level `enabledFeatures` と feature state の整合検証は Phase 1B-5 で扱う。
 
@@ -1747,7 +1747,7 @@ pattern が撃った敵弾の restore は、生成 tick（`expectedTick - ageTic
 
 Phase 2A-6 で stage の終了状態 `stageStatus` を committed state、`SerializedDeterministicState`、`HashableGameState`（`timelineCursor` の次）に加え、`stateHashVersion` を 4 に上げた。値は直前の tick の終わりに design 7.1 の規則で決めた `playing` / `stageCleared` / `gameOver` で、`GameFrame.state.status` と同じ。`stageCleared` / `gameOver` の session の `tick()` は、input の shape や tick 番号より先に `stageSession.ended` の caller precondition error を返し、session を fatal にしない。`serialize()` は終了後も使え、終了した snapshot も restore できる（restore した session の `tick()` も `stageSession.ended` を返す）。restore は `stageStatus` が 3 値のどれかであることを検証し、`expectedTick` が 0 の snapshot は `playing` に限り、それ以外は restore した自機の残機、`timelineCursor` と timeline の長さ、active enemy から同じ規則で決まる値との一致を要求する。
 
-Core API は transactional とする。現在実装済みの `load()`、`startStage()`、`restore()` は成功時だけ新しい handle を返し、失敗時に既存の `LoadedGame` / `StageSession` を部分更新しない。Phase 1B-5A の `restore()` は top-level metadata と互換性 error boundary を固定し、Phase 1B-5B は compatible snapshot の deterministic payload を validate / convert / re-serialize して accepted committed state の前段まで確認した。Phase 1B-5D では compatible snapshot から `StageSession` を返し、restore 直後の serialize と後続 tick が元 session と一致することを固定した。post-1B replay playback で追加する `createReplayPlayback()` / `restoreReplayPlayback()` も同じ方針にする。Core version は `ShootingCore.coreVersion` が持ち、content が申告する値ではない。`StageSession.tick()` は session 内の `expectedTick` を持ち、`input.tick !== expectedTick`、重複 tick、欠番 tick を caller precondition error として返すが、session を fatal にしない。Runtime は dropped tick を replay 入力として補完せず、実際に Simulation へ渡した `InputFrame` だけを保存する。
+Core API は transactional とする。現在実装済みの `load()`、`startStage()`、`restore()` は成功時だけ新しい handle を返し、失敗時に既存の `LoadedGame` / `StageSession` を部分更新しない。Phase 1B-5A の `restore()` は top-level metadata と互換性 error boundary を固定し、Phase 1B-5B は compatible snapshot の deterministic payload を validate / convert / re-serialize して accepted committed state の前段まで確認した。Phase 1B-5D では compatible snapshot から `StageSession` を返し、restore 直後の serialize と後続 tick が元 session と一致することを固定した。post-1B replay playback で追加する `createReplayPlayback()` / `restoreReplayPlayback()` も同じ方針にする。Core version は `DanmakuCore.coreVersion` が持ち、content が申告する値ではない。`StageSession.tick()` は session 内の `expectedTick` を持ち、`input.tick !== expectedTick`、重複 tick、欠番 tick を caller precondition error として返すが、session を fatal にしない。Runtime は dropped tick を replay 入力として補完せず、実際に Simulation へ渡した `InputFrame` だけを保存する。
 
 `ContentRegistry` は外部データの参照関係を検証する境界でもある。`content.version` は単なる title 内の連番ではなく、title / content pack をまたいで一意な immutable release identity とし、異なる content payload に同じ値を再利用しない。Stage の `music`、`background`、timeline 内の `enemy` と `path`、`clearCondition.bossDefeated.enemy`、Enemy の `asset`、`behavior.pattern`、Boss phase の `phases[].pattern`、Pattern の `fireOnSpawn.bullet`、Bullet/Player/PlayerShot の `asset` はすべて registry 経由で解決し、未定義 ID を schema test で検出する。Feature registry が登録された場合だけ、Pickup、Bomb、Affinity、Rank、advanced scoring の参照を追加検証する。
 
@@ -1803,11 +1803,11 @@ Feature の gating（Phase 2B-5）: basic は feature が持つ content の fiel
 - `pickup` 無効: `EnemyDefinition.drops`、PickupDefinition からの参照、pickup collision pair、pickup score は禁止。manifest に未使用 optional asset key があるだけなら warning に留める。
 - `advancedScoring` 無効: `defaultScoringRuleId` は未指定、`ScoringRule` と scoring fragment は禁止。`graze` / `pickup` score fragment は対応 feature も有効な場合だけ許可する。
 
-Optional module は論理分離だけでなく source / export 境界も分ける。Core minimum は `packages/shooting-core/src/basic/` と root export に置く。Bomb、Graze、Affinity、Rank、Pickup、advanced scoring は `packages/shooting-core/src/features/<feature>/` に置き、feature registration を通じて schema fragments、validation rules、systems、collision pairs、input actions を追加する。root package に型名を置く場合でも、feature 固有 field は discriminated extension として扱い、enabled feature なしでは参照できない。
+Optional module は論理分離だけでなく source / export 境界も分ける。Core minimum は `packages/core/src/basic/` と root export に置く。Bomb、Graze、Affinity、Rank、Pickup、advanced scoring は `packages/core/src/features/<feature>/` に置き、feature registration を通じて schema fragments、validation rules、systems、collision pairs、input actions を追加する。root package に型名を置く場合でも、feature 固有 field は discriminated extension として扱い、enabled feature なしでは参照できない。
 
 Feature registration（Phase 2B-4、`src/basic/extension/feature-module.ts`）:
 
-- feature は `src/features/<feature>/index.ts` を package の subpath export（`@shooting-sample/shooting-core/features/<feature>`）で公開し、`defineFeature()` で作った `ShootingCoreFeature` を export する。host は `createShootingCore({ coreVersion, features: [...] })` に渡す（文字列の引数は従来どおり `coreVersion`）。`ShootingCoreFeature` は中身を読めない型で、`defineFeature()` が作った値だけを受け付け、偽の値、同じ feature の重複、既知でない feature、不正な `stateVersion` や hook は TypeError にする。
+- feature は `src/features/<feature>/index.ts` を package の subpath export（`@danmaku-kit/core/features/<feature>`）で公開し、`defineFeature()` で作った `DanmakuCoreFeature` を export する。host は `createDanmakuCore({ coreVersion, features: [...] })` に渡す（文字列の引数は従来どおり `coreVersion`）。`DanmakuCoreFeature` は中身を読めない型で、`defineFeature()` が作った値だけを受け付け、偽の値、同じ feature の重複、既知でない feature、不正な `stateVersion` や hook は TypeError にする。
 - `GameDefinition.enabledFeatures` は `features` に渡された feature だけを受け付け、渡されていない既知の feature は feature ごとに `feature.unsupported`（`targetId` 付き）にする。feature を 1 つも渡さない Core は、従来どおり `enabledFeatures: []` だけを受け付ける。
 - Core は有効な feature の module を canonical feature order で呼ぶ。`load()` は basic の検証に通った definition に `validateContent()` を当てて error と warning を足し、`startStage()` は `createInitialState()` で state を作り、tick は `spawn`（spawn bullets / player shots の後）と `scoring`（collision resolution と basic の scoring の後、cleanup の前）の位置で system を実行する。serialize は `serializeState()` を `SerializedEnabledFeatureState` の payload に、state hash は `hashState()` を feature state に入れ、restore は feature ごとに 1 つの state と `stateVersion` を確かめてから `restoreState()` で state を作る（spawn から到達できる state だけを受け付けるのは module の責務）。
 - feature の state は JSON 互換の plain data で、Core が committed state に feature ごとに持って freeze する。hook が plain data でない値を返せば、startStage と tick は `stageSession.fatal`、restore は `state.invalidShape` にする。system の error は tick の fatal になる。
@@ -1822,7 +1822,7 @@ post-1B replay playback API の `createReplayPlayback()` は開始前に `Replay
 
 Replay metadata は用途ごとに分ける。`ReplayMetadata` は互換性確認と表示用の未検証 DTO であり、型は `enabledFeatures` の要素型と readonly 性だけを保証する。canonical order と重複禁止は playback validator が保証し、検証前の DTO を互換性比較へ渡さない。`ReplayPlayback` は metadata と入力列を持つ再生入力、`RuntimeDroppedTicks` は Runtime 診断 metadata であり Simulation の入力列ではない。
 
-- Full replay 必須: `ShootingCore.coreVersion` から記録した `coreVersion`、`schemaVersion`、`content.version`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、canonical `enabledFeatures`、platform-independent `seed`、入力列。
+- Full replay 必須: `DanmakuCore.coreVersion` から記録した `coreVersion`、`schemaVersion`、`content.version`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、canonical `enabledFeatures`、platform-independent `seed`、入力列。
 - optional diagnostics: `RuntimeDroppedTicks` log、runtime build info、browser timing summary。
 - 検証用: tick ごとの state hash、PRNG state hash（独立 algorithm ではなく state hash format 内の `prngState` field を使う）。
 - Resume 用 snapshot: `SerializedGameState` と完全な PRNG state。
@@ -1855,9 +1855,9 @@ Hash 対象外:
 
 Rank が無効な MVP では rank value を hash に含めない。Rank module が有効な場合だけ score/rank state として hash に含める。
 
-State hash は canonical encoding を固定する。hash input は `stateHashVersion`、`ShootingCore.coreVersion`、`schemaVersion`、`expectedTick` を先頭に置く。`expectedTick` は次に受け付ける input tick であり、最後に完了した frame tick ではない。hash は replay / snapshot metadata の互換性検証が完了した同一 `contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、canonical `enabledFeatures` 文脈内でだけ比較する。debug artifact 単体で異なる文脈を比較したい場合は、state hash 本体ではなく artifact metadata にこれらの互換性 field を必ず併記する。
+State hash は canonical encoding を固定する。hash input は `stateHashVersion`、`DanmakuCore.coreVersion`、`schemaVersion`、`expectedTick` を先頭に置く。`expectedTick` は次に受け付ける input tick であり、最後に完了した frame tick ではない。hash は replay / snapshot metadata の互換性検証が完了した同一 `contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、canonical `enabledFeatures` 文脈内でだけ比較する。debug artifact 単体で異なる文脈を比較したい場合は、state hash 本体ではなく artifact metadata にこれらの互換性 field を必ず併記する。
 
-entity は id 昇順、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は canonical feature order で列挙する。state hash 用 DTO は public serialize DTO とは別の `HashableGameState` として定義し、`stateHashVersion`、`ShootingCore.coreVersion`、`schemaVersion`、`expectedTick`、`nextEntityId`、`timelineCursor`、`stageStatus`、`prngState`、`score`、runtime entities、pending events、pattern runner states、enabled feature states を持つ。runtime entity DTO には entity id と component values を一度だけ入れ、`entity ids` や `component values` を別配列として二重 encode しない。`lives` や `nextShotAllowedTick` は player runtime entity payload 内の field として encode する。
+entity は id 昇順、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は canonical feature order で列挙する。state hash 用 DTO は public serialize DTO とは別の `HashableGameState` として定義し、`stateHashVersion`、`DanmakuCore.coreVersion`、`schemaVersion`、`expectedTick`、`nextEntityId`、`timelineCursor`、`stageStatus`、`prngState`、`score`、runtime entities、pending events、pattern runner states、enabled feature states を持つ。runtime entity DTO には entity id と component values を一度だけ入れ、`entity ids` や `component values` を別配列として二重 encode しない。`lives` や `nextShotAllowedTick` は player runtime entity payload 内の field として encode する。
 
 固定 DTO は fixedStruct として encode する。fixedStruct は `0x07` tag、struct name の UTF-8 byte length u32 little-endian、struct name bytes、field count u32 little-endian、schema 定義順の field value bytes の順に出力し、object key bytes は出さない。type discriminant を持つ union DTO では `kind` などの discriminant field も schema 定義順の通常 field として encode する。nested field は flatten せず、`position` は `fixedStruct("vector2", [x, y])`、player `movement` は `fixedStruct("playerMovement", [speed, focusSpeed])`、enemy `pathRunnerState` は `fixedStruct("enemyPathRunnerState", [segmentIndex, fixedStruct("vector2", [x, y]), segmentElapsedTicks])`、enemy bullet の `velocity` と `spawnPosition` はそれぞれ `fixedStruct("vector2", [x, y])` として encode する。たとえば player entity は現在の `HashableRuntimeEntityState` schema に合わせて `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`lives`、`invincibleTicksRemaining`、`nextShotAllowedTick`、`movement`、`shotDefinitionId` の順に、enemy entity は `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`hp`、`scoreOnKill`、`pathId`、`patternId`、`pathRunnerState` の順に、enemy bullet entity は `id`、`kind`、`definitionId`、`position`、`collisionRadius`、`velocity`、`spawnPosition`、`ageTicks` の順に encode する。
 
@@ -1920,7 +1920,7 @@ hash algorithm は `xxHash64`、seed は safe integer に丸めず `0x53484f4f54
 
 Pattern DSL と Stage timeline は、単純な構造検証に加えて意味検証を行う。
 
-Parse 後は `PatternProgram` として正規化する（`packages/shooting-core/src/basic/patterns/pattern-program.ts`）。命令列に分岐や乱数はないため、runner が止まる位置（cursor）ごとに、次の `wait` か末尾まで実行する命令のまとまり（run）を load 時に 1 度だけ求める。
+Parse 後は `PatternProgram` として正規化する（`packages/core/src/basic/patterns/pattern-program.ts`）。命令列に分岐や乱数はないため、runner が止まる位置（cursor）ごとに、次の `wait` か末尾まで実行する命令のまとまり（run）を load 時に 1 度だけ求める。
 
 ```ts
 type PatternProgram = {
@@ -2031,7 +2031,7 @@ type ReplayDiffValue = JsonValue | Readonly<{ kind: "missing" }> | Readonly<{
 
 CI artifact path は `artifacts/replay-divergence/<replayId>-tick-<tick>.json` とし、path の `<tick>` は `firstDivergentCheckpointTick` に固定する。片側だけ replay が終了した場合は `missing`、片側の `tick()` だけ失敗した場合は `error` side として artifact を生成し、存在しない state / events を必須扱いしない。
 
-Phase 1C-4 の field-level diff は root package へ公開しない test helper として `packages/shooting-core/src/basic/testing/` に置く。
+Phase 1C-4 の field-level diff は root package へ公開しない test helper として `packages/core/src/basic/testing/` に置く。
 
 - `recordReplayTraceForTest(loadedGame, startOptions, inputs)` は hook-enabled `LoadedGame` で stage を開始し、初期 checkpoint と各 tick 後の checkpoint を `ReplayTrace` として記録する。trace の `ReplayMetadata` は開始した session の serialize 結果と `startOptions.seed` から作り、記録した run と食い違わせない。`tick()` または checkpoint capture が失敗したら、その checkpoint を `error` として記録して止める。`inputFrame` は Core と同じ正規化で parse した値とし、parse できない入力は `null` で残す。
 - `compareReplayTracesForTest(replayId, expected, actual)` は `match` / `divergence` / `incompatible` / `invalid` を返す。両 metadata の検証失敗と、checkpoint が tick 順に連続しない、`ok` checkpoint の state / summary が別 tick を指す、`error` が最後でない、といった trace 不正は `invalid`、互換性 field の不一致は `incompatible` とし、どちらも report を作らない。
@@ -2057,17 +2057,17 @@ Phase 1C-4 の field-level diff は root package へ公開しない test helper 
 
 Screenshot diff は flaky になりやすいため、CI では tolerance と mask を使う。判定の正本は debug state dump と deterministic replay smoke test に置き、screenshot diff は視覚崩れ検知の補助とする。
 
-Phase 1C の debug state dump は headless/core dump とし、root package へ公開しない package-internal test helper の `serializeDebugStateForTest(session)` から取得する。利用時は test process で `SHOOTING_CORE_ENABLE_INTERNAL_TEST_HOOKS=1` を設定し、`createShootingCoreWithTestingHooksForTest()` から作った session を渡す。通常の `createShootingCore()` から作った session は serializer 未登録として例外で拒否する。これらの helper / factory は package root や deep package subpath から import できる public API にしない。
+Phase 1C の debug state dump は headless/core dump とし、root package へ公開しない package-internal test helper の `serializeDebugStateForTest(session)` から取得する。利用時は test process で `DANMAKU_KIT_ENABLE_INTERNAL_TEST_HOOKS=1` を設定し、`createDanmakuCoreWithTestingHooksForTest()` から作った session を渡す。通常の `createDanmakuCore()` から作った session は serializer 未登録として例外で拒否する。これらの helper / factory は package root や deep package subpath から import できる public API にしない。
 
 `tick` は state hash の `expectedTick` と同じく、その committed checkpoint が次に受け付ける入力 tick を表す。開始時の seed は replay snapshot に保存しないため、`startStage()` から作った session では元の文字列、`restore()` から作った session では `null` とする。seed の有無は state hash へ影響させない。canonical hash の resource budget 超過などで digest を生成できない場合、helper は throw せず `debugState.hashFailed` の test-only result error を返す。この内部 code は root 公開の `CoreErrorCode` union へ追加しない。
 
 `entityCounts` は現在の committed entity、`eventCounts` と `collisionCandidates` は直前に成功して commit された tick を表す。start / restore 直後はまだ成功 frame がないため、未計測を実測ゼロと区別して両 field を `null` にする。最初の成功 tick では pending `stageStarted` を含む実際の frame event を集計し、以後も成功 tick ごとに置き換える。非fatalな失敗 tick では直前値を保持し、fatal latch 後は破損し得る committed snapshot をdumpせず `stageSession.fatal` errorを返す。`collisionCandidates` は broad phase を通過した collider の組の数（問い合わせごとに grid が返した候補数の合計で、narrow phase の早期終了や撃破済み enemy の読み飛ばしの前に数える）とし、render-only state や object pool state と同様に state hash / serialize 対象へ含めない。Phase 2A-7 までは narrow phase の円判定を実行した組の数だった。
 
-collision / event metrics は test serializer が登録された session でだけ収集する。通常の `createShootingCore()` session では collision counter、event count object、freeze を tick hot path に生成せず、Core の本番性能へ test-only diagnostics の費用を持ち込まない。
+collision / event metrics は test serializer が登録された session でだけ収集する。通常の `createDanmakuCore()` session では collision counter、event count object、freeze を tick hot path に生成せず、Core の本番性能へ test-only diagnostics の費用を持ち込まない。
 
-Browser Test では Phase 2A 以降に `apps/sample-title` が `BrowserDebugStateDump` を所有し、最新の public `GameFrame` と runtime adapter の lifecycle / viewport / input / asset / audio / overlay state から `window.__SHOOTING_DEBUG_STATE__()` を組み立てる。この global hook は dev / test build にだけ設置し、production build では定義しない。sample app は Vite の mode が `production` でないとき（dev server と `vite build --mode test`）だけ `src/debug/debug-state-hook.ts` で hook を置き、production build では分岐ごと消える。`apps/sample-title/vite/dev-only-build.test.ts` が production と test の mode で app を build し、hook 名（と Phase 2B-9 の Preview の印）が test の bundle にだけ含まれることを検査する。browser schema は headless dump を継承せず、Core 内部の `stateHash`、`prngHash`、`collisionCandidates` を含めないため、非公開 helper のdeep importや新しいCore diagnostics portを必要としない。
+Browser Test では Phase 2A 以降に `apps/sample-title` が `BrowserDebugStateDump` を所有し、最新の public `GameFrame` と runtime adapter の lifecycle / viewport / input / asset / audio / overlay state から `window.__DANMAKU_KIT_DEBUG_STATE__()` を組み立てる。この global hook は dev / test build にだけ設置し、production build では定義しない。sample app は Vite の mode が `production` でないとき（dev server と `vite build --mode test`）だけ `src/debug/debug-state-hook.ts` で hook を置き、production build では分岐ごと消える。`apps/sample-title/vite/dev-only-build.test.ts` が production と test の mode で app を build し、hook 名（と Phase 2B-9 の Preview の印）が test の bundle にだけ含まれることを検査する。browser schema は headless dump を継承せず、Core 内部の `stateHash`、`prngHash`、`collisionCandidates` を含めないため、非公開 helper のdeep importや新しいCore diagnostics portを必要としない。
 
-Browser の入力の再生（Phase 2A-12）: dev / test build は stage ごとに Core が受け付けた `InputFrame` を残し（`StageLoop` の `recordInputs`）、dump の schema の外にある `window.__SHOOTING_DEBUG_REPLAY__()` が `BrowserReplayRecord`（`schemaVersion: "1"`、`kind: "browserReplay"`、開始条件の `stage`（stageId / difficulty / seed）、`inputs`、最後の入力の後の serialize 結果 `state`）を返す（`src/runtime/debug/browser-replay-record.ts`）。Node の headless replay は `stage` を始めて `inputs` を順に渡し、`state` と同じ serialize 結果に着くことを、`serialize()` の JSON の SHA-256 で比べる。Core の内部 hash は browser に出さない。
+Browser の入力の再生（Phase 2A-12）: dev / test build は stage ごとに Core が受け付けた `InputFrame` を残し（`StageLoop` の `recordInputs`）、dump の schema の外にある `window.__DANMAKU_KIT_DEBUG_REPLAY__()` が `BrowserReplayRecord`（`schemaVersion: "1"`、`kind: "browserReplay"`、開始条件の `stage`（stageId / difficulty / seed）、`inputs`、最後の入力の後の serialize 結果 `state`）を返す（`src/runtime/debug/browser-replay-record.ts`）。Node の headless replay は `stage` を始めて `inputs` を順に渡し、`state` と同じ serialize 結果に着くことを、`serialize()` の JSON の SHA-256 で比べる。Core の内部 hash は browser に出さない。
 
 Phase 2A-12 の Browser test（`apps/sample-title/e2e/`、`npm run test:browser`）:
 
@@ -2178,7 +2178,7 @@ Phase 2B では `docs/content-authoring/examples/` を `validate-content` に通
 ### Phase 1A: Core minimum contract
 
 - TypeScript package セットアップ
-- `packages/shooting-core` の最小型定義
+- `packages/core` の最小型定義
 - Content schema minimum
 - Registry validation minimum
 - Fixed tick
@@ -2273,7 +2273,7 @@ Phase 2B（Authoring / content expansion）は完了した。上の 9 項目を 
 
 ### Phase 4: 再利用性
 
-- `shooting-core` とタイトル固有 content の分離
+- `@danmaku-kit/core` とタイトル固有 content の分離
 - Core API 整理
 - Content validation CLI の公開整備
 - サンプル別タイトル content

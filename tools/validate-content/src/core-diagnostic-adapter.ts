@@ -1,10 +1,10 @@
 import {
-  createShootingCore,
+  createDanmakuCore,
   type CoreError,
   type CoreWarning,
   type GameDefinition,
-} from "@shooting-sample/shooting-core";
-import { pickupFeature } from "@shooting-sample/shooting-core/features/pickup";
+} from "@danmaku-kit/core";
+import { pickupFeature } from "@danmaku-kit/core/features/pickup";
 
 import type { ContentSourceIndex } from "./content-source-index.ts";
 import { freezeCoreSchemaDiagnostic } from "./diagnostic-factory.ts";
@@ -35,7 +35,7 @@ export function validateContentDefinition(
   sourceIndex: ContentSourceIndex,
 ): readonly ValidationContentDiagnostic[] {
   // validate-content は Core の持つ optional feature をすべて登録し、`enabledFeatures` で有効にした feature の content を検証する。
-  const result = createShootingCore({ coreVersion: "validate-content", features: [pickupFeature] }).load(definition as GameDefinition);
+  const result = createDanmakuCore({ coreVersion: "validate-content", features: [pickupFeature] }).load(definition as GameDefinition);
   if (!result.ok) {
     return Object.freeze(result.errors.map((error) => mapCoreError(error, sourceIndex)));
   }

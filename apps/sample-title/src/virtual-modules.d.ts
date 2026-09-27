@@ -1,5 +1,5 @@
 declare module "virtual:sample-title/game-definition" {
-  import type { GameDefinition } from "@shooting-sample/shooting-core";
+  import type { GameDefinition } from "@danmaku-kit/core";
 
   import type { AssetManifest } from "./runtime/assets/asset-manifest.ts";
 

@@ -1,4 +1,4 @@
-import type { GameFrame } from "@shooting-sample/shooting-core";
+import type { GameFrame } from "@danmaku-kit/core";
 
 import type { GameLifecycleState } from "../lifecycle/game-lifecycle.ts";
 
@@ -28,7 +28,7 @@ const RETURN_TO_TITLE = "Press Enter to return to the title";
 const BANNER_BY_STATE: Readonly<Partial<Record<GameLifecycleState, HudBanner>>> = Object.freeze({
   booting: { title: "LOADING", detail: null, tone: "info" },
   loading: { title: "LOADING", detail: null, tone: "info" },
-  title: { title: "SHOOTING SAMPLE", detail: "Press Enter to start", tone: "info" },
+  title: { title: "DANMAKU KIT", detail: "Press Enter to start", tone: "info" },
   stageStarting: { title: "READY", detail: null, tone: "info" },
   paused: { title: "PAUSED", detail: "Press P or Esc to resume", tone: "info" },
   stageCleared: { title: "STAGE CLEAR", detail: RETURN_TO_TITLE, tone: "success" },

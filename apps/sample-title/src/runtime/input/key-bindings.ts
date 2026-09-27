@@ -1,4 +1,4 @@
-import type { GameplayActionId } from "@shooting-sample/shooting-core";
+import type { GameplayActionId } from "@danmaku-kit/core";
 
 /** held 中の方向から tick ごとの `InputFrame.axes` を作る移動方向。 */
 export type MoveDirection = "moveLeft" | "moveRight" | "moveUp" | "moveDown";

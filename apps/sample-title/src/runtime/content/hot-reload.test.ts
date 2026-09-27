@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { GameDefinition } from "@shooting-sample/shooting-core";
+import type { GameDefinition } from "@danmaku-kit/core";
 
 import { createSampleTitleCore, loadSampleTitleDefinition } from "../../test-support/sample-title-game.ts";
 import type { AssetManifest } from "../assets/asset-manifest.ts";

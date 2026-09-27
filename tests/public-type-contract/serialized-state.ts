@@ -10,7 +10,7 @@ import type {
   SerializedPendingEvent,
   SerializedPrngSnapshot,
   SerializedRuntimeEntityState,
-} from "@shooting-sample/shooting-core";
+} from "@danmaku-kit/core";
 
 const serializedEntityId: SerializedEntityId = 1;
 

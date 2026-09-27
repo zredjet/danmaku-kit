@@ -268,7 +268,7 @@ validate-content は YAML の読み込みと content root の形を先に調べ�
 ### `feature.unsupported`
 
 - 重要度: error
-- 原因: `enabledFeatures` の feature の module が、Core に登録されていない。`bomb`、`graze`、`affinity`、`rank`、`advancedScoring` は名前だけ予約していて module がまだないので、validate-content（`pickup` を登録している）ではこれらを書くとこの error になる。自分で Core を作る runtime では、`createShootingCore({ features })` に module を渡し忘れた場合も出る。
+- 原因: `enabledFeatures` の feature の module が、Core に登録されていない。`bomb`、`graze`、`affinity`、`rank`、`advancedScoring` は名前だけ予約していて module がまだないので、validate-content（`pickup` を登録している）ではこれらを書くとこの error になる。自分で Core を作る runtime では、`createDanmakuCore({ features })` に module を渡し忘れた場合も出る。
 - 直し方: module のない feature は `enabledFeatures` から外す。`pickup` なら、content を使う runtime で module を登録する（sample title は `src/main.ts` で `pickupFeature` を渡す）。
 - schema path: `enabledFeatures`
 

@@ -1,4 +1,4 @@
-import type { Difficulty, GameFrame } from "@shooting-sample/shooting-core";
+import type { Difficulty, GameFrame } from "@danmaku-kit/core";
 
 import type { AudioStatus } from "../audio/audio-status.ts";
 import type { GameLifecycleState } from "../lifecycle/game-lifecycle.ts";

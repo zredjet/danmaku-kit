@@ -7,7 +7,7 @@ import ts from "typescript";
 
 import { collectTypeScriptFiles, isTestCodeFile } from "./support/source-files.mjs";
 
-const shootingCoreSourceRoot = fileURLToPath(new URL("../packages/shooting-core/src", import.meta.url));
+const coreSourceRoot = fileURLToPath(new URL("../packages/core/src", import.meta.url));
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 
 /**
@@ -40,10 +40,10 @@ test("detects host-dependent Math calls and exponentiation but not exact Math fu
   ]);
 });
 
-test("keeps shooting-core source free of host-dependent math", async () => {
+test("keeps core source free of host-dependent math", async () => {
   // replay と state hash を host 間で一致させるため、tick に入り得る Core の source は正確な演算だけを使う（design 9.8 / 10）。
-  const files = (await collectTypeScriptFiles(shootingCoreSourceRoot))
-    .filter((file) => !isTestCodeFile(shootingCoreSourceRoot, file));
+  const files = (await collectTypeScriptFiles(coreSourceRoot))
+    .filter((file) => !isTestCodeFile(coreSourceRoot, file));
   const violations = [];
 
   for (const file of files) {

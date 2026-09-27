@@ -1,4 +1,4 @@
-import type { GameDefinition, GameFrame, ShootingCore, StageDefinition } from "@shooting-sample/shooting-core";
+import type { DanmakuCore, GameDefinition, GameFrame, StageDefinition } from "@danmaku-kit/core";
 
 import type { GameShell } from "../runtime/lifecycle/game-shell.ts";
 import { formatPreviewTarget, listPreviewChoices, type PreviewTarget } from "../runtime/preview/preview-definition.ts";
@@ -35,7 +35,7 @@ export type PreviewModeOptions = Readonly<{
   /** overlay を置く、canvas と同じ transform root（`.stage-root`）。 */
   stageRoot: HTMLElement;
   shell: PreviewShell;
-  core: Pick<ShootingCore, "load">;
+  core: Pick<DanmakuCore, "load">;
   selection: PreviewSelection;
   /** 開始演出の後、tick を進めずに pause して始める（`?paused=1`）。tick 0 から 1 tick ずつ進めた決定的な画面を作れる。 */
   startPaused: boolean;

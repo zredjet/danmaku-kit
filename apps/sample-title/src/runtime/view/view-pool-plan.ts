@@ -1,4 +1,4 @@
-import type { GameDefinition, PlayerId, StageId } from "@shooting-sample/shooting-core";
+import type { GameDefinition, PlayerId, StageId } from "@danmaku-kit/core";
 
 import { enabledPickups } from "./definition-assets.ts";
 import type { ViewKind } from "./view-entities.ts";

@@ -1,4 +1,4 @@
-import type { CoreError, GameEvent, GameFrame, InputFrame, StageSession } from "@shooting-sample/shooting-core";
+import type { CoreError, GameEvent, GameFrame, InputFrame, StageSession } from "@danmaku-kit/core";
 
 import type { KeyboardInputAdapter } from "../input/keyboard-input.ts";
 import { FixedTickClock } from "./fixed-tick-clock.ts";

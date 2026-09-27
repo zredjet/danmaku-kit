@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
-  createShootingCore,
+  createDanmakuCore,
   type BulletDefinition,
   type ContentRegistry,
   type EnemyDefinition,
@@ -18,9 +18,9 @@ import {
   type PlayerDefinition,
   type PlayerShotDefinition,
   type StageDefinition,
-} from "@shooting-sample/shooting-core";
-import { pickupFeature } from "@shooting-sample/shooting-core/features/pickup";
-import { formatValidateContentHuman, loadValidatedGameDefinition } from "@shooting-sample/validate-content";
+} from "@danmaku-kit/core";
+import { pickupFeature } from "@danmaku-kit/core/features/pickup";
+import { formatValidateContentHuman, loadValidatedGameDefinition } from "@danmaku-kit/validate-content";
 
 // content 制作者向けの minimal YAML examples（design 19 / 21.6、Phase 2B-11）を validate-content に通し、docs の例と schema の
 // ずれを検出する。下の表は Core の公開型から key を網羅させるので、Core に collection、field、Pattern DSL の命令が増えると型検査が
@@ -180,7 +180,7 @@ test("clears every stage of every difficulty without input when the player survi
       players: definition.content.players.map((player) => ({ ...player, life: { ...player.life, initialLives: CLEAR_TICK_LIMIT } })),
     },
   };
-  const loaded = createShootingCore({ features: [pickupFeature] }).load(survivor);
+  const loaded = createDanmakuCore({ features: [pickupFeature] }).load(survivor);
   assert.ok(loaded.ok, JSON.stringify(loaded.ok ? null : loaded.errors));
 
   for (const stage of definition.content.stages) {

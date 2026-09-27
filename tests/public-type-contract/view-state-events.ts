@@ -8,7 +8,7 @@ import type {
   ReadonlyGameState,
   ReadonlyPickupState,
   ReadonlyPlayerState,
-} from "@shooting-sample/shooting-core";
+} from "@danmaku-kit/core";
 import { playerId, stageId } from "./content-definitions.ts";
 
 // Phase 2B-6: pickup feature が有効な content の frame は `state.features.pickups` を持つ。

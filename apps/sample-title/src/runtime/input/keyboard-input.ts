@@ -1,4 +1,4 @@
-import type { GameplayActionId, InputFrame } from "@shooting-sample/shooting-core";
+import type { GameplayActionId, InputFrame } from "@danmaku-kit/core";
 
 import {
   DEFAULT_KEY_BINDINGS,

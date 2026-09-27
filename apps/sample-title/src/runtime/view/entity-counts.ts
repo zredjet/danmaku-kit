@@ -1,4 +1,4 @@
-import type { ReadonlyEntityState, ReadonlyGameState } from "@shooting-sample/shooting-core";
+import type { ReadonlyEntityState, ReadonlyGameState } from "@danmaku-kit/core";
 
 import type { ViewEntity, ViewKind } from "./view-entities.ts";
 

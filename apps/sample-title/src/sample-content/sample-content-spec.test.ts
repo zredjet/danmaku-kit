@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import type { Difficulty, GameDefinition, PatternId } from "@shooting-sample/shooting-core";
+import type { Difficulty, GameDefinition, PatternId } from "@danmaku-kit/core";
 
 import { expandInputScript, runHeadlessReplay } from "../test-support/headless-replay.ts";
 import { createSampleTitleCore, loadSampleTitleDefinition } from "../test-support/sample-title-game.ts";

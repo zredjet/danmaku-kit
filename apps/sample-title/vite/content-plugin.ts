@@ -5,8 +5,8 @@ import {
   formatValidateContentHuman,
   loadValidatedGameDefinition,
   type ValidateContentSourcePaths,
-} from "@shooting-sample/validate-content";
-import type { GameDefinition } from "@shooting-sample/shooting-core";
+} from "@danmaku-kit/validate-content";
+import type { GameDefinition } from "@danmaku-kit/core";
 import type { Plugin, ViteDevServer } from "vite";
 
 import type { AssetManifest as RuntimeAssetManifest } from "../src/runtime/assets/asset-manifest.ts";

@@ -5,7 +5,7 @@ import type {
   InputFrame,
   ReadonlyEntityState,
   StageSession,
-} from "@shooting-sample/shooting-core";
+} from "@danmaku-kit/core";
 
 type StageStatus = GameFrame["state"]["status"];
 

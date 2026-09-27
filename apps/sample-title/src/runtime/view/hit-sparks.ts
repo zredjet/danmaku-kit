@@ -1,4 +1,4 @@
-import type { GameEvent, ReadonlyEntityState } from "@shooting-sample/shooting-core";
+import type { GameEvent, ReadonlyEntityState } from "@danmaku-kit/core";
 
 /** hit spark の上限と寿命。上限を超えた spark は出さずに落とす。 */
 export type HitSparkBudget = Readonly<{

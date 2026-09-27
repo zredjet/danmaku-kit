@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { EnemyId, GameDefinition, GameEvent } from "@shooting-sample/shooting-core";
+import type { EnemyId, GameDefinition, GameEvent } from "@danmaku-kit/core";
 
 import { expandInputScript, runHeadlessReplay } from "../test-support/headless-replay.ts";
 import { createSampleTitleCore, loadSampleTitleDefinition } from "../test-support/sample-title-game.ts";

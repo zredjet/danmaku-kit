@@ -16,7 +16,7 @@ test("shows score and lives from the frame state only during a stage", () => {
   assert.deepEqual(buildHudView("title", frame), {
     score: null,
     lives: null,
-    banner: { title: "SHOOTING SAMPLE", detail: "Press Enter to start", tone: "info" },
+    banner: { title: "DANMAKU KIT", detail: "Press Enter to start", tone: "info" },
   });
 });
 

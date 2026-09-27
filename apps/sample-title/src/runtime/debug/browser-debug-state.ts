@@ -1,4 +1,4 @@
-import type { GameFrame } from "@shooting-sample/shooting-core";
+import type { GameFrame } from "@danmaku-kit/core";
 
 import type { AssetStatus } from "../assets/asset-loading.ts";
 import type { AudioStatus } from "../audio/audio-status.ts";
@@ -9,7 +9,7 @@ import type { ViewportLayout } from "../view/viewport-layout.ts";
 type Point = Readonly<{ x: number; y: number }>;
 
 /**
- * browser の debug state dump（design 21.5）。dev / test build の `window.__SHOOTING_DEBUG_STATE__()` が返す。
+ * browser の debug state dump（design 21.5）。dev / test build の `window.__DANMAKU_KIT_DEBUG_STATE__()` が返す。
  *
  * headless dump を継承せず、公開の `GameFrame` と Runtime の状態だけから作る。Core 内部の state hash、PRNG hash、collision candidate
  * 数は含めない。

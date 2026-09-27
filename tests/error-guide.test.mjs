@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-import { VALIDATE_CONTENT_DIAGNOSTIC_CODES } from "@shooting-sample/validate-content";
+import { VALIDATE_CONTENT_DIAGNOSTIC_CODES } from "@danmaku-kit/validate-content";
 
 import { collectTypeScriptFiles, isTestCodeFile } from "./support/source-files.mjs";
 
@@ -13,7 +13,7 @@ import { collectTypeScriptFiles, isTestCodeFile } from "./support/source-files.m
 // 直し方（content の診断なら schema path も）を持つことを確かめる。
 
 const guidePath = fileURLToPath(new URL("../docs/content-authoring/error-guide.md", import.meta.url));
-const coreSourceRoot = fileURLToPath(new URL("../packages/shooting-core/src", import.meta.url));
+const coreSourceRoot = fileURLToPath(new URL("../packages/core/src", import.meta.url));
 const coreResultPath = path.join(coreSourceRoot, "basic/result.ts");
 const validateContentSourceRoot = fileURLToPath(new URL("../tools/validate-content/src", import.meta.url));
 /**

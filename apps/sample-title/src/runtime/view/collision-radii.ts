@@ -1,4 +1,4 @@
-import type { GameDefinition } from "@shooting-sample/shooting-core";
+import type { GameDefinition } from "@danmaku-kit/core";
 
 import { enabledPickups } from "./definition-assets.ts";
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { GameEvent } from "@shooting-sample/shooting-core";
+import type { GameEvent } from "@danmaku-kit/core";
 
 import { HitSparks } from "./hit-sparks.ts";
 

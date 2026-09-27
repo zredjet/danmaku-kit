@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import test from "node:test";
 
-import type { GameFrame, SerializedGameState, StageSession } from "@shooting-sample/shooting-core";
+import type { GameFrame, SerializedGameState, StageSession } from "@danmaku-kit/core";
 
 import {
   expandInputScript,

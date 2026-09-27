@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { GameFrame, SerializedGameState, StageDefinition } from "@shooting-sample/shooting-core";
+import type { GameFrame, SerializedGameState, StageDefinition } from "@danmaku-kit/core";
 
 import { describePreviewState, labeledEntities, previewInfoKey, upcomingSpawns } from "./preview-state.ts";
 

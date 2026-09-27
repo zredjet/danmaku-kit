@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { ReadonlyEntityState, ReadonlyGameState, ReadonlyPickupState } from "@shooting-sample/shooting-core";
+import type { ReadonlyEntityState, ReadonlyGameState, ReadonlyPickupState } from "@danmaku-kit/core";
 
 import { PICKUP_ATTRACTION_VIEW_TICKS, PickupAttraction, collectViewEntities } from "./view-entities.ts";
 

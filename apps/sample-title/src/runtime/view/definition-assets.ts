@@ -1,4 +1,4 @@
-import type { GameDefinition, PickupDefinition } from "@shooting-sample/shooting-core";
+import type { GameDefinition, PickupDefinition } from "@danmaku-kit/core";
 
 /**
  * content 定義の asset key を definition id から引ける表にする。

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { GameEvent, InputFrame } from "@shooting-sample/shooting-core";
+import type { GameEvent, InputFrame } from "@danmaku-kit/core";
 
 import { startSampleTitleStage } from "../../test-support/sample-title-game.ts";
 import { KeyboardInputAdapter } from "./keyboard-input.ts";

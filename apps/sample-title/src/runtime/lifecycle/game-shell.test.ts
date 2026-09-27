@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { CoreError, CoreResult, LoadedGame, StageSession, StartStageOptions } from "@shooting-sample/shooting-core";
+import type { CoreError, CoreResult, LoadedGame, StageSession, StartStageOptions } from "@danmaku-kit/core";
 
 import { createFakeSession } from "../../test-support/game-frames.ts";
 import { digestSerializedState, runHeadlessReplay, serializedStateDigest } from "../../test-support/headless-replay.ts";

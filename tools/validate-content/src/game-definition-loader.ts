@@ -1,4 +1,4 @@
-import type { GameDefinition } from "@shooting-sample/shooting-core";
+import type { GameDefinition } from "@danmaku-kit/core";
 
 import type { AssetManifest } from "./asset-manifest.ts";
 import { createNodeContentFileSystem, type ContentFileSystem } from "./content-file-system.ts";

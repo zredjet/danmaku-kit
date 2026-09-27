@@ -1,4 +1,4 @@
-import type { GameDefinition } from "@shooting-sample/shooting-core";
+import type { GameDefinition } from "@danmaku-kit/core";
 import {
   VALIDATE_CONTENT_DIAGNOSTIC_CODES,
   createToolErrorRunResult,
@@ -6,7 +6,7 @@ import {
   formatValidateContentHuman,
   formatValidateContentJson,
   loadValidatedGameDefinition,
-} from "@shooting-sample/validate-content";
+} from "@danmaku-kit/validate-content";
 import type {
   AssetManifest,
   AssetManifestEntry,
@@ -29,18 +29,18 @@ import type {
   ValidateContentSourcePaths,
   ValidateContentToolDiagnosticCode,
   YamlParserDiagnosticCode,
-} from "@shooting-sample/validate-content";
+} from "@danmaku-kit/validate-content";
 
 import type { AssertTrue, IsExactly } from "./support/type-assertions.ts";
 
 // @ts-expect-error validate-content internal types are not importable through a deep package subpath.
-import type { ContentDiagnostic as DeepContentDiagnostic } from "@shooting-sample/validate-content/src/types.ts";
+import type { ContentDiagnostic as DeepContentDiagnostic } from "@danmaku-kit/validate-content/src/types.ts";
 
 // @ts-expect-error validate-content internal functions are not importable through a deep package subpath.
-import { createValidationRunResult as DeepCreateValidationRunResult } from "@shooting-sample/validate-content/src/output.ts";
+import { createValidationRunResult as DeepCreateValidationRunResult } from "@danmaku-kit/validate-content/src/output.ts";
 
 // @ts-expect-error the loader dependency injection entry is not importable through a deep package subpath.
-import { loadValidatedGameDefinitionWith as DeepLoadValidatedGameDefinitionWith } from "@shooting-sample/validate-content/src/game-definition-loader.ts";
+import { loadValidatedGameDefinitionWith as DeepLoadValidatedGameDefinitionWith } from "@danmaku-kit/validate-content/src/game-definition-loader.ts";
 
 type ExpectedBase = Readonly<{
   code: string;

@@ -7,7 +7,7 @@ import type {
   LoadedGame,
   SerializedGameState,
   StartStageOptions,
-} from "@shooting-sample/shooting-core";
+} from "@danmaku-kit/core";
 
 import type { BrowserReplayRecord } from "../debug/browser-replay-record.ts";
 import type { KeyboardInputAdapter, KeyboardInputEvent } from "../input/keyboard-input.ts";

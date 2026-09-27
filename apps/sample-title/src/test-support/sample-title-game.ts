@@ -2,14 +2,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  createShootingCore,
+  createDanmakuCore,
+  type DanmakuCore,
   type GameDefinition,
   type LoadedGame,
-  type ShootingCore,
   type StageSession,
-} from "@shooting-sample/shooting-core";
-import { pickupFeature } from "@shooting-sample/shooting-core/features/pickup";
-import { formatValidateContentHuman, loadValidatedGameDefinition } from "@shooting-sample/validate-content";
+} from "@danmaku-kit/core";
+import { pickupFeature } from "@danmaku-kit/core/features/pickup";
+import { formatValidateContentHuman, loadValidatedGameDefinition } from "@danmaku-kit/validate-content";
 
 const sampleTitleRoot = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -26,8 +26,8 @@ export async function loadSampleTitleDefinition(): Promise<GameDefinition> {
 }
 
 /** `src/main.ts` と同じく、sample content が使う optional feature を登録した Core。 */
-export function createSampleTitleCore(): ShootingCore {
-  return createShootingCore({ features: [pickupFeature] });
+export function createSampleTitleCore(): DanmakuCore {
+  return createDanmakuCore({ features: [pickupFeature] });
 }
 
 /** sample title の content を Core に load した `LoadedGame` を返す。 */

@@ -1,5 +1,5 @@
 {
-  "name": "@shooting-sample/sample-title",
+  "name": "@danmaku-kit/sample-title",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -15,12 +15,12 @@
     "test:browser": "playwright test"
   },
   "dependencies": {
-    "@shooting-sample/shooting-core": "0.0.0",
+    "@danmaku-kit/core": "0.0.0",
     "phaser": "4.2.1"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
-    "@shooting-sample/validate-content": "0.0.0",
+    "@danmaku-kit/validate-content": "0.0.0",
     "vite": "^8.3.1"
   }
 }

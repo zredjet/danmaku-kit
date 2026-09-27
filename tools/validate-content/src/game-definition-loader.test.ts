@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { createShootingCore } from "@shooting-sample/shooting-core";
+import { createDanmakuCore } from "@danmaku-kit/core";
 
 import { loadValidatedGameDefinition } from "./game-definition-loader.ts";
 
@@ -34,7 +34,7 @@ test("returns a freshly assembled game definition that Core loads when validatio
     "player.default",
     "shot.player_basic",
   ]);
-  assert.equal(createShootingCore().load(first.definition).ok, true);
+  assert.equal(createDanmakuCore().load(first.definition).ok, true);
   assert.deepEqual(second.definition, first.definition);
   assert.notEqual(second.definition, first.definition);
   // Core には key の一覧だけを渡し、path は runtime 用の asset manifest にだけ残る。

@@ -1,0 +1,13 @@
+{
+  "name": "@danmaku-kit/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "exports": {
+    ".": "./src/basic/index.ts",
+    "./features/pickup": "./src/features/pickup/index.ts"
+  }
+}

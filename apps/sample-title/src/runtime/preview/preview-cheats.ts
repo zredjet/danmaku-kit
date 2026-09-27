@@ -1,4 +1,4 @@
-import type { GameDefinition, StageDefinition, StageId } from "@shooting-sample/shooting-core";
+import type { GameDefinition, StageDefinition, StageId } from "@danmaku-kit/core";
 
 import { unusedId } from "./preview-definition.ts";
 

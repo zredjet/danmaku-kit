@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { ReadonlyEntityState } from "@shooting-sample/shooting-core";
+import type { ReadonlyEntityState } from "@danmaku-kit/core";
 
 import { diffEntityViews } from "./entity-view-diff.ts";
 

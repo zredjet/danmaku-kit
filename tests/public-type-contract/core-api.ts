@@ -1,33 +1,33 @@
-// createShootingCore / load / startStage / restore / tick / serialize の呼び出し形と CoreErrorCode を固定する。
+// createDanmakuCore / load / startStage / restore / tick / serialize の呼び出し形と CoreErrorCode を固定する。
 
-import { createShootingCore } from "@shooting-sample/shooting-core";
+import { createDanmakuCore } from "@danmaku-kit/core";
 import type {
   CoreError,
   CoreErrorCode,
   CoreResult,
   CoreWarning,
+  DanmakuCore,
+  DanmakuCoreFeature,
+  DanmakuCoreOptions,
   InputFrame,
   LoadedGame,
   SerializedGameState,
-  ShootingCore,
-  ShootingCoreFeature,
-  ShootingCoreOptions,
   StageSession,
   StartStageOptions,
-} from "@shooting-sample/shooting-core";
+} from "@danmaku-kit/core";
 import { definition } from "./content-definitions.ts";
 import { serializedInitialGameState } from "./serialized-state.ts";
 
-const core: ShootingCore = createShootingCore("type-contract");
+const core: DanmakuCore = createDanmakuCore("type-contract");
 // Phase 2B-4: optional feature は feature の package entry が公開する値を `features` に渡す。
-const noFeatures: readonly ShootingCoreFeature[] = [];
-const coreOptions: ShootingCoreOptions = { coreVersion: "type-contract", features: noFeatures };
-const coreWithOptions: ShootingCore = createShootingCore(coreOptions);
-const coreWithDefaults: ShootingCore = createShootingCore();
+const noFeatures: readonly DanmakuCoreFeature[] = [];
+const coreOptions: DanmakuCoreOptions = { coreVersion: "type-contract", features: noFeatures };
+const coreWithOptions: DanmakuCore = createDanmakuCore(coreOptions);
+const coreWithDefaults: DanmakuCore = createDanmakuCore();
 // @ts-expect-error a feature is made by the feature package entry, not by a plain object with the feature name.
-const forgedFeature: ShootingCoreFeature = { feature: "pickup" };
+const forgedFeature: DanmakuCoreFeature = { feature: "pickup" };
 // @ts-expect-error features take the feature package entries, not feature names.
-createShootingCore({ features: ["pickup"] });
+createDanmakuCore({ features: ["pickup"] });
 
 const input: InputFrame = {
   tick: 0,

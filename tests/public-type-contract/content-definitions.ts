@@ -26,7 +26,7 @@ import type {
   StageId,
   StageTimelineAction,
   StageTimelineStep,
-} from "@shooting-sample/shooting-core";
+} from "@danmaku-kit/core";
 import { createMinimumDefinition } from "../fixtures/minimum-game-definition.ts";
 
 export const definition: GameDefinition = createMinimumDefinition();

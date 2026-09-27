@@ -1,4 +1,4 @@
-import type { GameFrame, SerializedGameState, StageDefinition } from "@shooting-sample/shooting-core";
+import type { GameFrame, SerializedGameState, StageDefinition } from "@danmaku-kit/core";
 
 type Point = Readonly<{ x: number; y: number }>;
 

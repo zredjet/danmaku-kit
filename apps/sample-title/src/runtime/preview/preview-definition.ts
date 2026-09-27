@@ -6,7 +6,7 @@ import type {
   PatternId,
   StageId,
   StageTimelineAction,
-} from "@shooting-sample/shooting-core";
+} from "@danmaku-kit/core";
 
 import { PLAYFIELD_WIDTH } from "../view/playfield.ts";
 

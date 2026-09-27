@@ -1,4 +1,4 @@
-import type { GameDefinition, ShootingCore } from "@shooting-sample/shooting-core";
+import type { DanmakuCore, GameDefinition } from "@danmaku-kit/core";
 
 import type { AssetManifest } from "../assets/asset-manifest.ts";
 import type { GameShellContent } from "../lifecycle/game-shell.ts";
@@ -10,7 +10,7 @@ import type { ContentUpdate } from "./content-update.ts";
 
 /** hot reload の判断に使う、今動いている content と view。 */
 export type HotReloadContext = Readonly<{
-  core: Pick<ShootingCore, "load">;
+  core: Pick<DanmakuCore, "load">;
   definition: GameDefinition;
   assetManifest: AssetManifest;
   /** loading で作った view pool の大きさ。新しい content の見積もりがこれを超えれば page を読み込み直す。 */

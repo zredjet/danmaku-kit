@@ -19,9 +19,9 @@ const sprite = (path: string, extra: Partial<AssetManifestEntry> = {}): AssetMan
 
 test("joins base-relative paths to the base URL", () => {
   assert.equal(resolveAssetUrl("/", "assets/sprites/player.svg"), "/assets/sprites/player.svg");
-  assert.equal(resolveAssetUrl("/shooting/", "assets/a.svg"), "/shooting/assets/a.svg");
+  assert.equal(resolveAssetUrl("/danmaku-kit/", "assets/a.svg"), "/danmaku-kit/assets/a.svg");
   assert.equal(resolveAssetUrl("./", "assets/a.png"), "./assets/a.png");
-  assert.equal(resolveAssetUrl("/shooting", "assets/a.png"), "/shooting/assets/a.png");
+  assert.equal(resolveAssetUrl("/danmaku-kit", "assets/a.png"), "/danmaku-kit/assets/a.png");
 });
 
 test("loads sprites as images with SVGs rasterized at the given scale, leaves audio muted and other types unsupported", () => {

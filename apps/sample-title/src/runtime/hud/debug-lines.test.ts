@@ -13,7 +13,7 @@ const frame = createTestFrame(42, {
 });
 
 const base = {
-  versionLabel: "shooting-core 0.0.0 / content sample@content.1",
+  versionLabel: "danmaku-kit core 0.0.0 / content sample@content.1",
   audioStatus: "muted",
   droppedTicksTotal: 3,
   notes: [],
@@ -21,7 +21,7 @@ const base = {
 
 test("shows the stage seed, tick, dropped ticks and entity counts per kind during a stage", () => {
   assert.deepEqual(buildDebugHudLines({ ...base, lifecycle: "playing", seed: "abc", difficulty: "hard", frame, notes: ["hit sparks dropped 2"] }), [
-    "shooting-core 0.0.0 / content sample@content.1",
+    "danmaku-kit core 0.0.0 / content sample@content.1",
     "playing  audio muted",
     "hard  seed abc  tick 42  dropped 3",
     "player 1  enemy 1  enemyBullet 1  playerShot 0  pickup 0",
@@ -31,7 +31,7 @@ test("shows the stage seed, tick, dropped ticks and entity counts per kind durin
 
 test("leaves out the stage lines outside a stage and before the first tick", () => {
   assert.deepEqual(buildDebugHudLines({ ...base, lifecycle: "title", seed: null, difficulty: null, frame: null }), [
-    "shooting-core 0.0.0 / content sample@content.1",
+    "danmaku-kit core 0.0.0 / content sample@content.1",
     "title  audio muted",
   ]);
   assert.deepEqual(buildDebugHudLines({ ...base, lifecycle: "stageStarting", seed: "abc", difficulty: "normal", frame: null }).slice(2), [

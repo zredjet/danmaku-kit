@@ -1,6 +1,7 @@
-# Shooting Sample
+# danmaku-kit
 
-汎用的に再利用できる 2D シューティングゲーム基盤の開発プロジェクトです。
+汎用的に再利用できる 2D シューティングゲーム（弾幕）基盤の開発プロジェクトです。package は `@danmaku-kit/core`（Core、
+`packages/core`）、`@danmaku-kit/validate-content`、`@danmaku-kit/sample-title` で、Core の入口は `createDanmakuCore()` です。
 
 最初の設計書は [docs/design.md](docs/design.md) にあります。実装順序は
 [docs/implementation-plan.md](docs/implementation-plan.md) で管理します。
@@ -15,7 +16,7 @@ screenshot baseline を remote ができてから確かめる条件付きの完�
 
 - Core は renderer 非依存の TypeScript package として作る。
 - Sample app は Phaser + TypeScript + Vite で作る（`apps/sample-title`）。
-- ゲームルールの正本は Phaser ではなく `packages/shooting-core` に置く。
+- ゲームルールの正本は Phaser ではなく `packages/core` に置く。
 - ステージ、敵、弾幕、弾、アセットは外部データとして定義する。
 - 斑鳩や東方のような精密操作と弾幕の読みやすさを重視する。
 

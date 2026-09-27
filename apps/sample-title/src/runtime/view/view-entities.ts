@@ -1,4 +1,4 @@
-import type { ReadonlyEntityState, ReadonlyGameState, ReadonlyPickupState } from "@shooting-sample/shooting-core";
+import type { ReadonlyEntityState, ReadonlyGameState, ReadonlyPickupState } from "@danmaku-kit/core";
 
 type Point = Readonly<{ x: number; y: number }>;
 

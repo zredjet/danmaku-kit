@@ -8,7 +8,7 @@ import type {
   SerializedGameState,
   StageSession,
   StartStageOptions,
-} from "@shooting-sample/shooting-core";
+} from "@danmaku-kit/core";
 
 import { GAMEPLAY_ACTIONS } from "../runtime/input/key-bindings.ts";
 

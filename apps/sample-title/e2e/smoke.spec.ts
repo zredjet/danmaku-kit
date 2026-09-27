@@ -30,7 +30,7 @@ test("boots to the title with the assets loaded and the debug overlay hidden", a
     debugOverlay: false,
     playerPosition: null,
   });
-  await expect(page.locator(".hud-banner-title")).toHaveText("SHOOTING SAMPLE");
+  await expect(page.locator(".hud-banner-title")).toHaveText("DANMAKU KIT");
   await expect(page.locator(".hud-debug")).toHaveText("");
 });
 

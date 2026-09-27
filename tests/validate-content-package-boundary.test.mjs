@@ -11,10 +11,10 @@ import { collectModuleReferences, isPathInside, MODULE_IMPORT_KINDS } from "./su
 import { collectTypeScriptFiles, isTestCodeFile } from "./support/source-files.mjs";
 
 const packageRoot = fileURLToPath(new URL("../tools/validate-content", import.meta.url));
-const corePackageRoot = fileURLToPath(new URL("../packages/shooting-core", import.meta.url));
+const corePackageRoot = fileURLToPath(new URL("../packages/core", import.meta.url));
 
 test("imports validate-content through the workspace package export", async () => {
-  const validateContent = await import("@shooting-sample/validate-content");
+  const validateContent = await import("@danmaku-kit/validate-content");
 
   assert.deepEqual(Object.keys(validateContent).sort(), [
     "VALIDATE_CONTENT_DIAGNOSTIC_CODES",
@@ -115,7 +115,7 @@ test("rejects validate-content deep imports outside the public export map", asyn
 
   for (const subpath of forbiddenSubpaths) {
     await assert.rejects(
-      import(`@shooting-sample/validate-content/${subpath}`),
+      import(`@danmaku-kit/validate-content/${subpath}`),
       (error) => {
         assert.equal(error && typeof error, "object");
         assert.equal("code" in error && error.code, "ERR_PACKAGE_PATH_NOT_EXPORTED");
@@ -129,13 +129,13 @@ test("keeps Core and validate-content package dependencies pointing in the allow
   const coreDependencies = await assertPackageDependencies(corePackageRoot, []);
   const validateContentDependencies = await assertPackageDependencies(
     packageRoot,
-    ["@shooting-sample/shooting-core", "yaml"],
+    ["@danmaku-kit/core", "yaml"],
   );
   await assertSourceImports(corePackageRoot, [], coreDependencies);
   // validate-content は Core の root export と、検証に登録する optional feature の package entry だけを使う。
   await assertSourceImports(
     packageRoot,
-    ["@shooting-sample/shooting-core", "@shooting-sample/shooting-core/features/pickup", "yaml", "node:"],
+    ["@danmaku-kit/core", "@danmaku-kit/core/features/pickup", "yaml", "node:"],
     validateContentDependencies,
   );
 });

@@ -5,8 +5,8 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import type { PatternDefinition } from "@shooting-sample/shooting-core";
-import { loadValidatedGameDefinition } from "@shooting-sample/validate-content";
+import type { PatternDefinition } from "@danmaku-kit/core";
+import { loadValidatedGameDefinition } from "@danmaku-kit/validate-content";
 
 import { loadSampleTitleDefinition } from "../test-support/sample-title-game.ts";
 

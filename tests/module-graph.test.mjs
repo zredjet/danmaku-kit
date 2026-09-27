@@ -9,21 +9,21 @@ import { collectModuleReferences, isRelativeReferenceInside, MODULE_IMPORT_KINDS
 import { collectTypeScriptFiles, isTestCodeFile } from "./support/source-files.mjs";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
-const shootingCoreSourceRoot = path.join(repositoryRoot, "packages/shooting-core/src");
+const coreSourceRoot = path.join(repositoryRoot, "packages/core/src");
 const sampleTitleSourceRoot = path.join(repositoryRoot, "apps/sample-title/src");
 const sourceRoots = [
-  shootingCoreSourceRoot,
+  coreSourceRoot,
   path.join(repositoryRoot, "tools/validate-content/src"),
   sampleTitleSourceRoot,
 ];
-const shootingCoreBasicRoot = path.join(repositoryRoot, "packages/shooting-core/src/basic");
+const coreBasicRoot = path.join(repositoryRoot, "packages/core/src/basic");
 
 /**
- * shooting-core `src/basic/` の依存方向。`target` を import してよいのは同じ layer と `allowedImporters` だけ。
+ * core `src/basic/` の依存方向。`target` を import してよいのは同じ layer と `allowedImporters` だけ。
  *
  * 型 import も依存方向に含める。path は `src/basic/` からの相対で、末尾 `/` は directory 全体を表す。
  */
-const SHOOTING_CORE_LAYER_RULES = Object.freeze([
+const CORE_LAYER_RULES = Object.freeze([
   { target: "core.ts", allowedImporters: ["index.ts", "testing/testing-hooks.ts"] },
   { target: "session/", allowedImporters: ["core.ts"] },
   { target: "serialization/restore/", allowedImporters: ["session/"] },
@@ -51,11 +51,11 @@ const SHOOTING_CORE_LAYER_RULES = Object.freeze([
 ]);
 
 /**
- * shooting-core `src/basic/` の最下層 layer。`importer` 配下の module は同じ layer と `allowedTargets` 以外を import しない。
+ * core `src/basic/` の最下層 layer。`importer` 配下の module は同じ layer と `allowedTargets` 以外を import しない。
  *
- * 型 import も含める。path の表記は `SHOOTING_CORE_LAYER_RULES` と同じ。
+ * 型 import も含める。path の表記は `CORE_LAYER_RULES` と同じ。
  */
-const SHOOTING_CORE_LEAF_LAYER_RULES = Object.freeze([
+const CORE_LEAF_LAYER_RULES = Object.freeze([
   { importer: "shared/", allowedTargets: [] },
   {
     importer: "extension/",
@@ -90,7 +90,7 @@ const FEATURE_ALLOWED_BASIC_TARGETS = Object.freeze([
 ]);
 
 /** root export から runtime import で到達させない test / tooling 専用 module。state hash と debug dump は test 側で計算する。 */
-const SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES = Object.freeze(["hash/", "testing/"]);
+const CORE_RUNTIME_EXCLUDED_MODULES = Object.freeze(["hash/", "testing/"]);
 
 /**
  * sample app の `src/` が package 名で import してよい package と、それを import してよい module。
@@ -99,13 +99,13 @@ const SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES = Object.freeze(["hash/", "testing/
  * validate-content は型 import も含めて import しない。`phaser` は Phaser adapter と entry に閉じ込め、それ以外の runtime module を
  * node:test で検査できるようにする。optional feature は Core を作る entry だけが登録する。
  * Vite の virtual module は `import.meta` と同じく entry だけが読み、他の module へは引数で渡す。
- * path は `apps/sample-title/src/` からの相対で、表記は `SHOOTING_CORE_LAYER_RULES` と同じ。
+ * path は `apps/sample-title/src/` からの相対で、表記は `CORE_LAYER_RULES` と同じ。
  */
 const SAMPLE_TITLE_PACKAGE_IMPORT_RULES = Object.freeze([
   // dev / test build 専用の Preview（`preview/`）は、選んだ対象を合成した content を Core で load する。
-  { specifier: "@shooting-sample/shooting-core", allowedImporters: ["main.ts", "runtime/", "preview/", "virtual-modules.d.ts"] },
+  { specifier: "@danmaku-kit/core", allowedImporters: ["main.ts", "runtime/", "preview/", "virtual-modules.d.ts"] },
   // Core を作る entry だけが optional feature を登録する。
-  { specifier: "@shooting-sample/shooting-core/features/pickup", allowedImporters: ["main.ts"] },
+  { specifier: "@danmaku-kit/core/features/pickup", allowedImporters: ["main.ts"] },
   { specifier: "phaser", allowedImporters: ["main.ts", "runtime/phaser/"] },
   { specifier: "virtual:sample-title/game-definition", allowedImporters: ["main.ts"] },
 ]);
@@ -119,7 +119,7 @@ const SAMPLE_TITLE_IMPORT_META_READERS = Object.freeze(["main.ts"]);
  * DOM の overlay（`ui/`）、dev / test build 専用の debug hook（`debug/`）と Preview の panel（`preview/`）、Phaser adapter
  * （`runtime/phaser/`）は entry だけが組み立て、
  * それ以外の runtime module は DOM と Phaser なしで node:test から検査できる形に保つ。型 import も含め、path の表記は
- * `SHOOTING_CORE_LAYER_RULES` と同じ。
+ * `CORE_LAYER_RULES` と同じ。
  */
 const SAMPLE_TITLE_LAYER_RULES = Object.freeze([
   { target: "main.ts", allowedImporters: [] },
@@ -149,8 +149,8 @@ test("matches dependency rule paths by file, directory, and single-segment wildc
   );
 });
 
-test("collects every module reference form and accepts only relative paths inside shooting-core src", () => {
-  const file = path.join(shootingCoreBasicRoot, "session/example.ts");
+test("collects every module reference form and accepts only relative paths inside core src", () => {
+  const file = path.join(coreBasicRoot, "session/example.ts");
   const sourceText = [
     "/// <reference types=\"node\" />",
     "/// <reference lib=\"dom\" />",
@@ -167,7 +167,7 @@ test("collects every module reference form and accepts only relative paths insid
 
   assert.deepEqual(
     collectModuleReferences(file, sourceText)
-      .map((reference) => [reference.kind, reference.specifier, isRelativeReferenceInside(file, reference, shootingCoreSourceRoot)]),
+      .map((reference) => [reference.kind, reference.specifier, isRelativeReferenceInside(file, reference, coreSourceRoot)]),
     [
       ["referenceTypes", "node", false],
       ["referenceLib", "dom", false],
@@ -184,25 +184,25 @@ test("collects every module reference form and accepts only relative paths insid
   );
 });
 
-test("keeps shooting-core source free of package and platform imports", async () => {
+test("keeps core source free of package and platform imports", async () => {
   // apps が phaser / vite を root node_modules へ hoist しても、Core から bare specifier で解決させない。
-  const files = (await collectTypeScriptFiles(shootingCoreSourceRoot))
-    .filter((file) => !isTestCodeFile(shootingCoreSourceRoot, file));
+  const files = (await collectTypeScriptFiles(coreSourceRoot))
+    .filter((file) => !isTestCodeFile(coreSourceRoot, file));
   const violations = [];
 
   for (const file of files) {
     const sourceText = await readFile(file, "utf8");
     for (const reference of collectModuleReferences(file, sourceText)) {
-      if (!isRelativeReferenceInside(file, reference, shootingCoreSourceRoot)) {
+      if (!isRelativeReferenceInside(file, reference, coreSourceRoot)) {
         violations.push(`${toRepositoryPath(file)} -> ${reference.kind} ${reference.specifier ?? "(non-literal)"}`);
       }
     }
   }
 
-  assert.deepEqual(violations, [], "shooting-core source must import only its own modules by relative path");
+  assert.deepEqual(violations, [], "core source must import only its own modules by relative path");
 });
 
-test("keeps sample app source on the shooting-core root and feature exports and its allowed packages", async () => {
+test("keeps sample app source on the core root and feature exports and its allowed packages", async () => {
   const violations = [];
 
   for (const file of await collectSampleTitleSourceFiles()) {
@@ -295,11 +295,11 @@ test("keeps package source free of runtime import cycles", async () => {
   }
 });
 
-test("keeps shooting-core source free of type-level import cycles", async () => {
-  const graph = await collectImportGraph(shootingCoreBasicRoot, { includeTypeOnly: true });
+test("keeps core source free of type-level import cycles", async () => {
+  const graph = await collectImportGraph(coreBasicRoot, { includeTypeOnly: true });
   const cycles = findCycles(graph).map((cycle) => cycle.map((file) => toRepositoryPath(file)));
 
-  assert.deepEqual(cycles, [], "shooting-core has import cycles including type-only imports");
+  assert.deepEqual(cycles, [], "core has import cycles including type-only imports");
 });
 
 test("keeps package source from importing test code", async () => {
@@ -321,14 +321,14 @@ test("keeps package source from importing test code", async () => {
   assert.deepEqual(violations, [], "package source imports test-only code");
 });
 
-test("keeps shooting-core modules inside their dependency layers", async () => {
-  const graph = await collectImportGraph(shootingCoreBasicRoot, { includeTypeOnly: true });
+test("keeps core modules inside their dependency layers", async () => {
+  const graph = await collectImportGraph(coreBasicRoot, { includeTypeOnly: true });
   const violations = [];
 
   for (const [file, targets] of graph) {
     const importer = toBasicPath(file);
     for (const target of targets.map(toBasicPath)) {
-      for (const rule of SHOOTING_CORE_LAYER_RULES) {
+      for (const rule of CORE_LAYER_RULES) {
         if (!matchesModulePath(target, rule.target) || matchesModulePath(importer, rule.target)) {
           continue;
         }
@@ -336,7 +336,7 @@ test("keeps shooting-core modules inside their dependency layers", async () => {
           violations.push(`${importer} -> ${target}`);
         }
       }
-      for (const rule of SHOOTING_CORE_LEAF_LAYER_RULES) {
+      for (const rule of CORE_LEAF_LAYER_RULES) {
         if (!matchesModulePath(importer, rule.importer) || matchesModulePath(target, rule.importer)) {
           continue;
         }
@@ -347,7 +347,7 @@ test("keeps shooting-core modules inside their dependency layers", async () => {
     }
   }
 
-  assert.deepEqual(violations, [], "shooting-core imports cross a dependency layer rule");
+  assert.deepEqual(violations, [], "core imports cross a dependency layer rule");
 });
 
 test("finds feature imports that cross the feature boundary", () => {
@@ -370,14 +370,14 @@ test("finds feature imports that cross the feature boundary", () => {
 });
 
 test("keeps basic free of feature imports and features on the extension layer", async () => {
-  const graph = await collectImportGraph(shootingCoreSourceRoot, { includeTypeOnly: true });
+  const graph = await collectImportGraph(coreSourceRoot, { includeTypeOnly: true });
   const edges = [...graph].flatMap(([file, targets]) => targets.map((target) => [toCoreSourcePath(file), toCoreSourcePath(target)]));
 
-  assert.deepEqual(findFeatureLayerViolations(edges), [], "shooting-core imports cross the feature boundary");
+  assert.deepEqual(findFeatureLayerViolations(edges), [], "core imports cross the feature boundary");
 });
 
 test("keeps entity kind directories independent of each other", async () => {
-  const graph = await collectImportGraph(shootingCoreBasicRoot, { includeTypeOnly: true });
+  const graph = await collectImportGraph(coreBasicRoot, { includeTypeOnly: true });
   const violations = [];
 
   for (const [file, targets] of graph) {
@@ -397,28 +397,28 @@ test("keeps entity kind directories independent of each other", async () => {
   assert.deepEqual(violations, [], "entity kind directories must not import another kind");
 });
 
-test("points shooting-core dependency rules at existing modules", async () => {
-  const modulePaths = (await collectTypeScriptFiles(shootingCoreBasicRoot))
-    .filter((file) => !isTestCodeFile(shootingCoreBasicRoot, file))
+test("points core dependency rules at existing modules", async () => {
+  const modulePaths = (await collectTypeScriptFiles(coreBasicRoot))
+    .filter((file) => !isTestCodeFile(coreBasicRoot, file))
     .map(toBasicPath);
   const rulePaths = [
-    ...SHOOTING_CORE_LAYER_RULES.flatMap((rule) => [rule.target, ...rule.allowedImporters]),
-    ...SHOOTING_CORE_LEAF_LAYER_RULES.flatMap((rule) => [rule.importer, ...rule.allowedTargets]),
-    ...SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES,
+    ...CORE_LAYER_RULES.flatMap((rule) => [rule.target, ...rule.allowedImporters]),
+    ...CORE_LEAF_LAYER_RULES.flatMap((rule) => [rule.importer, ...rule.allowedTargets]),
+    ...CORE_RUNTIME_EXCLUDED_MODULES,
     ...FEATURE_ALLOWED_BASIC_TARGETS.map((target) => target.slice("basic/".length)),
   ];
   const stale = [...new Set(rulePaths)]
     .filter((rulePath) => !modulePaths.some((modulePath) => matchesModulePath(modulePath, rulePath)));
 
-  assert.deepEqual(stale, [], "dependency rules must name existing shooting-core modules");
+  assert.deepEqual(stale, [], "dependency rules must name existing core modules");
 });
 
-test("keeps test-only diagnostics out of the shooting-core runtime import graph", async () => {
-  const graph = await collectImportGraph(shootingCoreBasicRoot, { includeTypeOnly: false });
-  const reachable = collectReachableFiles(graph, path.join(shootingCoreBasicRoot, "index.ts"));
+test("keeps test-only diagnostics out of the core runtime import graph", async () => {
+  const graph = await collectImportGraph(coreBasicRoot, { includeTypeOnly: false });
+  const reachable = collectReachableFiles(graph, path.join(coreBasicRoot, "index.ts"));
   const leaked = reachable
     .map(toBasicPath)
-    .filter((modulePath) => SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES.some((excluded) => matchesModulePath(modulePath, excluded)));
+    .filter((modulePath) => CORE_RUNTIME_EXCLUDED_MODULES.some((excluded) => matchesModulePath(modulePath, excluded)));
 
   assert.deepEqual(leaked, [], "root export loads test-only modules at runtime");
 });
@@ -449,7 +449,7 @@ function findFeatureLayerViolations(edges) {
 }
 
 function toCoreSourcePath(file) {
-  return path.relative(shootingCoreSourceRoot, file).split(path.sep).join("/");
+  return path.relative(coreSourceRoot, file).split(path.sep).join("/");
 }
 
 /** `entities/<kind>/` 配下の module なら kind directory 名を、それ以外なら null を返す。 */
@@ -549,7 +549,7 @@ function matchesModulePath(modulePath, rulePath) {
 }
 
 function toBasicPath(file) {
-  return path.relative(shootingCoreBasicRoot, file).split(path.sep).join("/");
+  return path.relative(coreBasicRoot, file).split(path.sep).join("/");
 }
 
 /** 各 strongly connected component を、最小 path から始まる安定した順の cycle として返す。 */

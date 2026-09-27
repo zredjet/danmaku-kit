@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { GameDefinition, ShootingCore } from "@shooting-sample/shooting-core";
+import type { DanmakuCore, GameDefinition } from "@danmaku-kit/core";
 
 import { expandInputScript, runHeadlessReplay } from "../../test-support/headless-replay.ts";
 import { createSampleTitleCore, loadSampleTitleDefinition } from "../../test-support/sample-title-game.ts";
@@ -99,7 +99,7 @@ test("ignores a blank seed and falls back to the first stage when a reload remov
 test("keeps the selection on the previous content when the reloaded content cannot be composed", async () => {
   const definition = await loadSampleTitleDefinition();
   const selection = new PreviewSelection(definition, { ...OPTIONS, targetParameter: "path:path.drone_dive" });
-  const failing: Pick<ShootingCore, "load"> = {
+  const failing: Pick<DanmakuCore, "load"> = {
     load: () => ({ ok: false, errors: [{ code: "definition.invalidShape", message: "broken" }] }),
   };
 

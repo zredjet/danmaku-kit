@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { ReadonlyEntityState, ReadonlyGameState } from "@shooting-sample/shooting-core";
+import type { ReadonlyEntityState, ReadonlyGameState } from "@danmaku-kit/core";
 
 import { countEntitiesByKind, countGameStateEntities } from "./entity-counts.ts";
 

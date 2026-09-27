@@ -7,8 +7,8 @@ import { build, type Rolldown } from "vite";
 const sampleTitleRoot = fileURLToPath(new URL("../", import.meta.url));
 /** debug state dump の hook と、Preview（panel の class 名と合成する stage の id）と、その dev-only の cheat（Phase 2B-10）。 */
 const DEV_ONLY_MARKERS = [
-  "__SHOOTING_DEBUG_STATE__",
-  "__SHOOTING_DEBUG_REPLAY__",
+  "__DANMAKU_KIT_DEBUG_STATE__",
+  "__DANMAKU_KIT_DEBUG_REPLAY__",
   "preview-panel",
   "stage.preview",
   "_preview_cheat",
