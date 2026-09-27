@@ -162,7 +162,7 @@ Sample app の module 構成（Phase 2A 完了時点）:
 | `src/test-support/` | 複数の test が使う helper（sample の load、fake session と frame、headless replay） |
 | `e2e/` | Playwright の browser smoke test |
 
-依存方向は、`ui/`、`debug/`、`runtime/phaser/` を import してよいのは `src/main.ts` だけで、`tests/module-graph.test.mjs` の `SAMPLE_TITLE_LAYER_RULES` が検査する。package の import（Core は root export だけ、`phaser` は entry と `runtime/phaser/` だけ）は `SAMPLE_TITLE_PACKAGE_IMPORT_RULES` が検査する。
+依存方向は、`ui/`、`debug/`、`runtime/phaser/` を import してよいのは `src/main.ts` だけで、`tests/module-graph.test.mjs` の `SAMPLE_TITLE_LAYER_RULES` が検査する。package の import（Core は root export と、entry だけが optional feature の subpath export、`phaser` は entry と `runtime/phaser/` だけ）は `SAMPLE_TITLE_PACKAGE_IMPORT_RULES` が検査する。
 
 Core package の module 構成（公開 surface は root の `src/basic/index.ts` の export と、optional feature ごとの `./features/<feature>`（`src/features/<feature>/index.ts`）だけで、root の value export は `createShootingCore` のみ）:
 
@@ -284,7 +284,7 @@ Simulation の状態を画面に反映するアダプタ。
 Phaser adapter の view lifecycle:
 
 - Simulation entity id と view id の mapping を持つ。
-- Sprite、bullet view、effect view は object pool を使う。Pickup feature 有効時は pickup view も feature module 側で pool する。
+- Sprite、bullet view、effect view は object pool を使う。Pickup feature 有効時は pickup view も pool する（Phase 2B-7 の sample app は Runtime 側で `pickup` の kind の pool を持つ）。
 - `GameFrame.events` を直接 Sprite 生成破棄に同期させず、destroy queue / spawn queue に積んで batch update する。gameplay entity の view の生成・破棄は `GameFrame.state.entities` の entity id 差分を正本にし、event は演出にだけ使う。これにより lifetime 切れのように event を伴わない消滅でも view を残さない。
 - 1 render frame の view create/destroy に上限を持ち、超過時は低優先度 effect を落として gameplay view を優先する。
 - gameplay entity の view は欠落させない。Runtime は content validation と performance budget から stage start 前に pool sizing を見積もり、足りない場合は load error として開始を止める。mid-stage で pool が枯渇した場合、Runtime は `RuntimeEvent.viewPoolExhausted` を出し、dev では hard error、本番では safe pause / fatal overlay に遷移する。
@@ -811,6 +811,7 @@ drops:
 - enemy の `drops` は 1 つ以上の `{ pickup, count, spread? }` で、`count` の合計は 1 enemy あたり 16 以下にする。撃破した位置を中心に `count` 個を横へ `spread` px（0〜128）の幅で等間隔に並べる。乱数は使わない。
 - Phase 2B-6 の simulation: 撃破した tick の scoring で、collision resolution の順、drop の順、横の並びの順に pickup を出して採番し、`pickupsSpawnedBatch` で知らせる。pickup の位置は `spawnPosition + velocity * age` で毎 tick 求め直す。playfield の下の境界（32 px 外）を越えるか、左右の境界の外で playfield へ戻らなければ event なしで取り除き、上の境界の外に出た pickup は落ちて入るので残す。自機の中心から `collectRadius` 以内で回収し（`pickupCollected` と reason `pickupCollected` の `scoreChanged`）、`magnetRadius` 以内なら吸い寄せに入る。吸い寄せに入った pickup は位置を止め、12 tick 後に回収する（描画はその間、自機へ寄せる演出にしてよい）。吸い寄せを Core で扱うので、回収の tick は描画に依存しない。
 - active な pickup は 300 まで（design 14）。超える drop は pickup を出さずに `pickup.budgetExceeded` の fatal にする。回収されていない pickup が残る間は stage を clear にしないため、pickup は 0.5 px / tick 以上で落ちる必要がある。
+- Phase 2B-7 で sample title が pickup feature を有効にした: drone が `pickup.score_small`（10 点、`magnetRadius` 64）を 2 個落とす。app は `collectViewEntities()` で Core の entity と `state.features.pickups` を 1 つの view の並びにし、pickup を専用の view pool（stage の timeline の drops の合計と 300 の小さい方）で敵の上、hit spark の下に描く。吸い寄せ中の pickup は描画だけ自機へ寄せ（`PickupAttraction`）、debug overlay の collider は Core の位置に回収の半径を描く。有効でない feature の pickup の定義は app も使わない。
 - frame は `state.features.pickups`（`ReadonlyPickupState`: id、定義、位置、吸い寄せ中か）を持つ。pickup の state は pickup feature の state（`stateVersion` 2、serialize は `enabledFeatureStates` の payload）で、restore は id と出た tick の順、basic の entity との採番順、定義ごとの drop 数、吸い寄せの tick、cleanup を検証する。撃破した位置は入力で決まるため検証しない。
 
 ### 9.10 Scoring / Rank 定義例
@@ -2078,16 +2079,16 @@ type HeadlessDebugStateDump = Readonly<{
 
 Phase 1C-4 では、上記 headless summary schema、artifact naming、state / PRNG hash、count metrics と、21.4 の field-level replay divergence artifact を実装済みである。summary dump だけから entity / component / event / PRNG の値は復元できないため、field-level diff は検証済み replay compatibility metadata と expected / actual の各 `ReplayDivergenceSide` を入力にする。`ok` side だけが `HashableGameState`、順序付き `GameFrame.events`、parse後の `InputFrame`、summaryを持ち、早期終了とtick失敗は `missing` / `error` として扱う。`HeadlessDebugStateDump` はreportの各`ok` sideに置く概要fieldであり、deterministic snapshotの代用にはしない。
 
-Phase 2A の browser/runtime dump は次の別 schema とする。
+Phase 2A の browser/runtime dump は次の別 schema とする（Phase 2B-7 で `entityCounts` に pickup feature の `pickup` を加え、`schemaVersion` を 2 に上げた）。
 
 ```ts
 type BrowserDebugStateDump = Readonly<{
-  schemaVersion: "1";
+  schemaVersion: "2";
   kind: "browser";
   tick: number;
   seed: string | null;
   lifecycle: GameLifecycleState;
-  entityCounts: Readonly<Record<"player" | "enemy" | "enemyBullet" | "playerShot", number>>;
+  entityCounts: Readonly<Record<"player" | "enemy" | "enemyBullet" | "playerShot" | "pickup", number>>;
   playerPosition: Readonly<{ x: number; y: number }> | null;
   viewport: Readonly<{
     logicalWidth: number;
@@ -2107,7 +2108,7 @@ type BrowserDebugStateDump = Readonly<{
 
 Phase 2A-10 の sample app の実装（`src/runtime/debug/browser-debug-state.ts`）:
 
-- `tick` は headless dump と同じく現在の stage が次に受け付ける入力 tick（実行済みの tick 数）とし、stage の外と開始演出中でまだ tick を実行していなければ 0 にする。`seed` は現在の stage の seed、stage の外では `null`。`entityCounts` と `playerPosition` は直近の `GameFrame.state` から作る。
+- `tick` は headless dump と同じく現在の stage が次に受け付ける入力 tick（実行済みの tick 数）とし、stage の外と開始演出中でまだ tick を実行していなければ 0 にする。`seed` は現在の stage の seed、stage の外では `null`。`entityCounts` と `playerPosition` は直近の `GameFrame.state` から作る（`pickup` は `state.features.pickups` の数）。
 - `viewport` は `computeViewportLayout()` の配置、`overlayTransform` は DOM overlay の実際の `getBoundingClientRect()` の位置と内部解像度からの倍率で、canvas と overlay が同じ transform root にあれば両者は一致する。
 - `inputQueueDepth` はまだ tick や render frame に渡していないラッチ済みの押下・解放 edge の数、`assetStatus` は loading の asset の状態（stage を始められない失敗なら `error`）、`audioStatus` は Phase 2A では `muted`。
 - `debugOverlay` は debug overlay を表示しているかで、Phase 2A-12 の browser smoke test が切り替えを確かめるために加えた。
