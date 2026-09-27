@@ -20,6 +20,7 @@ type GoldenCaseName =
   | "pattern-difficulty-warning"
   | "pickup-disabled-warning"
   | "pickup-reference-error"
+  | "pickup-schema-error"
   | "asset-manifest-error"
   | "game-definition-error"
   | "argument-error";
@@ -52,6 +53,7 @@ const GOLDEN_CASES: readonly Readonly<{
   Object.freeze({ name: "pattern-difficulty-warning", exitCode: 0 }),
   Object.freeze({ name: "pickup-disabled-warning", exitCode: 0 }),
   Object.freeze({ name: "pickup-reference-error", exitCode: 1 }),
+  Object.freeze({ name: "pickup-schema-error", exitCode: 1 }),
   Object.freeze({ name: "asset-manifest-error", exitCode: 1 }),
   Object.freeze({ name: "game-definition-error", exitCode: 1 }),
   Object.freeze({ name: "argument-error", exitCode: 2 }),
@@ -202,7 +204,7 @@ async function prepareCaseFixture(
     // normal だけの stage が使う pattern の `if` が hard を挙げる。
     await writeFile(path.join(contentRoot, "patterns", "scout_three_way.yaml"), DIFFICULTY_BRANCH_PATTERN_YAML, "utf8");
     await replaceFixtureText(contentRoot, "stages/stage_01.yaml", "      pattern: pattern.basic\n", "      pattern: pattern.scout_three_way\n");
-  } else if (name === "pickup-disabled-warning" || name === "pickup-reference-error") {
+  } else if (name === "pickup-disabled-warning" || name === "pickup-reference-error" || name === "pickup-schema-error") {
     await mkdir(path.join(contentRoot, "pickups"));
     await writeFile(path.join(contentRoot, "pickups", "score_small.yaml"), SCORE_PICKUP_YAML, "utf8");
     await replaceFixtureText(
@@ -211,6 +213,11 @@ async function prepareCaseFixture(
       "    path: shot.png\n    required: true\n    usage: gameplay\n",
       "    path: shot.png\n    required: true\n    usage: gameplay\n  pickup.score_small:\n    type: sprite\n    path: pickup.png\n    required: true\n    usage: gameplay\n",
     );
+    if (name === "pickup-schema-error") {
+      // 有効な pickup の collectRadius が 0。
+      await replaceFileText(gameDefinitionPath, "game-definition.yaml", "enabledFeatures: []", "enabledFeatures: [pickup]");
+      await replaceFixtureText(contentRoot, "pickups/score_small.yaml", "collectRadius: 10\n", "collectRadius: 0\n");
+    }
     if (name === "pickup-reference-error") {
       // pickup を有効にした content の enemy が、定義のない pickup を落とす。
       await replaceFileText(gameDefinitionPath, "game-definition.yaml", "enabledFeatures: []", "enabledFeatures: [pickup]");
@@ -331,6 +338,9 @@ function expectedDiagnosticPath(
   }
   if (name === "pickup-reference-error") {
     return path.join(fixture.contentRoot, "enemies", "scout.yaml");
+  }
+  if (name === "pickup-schema-error") {
+    return path.join(fixture.contentRoot, "pickups", "score_small.yaml");
   }
   if (name === "asset-manifest-error") {
     return path.join(fixture.contentRoot, "assets", "manifest.yaml");

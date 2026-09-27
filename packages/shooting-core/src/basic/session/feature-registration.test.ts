@@ -63,12 +63,12 @@ test("runs no feature hook for registered features that the definition does not 
 test("returns the content errors and warnings of enabled feature modules", () => {
   const warning = Object.freeze({ code: "pattern.neverFires", message: "counter warning" });
   const failing = createShootingCore({
-    features: [createCounterFeature("rank", { content: { errors: [COUNTER_CONTENT_ERROR], warnings: [warning] } })],
+    features: [createCounterFeature("rank", { contentErrors: [COUNTER_CONTENT_ERROR], contentWarnings: [warning] })],
   }).load(definitionWith(["rank"]));
-  const warned = createShootingCore({ features: [createCounterFeature("rank", { content: { errors: [], warnings: [warning] } })] })
+  const warned = createShootingCore({ features: [createCounterFeature("rank", { contentWarnings: [warning] })] })
     .load(definitionWith(["rank"]));
   const brokenBasic = createShootingCore({
-    features: [createCounterFeature("rank", { content: { errors: [COUNTER_CONTENT_ERROR], warnings: [] } })],
+    features: [createCounterFeature("rank", { contentErrors: [COUNTER_CONTENT_ERROR] })],
   }).load({ ...definitionWith(["rank"]), defaultPlayerId: "player.missing" });
 
   assert.deepEqual(!failing.ok && failing.errors, [COUNTER_CONTENT_ERROR]);
@@ -98,9 +98,9 @@ test("runs feature systems at their tick slots in canonical feature order and se
   assert.deepEqual(serialized.state.enabledFeatureStates.map((state) => state.payload), [counterState(2), counterState(2)]);
   assert.equal(Object.isFrozen(serialized.state.enabledFeatureStates[0]!.payload), true);
   assert.deepEqual([...new Set(contexts)], [
-    "createInitialState stage.stage_01 player.default normal",
-    "spawn stage.stage_01 player.default normal",
-    "scoring stage.stage_01 player.default normal",
+    "createInitialState stage.stage_01 player.default normal content:shooting-sample@content.0",
+    "spawn stage.stage_01 player.default normal content:shooting-sample@content.0",
+    "scoring stage.stage_01 player.default normal content:shooting-sample@content.0",
   ]);
 });
 
@@ -143,7 +143,7 @@ test("restores feature states through their modules and continues identically to
 
   assert.deepEqual(assertSerializeOk(restored.value.serialize(), "restored serialize"), snapshot);
   assert.deepEqual(hashableStates[1], hashableStates[0]);
-  assert.ok(contexts.includes("restoreState@3 stage.stage_01 player.default normal"));
+  assert.ok(contexts.includes("restoreState@3 stage.stage_01 player.default normal content:shooting-sample@content.0"));
   for (let tick = 3; tick < 6; tick += 1) {
     assert.deepEqual(
       assertTickOk(restored.value.tick(createEmptyInputFrame(tick)), `restored tick ${tick}`),

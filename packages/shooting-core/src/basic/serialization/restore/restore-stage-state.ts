@@ -1,5 +1,5 @@
 import type { LoadedContentIndex } from "../../content/content-index.ts";
-import type { AnyFeatureModule } from "../../extension/feature-module.ts";
+import type { AnyFeatureModule, LoadedFeature } from "../../extension/feature-module.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
 import type { SerializedPrngState } from "../../simulation/prng.ts";
@@ -48,7 +48,7 @@ export function restoreStageState(
   rawState: unknown,
   content: LoadedContentIndex,
   coreVersion: string,
-  features: readonly AnyFeatureModule[],
+  features: readonly LoadedFeature[],
 ): CoreResult<RestoredStageState> {
   const schemaMetadata = parseRestoreSchemaMetadata(rawState);
   if (!schemaMetadata.ok) {
@@ -130,7 +130,7 @@ export function restoreStageState(
     featureStates.value,
     prng.value,
     serializationMetadata,
-    features,
+    features.map((feature) => feature.module),
   );
   if (!restoredState.ok) {
     return restoredState;

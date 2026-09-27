@@ -3,19 +3,13 @@ import test from "node:test";
 
 import { createMinimumDefinition } from "../../../../../tests/fixtures/minimum-game-definition.ts";
 import { createShootingCore } from "../../basic/core.ts";
-import type { EnabledFeature, GameDefinition } from "../../basic/content/types.ts";
+import type { GameDefinition } from "../../basic/content/types.ts";
 import { createEmptyInputFrame } from "../../basic/input/input-frame.ts";
 import { assertSerializeOk, assertTickOk, startStageFromLoadedGame } from "../../basic/test-support/stage-harness.ts";
 import { pickupFeature } from "./index.ts";
+import { SCORE_SMALL_PICKUP, createPickupDefinition } from "./test-support/pickup-definitions.ts";
 
-const scoreSmall = Object.freeze({
-  id: "pickup.score_small",
-  version: 1,
-  asset: "enemy.scout",
-  score: 100,
-  collectRadius: 10,
-  velocity: { x: 0, y: 1.5 },
-});
+const scoreSmall = SCORE_SMALL_PICKUP;
 
 type Case = Readonly<{
   registered: boolean;
@@ -27,18 +21,11 @@ type Case = Readonly<{
 }>;
 
 function definitionFor({ enabled, pickups, dropsPickup }: Case): GameDefinition {
-  const definition = createMinimumDefinition();
-  return {
-    ...definition,
-    enabledFeatures: enabled ? ["pickup"] as EnabledFeature[] : [],
-    content: {
-      ...definition.content,
-      enemies: definition.content.enemies.map((enemy) => (
-        dropsPickup === undefined ? enemy : { ...enemy, drops: [{ pickup: dropsPickup, count: 1 }] }
-      )),
-      ...(pickups === undefined ? {} : { features: { pickups } }),
-    },
-  } as unknown as GameDefinition;
+  return createPickupDefinition({
+    enabled,
+    pickups,
+    drops: dropsPickup === undefined ? undefined : [{ pickup: dropsPickup, count: 1 }],
+  });
 }
 
 function outcome(testCase: Case): readonly string[] {
@@ -75,11 +62,13 @@ test("gates pickup content by whether the feature is enabled and registered (des
       "error feature.unsupported enabledFeatures",
     ]],
     ["enabled, valid reference", { registered: true, enabled: true, pickups: [scoreSmall], dropsPickup: scoreSmall.id }, ["ok"]],
-    ["enabled, no pickups", { registered: true, enabled: true }, ["ok"]],
+    // 有効な feature の collection は必要で、pickup のない content は空の配列にする（design 20）。
+    ["enabled, empty pickups", { registered: true, enabled: true, pickups: [] }, ["ok"]],
+    ["enabled, no collection", { registered: true, enabled: true }, ["error definition.invalidShape content.features.pickups"]],
     ["enabled, missing reference", { registered: true, enabled: true, pickups: [scoreSmall], dropsPickup: "pickup.missing" }, [
       "error pickup.notFound content.enemies[0].drops[0].pickup",
     ]],
-    ["enabled, drops without the collection", { registered: true, enabled: true, dropsPickup: scoreSmall.id }, [
+    ["enabled, drops with empty pickups", { registered: true, enabled: true, pickups: [], dropsPickup: scoreSmall.id }, [
       "error pickup.notFound content.enemies[0].drops[0].pickup",
     ]],
     ["enabled, invalid definitions", { registered: true, enabled: true, pickups: [{ ...scoreSmall, score: -1 }] }, [

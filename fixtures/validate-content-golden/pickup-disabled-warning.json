@@ -8,7 +8,7 @@
       "code": "feature.disabledContent",
       "severity": "warning",
       "message": "content.features.pickups is not used because the pickup feature is not in enabledFeatures",
-      "sourceId": "pickup.score_small",
+      "sourceId": "gameDefinition",
       "schemaPath": "content.features.pickups"
     }
   ],

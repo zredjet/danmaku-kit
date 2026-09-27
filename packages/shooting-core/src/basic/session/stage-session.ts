@@ -31,6 +31,7 @@ export type StageSessionContext = Readonly<{
  */
 export function createStageSession(options: StageSessionContext): StageSession {
   let committedState = options.initialState;
+  const featureModules = options.content.features.map((feature) => feature.module);
   const instrumentation: StageTickInstrumentation = Object.freeze({
     collectDebugMetrics: options.testingHooks.registerHeadlessDebugStateSerializer !== undefined,
     testingHooks: options.testingHooks,
@@ -49,12 +50,12 @@ export function createStageSession(options: StageSessionContext): StageSession {
         return errorResult(fatalErrors);
       }
       const serializedState = createSerializeSourceState(committedState, options.testingHooks);
-      const serialized = serializeCommittedStageState(options.serializationMetadata, serializedState, options.content.features);
+      const serialized = serializeCommittedStageState(options.serializationMetadata, serializedState, featureModules);
       if (!serialized.ok) {
         return latchFatalErrors(serialized.errors);
       }
       if (options.testingHooks.recordHashableStateOnSerialize) {
-        const hashableState = createHashableGameState(options.serializationMetadata, committedState, options.content.features);
+        const hashableState = createHashableGameState(options.serializationMetadata, committedState, featureModules);
         if (!hashableState.ok) {
           return latchFatalErrors(hashableState.errors);
         }
@@ -110,7 +111,7 @@ export function createStageSession(options: StageSessionContext): StageSession {
       : createHeadlessDebugCheckpoint(
         options.serializationMetadata,
         committedState,
-        options.content.features,
+        featureModules,
         options.debugSeed,
         debugTickMetrics,
         options.testingHooks.failHeadlessDebugStateSerialization,

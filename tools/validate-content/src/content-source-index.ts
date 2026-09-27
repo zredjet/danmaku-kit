@@ -123,8 +123,8 @@ function localSourcePath(
   schemaPath: string,
   collection: ContentCollectionName,
 ): readonly (string | number)[] {
-  const contentPrefix = `content.${collection}`;
-  if (schemaPath === contentPrefix || new RegExp(`^${contentPrefix}\\[\\d+\\]$`).test(schemaPath)) {
+  const contentPrefix = `content.${collection}`.replaceAll(".", "\\.");
+  if (new RegExp(`^${contentPrefix}(?:\\[\\d+\\])?$`).test(schemaPath)) {
     return Object.freeze([]);
   }
   const contentMatch = new RegExp(`^${contentPrefix}(?:\\[\\d+\\])?\\.(.*)$`).exec(schemaPath);

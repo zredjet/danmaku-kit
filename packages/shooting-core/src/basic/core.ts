@@ -3,10 +3,11 @@ import { createLoadedContentIndex } from "./content/content-index.ts";
 import type { GameDefinition } from "./content/types.ts";
 import { validateGameDefinitionWithWarnings } from "./content/validation.ts";
 import { resolveFeatureModules, selectEnabledFeatureModules } from "./extension/feature-module.ts";
-import type { AnyFeatureModule, ShootingCoreFeature } from "./extension/feature-module.ts";
+import type { AnyFeatureModule, LoadedFeature, ShootingCoreFeature } from "./extension/feature-module.ts";
 import type { StageSessionTestingHookOptions } from "./instrumentation/stage-session-testing-hooks.ts";
 import { assertInternalTestHooksEnabled } from "./instrumentation/test-hooks-guard.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
+import type { CoreError } from "./result.ts";
 import { createLoadedGame } from "./session/loaded-game.ts";
 import { deepFreezePlainData } from "./shared/immutable.ts";
 
@@ -54,17 +55,23 @@ function createShootingCoreInternal(
         return errorResult(basic.errors);
       }
       const validated = plainDefinition as GameDefinition;
-      const features = selectEnabledFeatureModules(registeredFeatures, validated.enabledFeatures);
       // feature の規則は basic の検証に通った definition だけに、canonical feature order で当てる。
-      const featureDiagnostics = features.map((module) => module.validateContent(validated));
-      const featureErrors = featureDiagnostics.flatMap((diagnostics) => diagnostics.errors);
+      const features: LoadedFeature[] = [];
+      const featureErrors: CoreError[] = [];
+      const warnings = [...basic.warnings];
+      for (const module of selectEnabledFeatureModules(registeredFeatures, validated.enabledFeatures)) {
+        const content = module.loadContent(validated);
+        if (!content.ok) {
+          featureErrors.push(...content.errors);
+          continue;
+        }
+        warnings.push(...content.warnings);
+        features.push(Object.freeze({ module, content: content.value }));
+      }
       if (featureErrors.length > 0) {
         return errorResult(featureErrors);
       }
-      return okResult(
-        createLoadedGame(createLoadedContentIndex(validated), coreVersion, testingHooks, features),
-        [...basic.warnings, ...featureDiagnostics.flatMap((diagnostics) => diagnostics.warnings)],
-      );
+      return okResult(createLoadedGame(createLoadedContentIndex(validated), coreVersion, testingHooks, features), warnings);
     },
   });
 }

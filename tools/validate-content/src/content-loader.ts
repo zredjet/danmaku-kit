@@ -3,6 +3,7 @@ import path from "node:path";
 import { toAssetManifest, validateAssetManifestSource, type AssetManifest } from "./asset-manifest.ts";
 import {
   COLLECTION_DIRECTORIES,
+  FEATURE_COLLECTIONS,
   type CollectionSource,
   type ContentCollectionName,
   type ContentDirectoryName,
@@ -228,21 +229,25 @@ function assembleGameDefinition(
     playerShots: collectDefinitions(collectionSources, "playerShots"),
     patterns: collectDefinitions(collectionSources, "patterns"),
     paths: collectDefinitions(collectionSources, "paths"),
-    ...collectFeatureContent(collectionSources),
+    ...collectFeatureContent(collectionSources, game.enabledFeatures),
   };
   const { contentVersion: _contentVersion, content: _content, ...coreFields } = game;
   return { ...coreFields, content };
 }
 
 /**
- * optional feature の collection を `content.features` にまとめる。file のある collection だけを置き、feature の content を使わない
- * content-root では `content.features` を省く。
+ * optional feature の collection を `content.features` にまとめる。file のある collection と、有効な feature の collection（file が
+ * なければ空）を置き、どちらもなければ `content.features` を省く。
  */
-function collectFeatureContent(sources: readonly CollectionSource[]): Readonly<{ features?: Record<string, readonly unknown[]> }> {
+function collectFeatureContent(
+  sources: readonly CollectionSource[],
+  enabledFeatures: unknown,
+): Readonly<{ features?: Record<string, readonly unknown[]> }> {
   const features: Record<string, readonly unknown[]> = {};
-  for (const collection of Object.values(COLLECTION_DIRECTORIES)) {
-    if (collection.startsWith("features.") && sources.some((source) => source.collection === collection)) {
-      features[collection.slice("features.".length)] = collectDefinitions(sources, collection);
+  for (const [collection, feature] of Object.entries(FEATURE_COLLECTIONS)) {
+    const enabled = Array.isArray(enabledFeatures) && enabledFeatures.includes(feature);
+    if (enabled || sources.some((source) => source.collection === collection)) {
+      features[collection.slice("features.".length)] = collectDefinitions(sources, collection as ContentCollectionName);
     }
   }
   return Object.keys(features).length > 0 ? { features } : {};

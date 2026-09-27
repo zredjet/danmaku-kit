@@ -5,10 +5,10 @@ import { createCounterFeature } from "../test-support/feature-modules.ts";
 import { defineFeature, freezeFeatureState, resolveFeatureModules, selectEnabledFeatureModules } from "./feature-module.ts";
 import type { FeatureModule } from "./feature-module.ts";
 
-const validModule: FeatureModule<null> = {
+const validModule: FeatureModule<null, null> = {
   feature: "rank",
   stateVersion: 1,
-  validateContent: () => ({ errors: [], warnings: [] }),
+  loadContent: () => ({ ok: true, value: null, warnings: [] }),
   createInitialState: () => null,
   systems: {},
   serializeState: () => null,
@@ -39,7 +39,7 @@ test("rejects features that were not made by defineFeature and duplicate feature
 });
 
 test("rejects feature modules with an unknown feature, an invalid state version or missing hooks", () => {
-  const define = (change: Record<string, unknown>) => () => defineFeature({ ...validModule, ...change } as FeatureModule<null>);
+  const define = (change: Record<string, unknown>) => () => defineFeature({ ...validModule, ...change } as FeatureModule<null, null>);
 
   assert.doesNotThrow(define({}));
   assert.throws(define({ feature: "lunatic" }), /Unknown optional feature module: lunatic/);

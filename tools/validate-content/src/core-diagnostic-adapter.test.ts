@@ -157,6 +157,20 @@ test("points feature gate diagnostics at the definition that uses a disabled fea
   }]);
 });
 
+test("points a disabled feature collection warning at the game definition", () => {
+  const minimum = createMinimumDefinition();
+  const definition = { ...minimum, content: { ...minimum.content, features: { pickups: [] } } };
+
+  assert.deepEqual(validateContentDefinition(definition, sourceIndexStub()), [{
+    kind: "featureGate",
+    code: "feature.disabledContent",
+    severity: "warning",
+    message: "content.features.pickups is not used because the pickup feature is not in enabledFeatures",
+    sourceId: "gameDefinition",
+    schemaPath: "content.features.pickups",
+  }]);
+});
+
 function sourceIndexStub(): ContentSourceIndex {
   return Object.freeze({
     locateSchemaPath(schemaPath, referrerId) {

@@ -12,6 +12,14 @@ export const COLLECTION_DIRECTORIES = Object.freeze({
   pickups: "features.pickups",
 } as const);
 
+/**
+ * optional feature の collection と、その feature。feature が `enabledFeatures` にあれば、file がなくても空の collection を置く
+ * （Core は有効な feature の collection を必要とする、design 20）。
+ */
+export const FEATURE_COLLECTIONS = Object.freeze({
+  "features.pickups": "pickup",
+} as const);
+
 export type ContentDirectoryName = keyof typeof COLLECTION_DIRECTORIES;
 
 export type ContentCollectionName = (typeof COLLECTION_DIRECTORIES)[ContentDirectoryName];

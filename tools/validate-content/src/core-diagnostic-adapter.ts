@@ -53,7 +53,7 @@ function mapCoreError(error: CoreError, sourceIndex: ContentSourceIndex): Valida
   return createSchemaDiagnostic(error, "error", sourceIndex);
 }
 
-/** Core warningはblockingしないschema diagnosticとして同じsource lookupを適用する。 */
+/** Core warningはblockingしない診断として、feature の warning は feature gate、それ以外は schema diagnostic にする。 */
 function mapCoreWarning(
   warning: CoreWarning,
   sourceIndex: ContentSourceIndex,
@@ -86,20 +86,23 @@ function createReferenceDiagnostic(error: CoreError, sourceIndex: ContentSourceI
   });
 }
 
-/** feature validationはGameDefinition.enabledFeaturesを正本位置として表す。 */
+/**
+ * feature gate の診断。`enabledFeatures` の誤りと、有効でない feature の collection 全体（直す場所は `enabledFeatures`）は game
+ * definition を、無効な feature を使う definition の field（`enemy.drops` など）はその definition の source を指す。
+ */
 function createFeatureGateDiagnostic(
   error: Readonly<Pick<CoreError, "code" | "message" | "schemaPath" | "referrerId">> | CoreWarning,
   severity: "error" | "warning",
   sourceIndex: ContentSourceIndex,
 ): FeatureGateContentDiagnostic {
-  // `enabledFeatures` の誤りは game definition、無効な feature を使う field（`enemy.drops` など）はその definition の file を指す。
   const schemaPath = error.schemaPath ?? "enabledFeatures";
+  const atGameDefinition = schemaPath === "enabledFeatures" || /^content\.features\.[A-Za-z]+$/.test(schemaPath);
   return Object.freeze({
     kind: "featureGate",
     code: error.code,
     severity,
     message: error.message,
-    sourceId: schemaPath === "enabledFeatures" ? "gameDefinition" : sourceIndex.locateSchemaPath(schemaPath, error.referrerId).sourceId,
+    sourceId: atGameDefinition ? "gameDefinition" : sourceIndex.locateSchemaPath(schemaPath, error.referrerId).sourceId,
     schemaPath,
   });
 }

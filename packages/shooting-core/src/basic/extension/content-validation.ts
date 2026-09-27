@@ -16,5 +16,5 @@ export {
   validatePositiveIntegerAtMost,
   validatePositiveNumber,
 } from "../content/validation/fields.ts";
-export { addSchemaContext, validateContentItem } from "../content/validation/schema-path.ts";
+export { validateContentItem } from "../content/validation/schema-path.ts";
 export { validateAssetReference, validateNamespacedReference, validateUniqueIds } from "../content/validation/references.ts";

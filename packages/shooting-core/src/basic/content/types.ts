@@ -350,7 +350,8 @@ export type ContentRegistry = {
   patterns: readonly PatternDefinition[];
   paths: readonly PathDefinition[];
   /**
-   * optional feature が持つ content（design 20）。feature が有効でなければ読み込むだけで使わず、load は warning を返す。
+   * optional feature が持つ content（design 20）。有効な feature の collection は必須で（content のない feature は空の配列）、その
+   * feature の module が検証する。有効でない feature の collection は検証せずに読み込むだけで Core は読まず、load は warning を返す。
    */
   features?: FeatureContentRegistry;
 };

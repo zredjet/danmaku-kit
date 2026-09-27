@@ -1,2 +1,2 @@
-pickup.score_small [WARNING] feature.disabledContent: content.features.pickups is not used because the pickup feature is not in enabledFeatures (schema=content.features.pickups)
+gameDefinition [WARNING] feature.disabledContent: content.features.pickups is not used because the pickup feature is not in enabledFeatures (schema=content.features.pickups)
 Summary: 0 error(s), 1 warning(s), 0 info(s)

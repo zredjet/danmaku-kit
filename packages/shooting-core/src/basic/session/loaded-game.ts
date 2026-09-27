@@ -3,7 +3,7 @@ import { patternProgramsForDifficulty } from "../content/content-index.ts";
 import type { LoadedContentIndex } from "../content/content-index.ts";
 import type { Difficulty, PlayerDefinition, StageDefinition } from "../content/types.ts";
 import { freezeFeatureState } from "../extension/feature-module.ts";
-import type { AnyFeatureModule, FeatureStageContext } from "../extension/feature-module.ts";
+import type { FeatureStageBase, LoadedFeature } from "../extension/feature-module.ts";
 import { deepFreezePlainData } from "../shared/immutable.ts";
 import { createActiveStageSessionTestingHooks } from "../instrumentation/stage-session-testing-hooks.ts";
 import type { StageSessionTestingHookOptions } from "../instrumentation/stage-session-testing-hooks.ts";
@@ -34,7 +34,7 @@ export function createLoadedGame(
   content: LoadedContentIndex,
   coreVersion: string,
   testingHooks: StageSessionTestingHookOptions,
-  features: readonly AnyFeatureModule[],
+  features: readonly LoadedFeature[],
 ): LoadedGame {
   return Object.freeze({
     restore(rawState) {
@@ -87,7 +87,7 @@ export function createLoadedGame(
       }
       const featureStates = createInitialFeatureStates(
         features,
-        createFeatureStageContext(content, stage, player, options.value.difficulty),
+        createFeatureStageBase(content, stage, player, options.value.difficulty),
       );
       if (!featureStates.ok) {
         return featureStates;
@@ -135,7 +135,7 @@ function createStageSessionFromContent(
   stage: StageDefinition,
   player: PlayerDefinition,
   testingHooks: StageSessionTestingHookOptions,
-  features: readonly AnyFeatureModule[],
+  features: readonly LoadedFeature[],
   initial: Pick<StageSessionContext, "debugSeed" | "initialState" | "serializationMetadata">,
 ): StageSession {
   const difficulty = initial.serializationMetadata.difficulty;
@@ -150,7 +150,7 @@ function createStageSessionFromContent(
       stage,
       player,
       features,
-      featureStageContext: createFeatureStageContext(content, stage, player, difficulty),
+      featureStageBase: createFeatureStageBase(content, stage, player, difficulty),
     },
     debugSeed: initial.debugSeed,
     initialState: initial.initialState,
@@ -159,23 +159,23 @@ function createStageSessionFromContent(
   });
 }
 
-function createFeatureStageContext(
+function createFeatureStageBase(
   content: LoadedContentIndex,
   stage: StageDefinition,
   player: PlayerDefinition,
   difficulty: Difficulty,
-): FeatureStageContext {
+): FeatureStageBase {
   return Object.freeze({ definition: content.definition, stage, player, difficulty });
 }
 
 /** 有効な feature の state の初期値を作る。module が plain data でない state を返せば fatal にする。 */
 function createInitialFeatureStates(
-  features: readonly AnyFeatureModule[],
-  context: FeatureStageContext,
+  features: readonly LoadedFeature[],
+  base: FeatureStageBase,
 ): CoreResult<readonly CommittedFeatureState[]> {
   const states: CommittedFeatureState[] = [];
-  for (const module of features) {
-    const state = freezeFeatureState(module.createInitialState(context));
+  for (const { module, content } of features) {
+    const state = freezeFeatureState(module.createInitialState({ ...base, content }));
     if (state === undefined) {
       return coreError("stageSession.fatal", `Feature state must be JSON-compatible plain data: ${module.feature}`);
     }

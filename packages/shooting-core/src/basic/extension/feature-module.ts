@@ -1,6 +1,6 @@
 import { KNOWN_ENABLED_FEATURES } from "../content/types.ts";
 import type { Difficulty, EnabledFeature, GameDefinition, PlayerDefinition, StageDefinition } from "../content/types.ts";
-import type { CoreError, CoreResult, CoreWarning } from "../result.ts";
+import type { CoreResult } from "../result.ts";
 import type { SerializedJsonValue } from "../serialization/types.ts";
 import { deepFreezeClone, deepFreezePlainData } from "../shared/immutable.ts";
 
@@ -13,27 +13,25 @@ import { deepFreezeClone, deepFreezePlainData } from "../shared/immutable.ts";
 export const FEATURE_TICK_SLOTS = Object.freeze(["spawn", "scoring"] as const);
 export type FeatureTickSlot = (typeof FEATURE_TICK_SLOTS)[number];
 
-/** feature の state を作るときと restore するときに渡す stage の文脈。 */
-export type FeatureStageContext = Readonly<{
+/** stage の文脈（base）。Core は feature ごとに、その feature が load 時に作った `content` を足して hook に渡す。 */
+export type FeatureStageBase = Readonly<{
   definition: GameDefinition;
   stage: StageDefinition;
   player: PlayerDefinition;
   difficulty: Difficulty;
 }>;
 
+/** feature の state を作るときと restore するときに渡す stage の文脈。`content` は feature の `loadContent()` が作った値。 */
+export type FeatureStageContext<Content> = FeatureStageBase & Readonly<{ content: Content }>;
+
 /** feature の system に渡す 1 tick の文脈。entity の採番、event、score のような basic の state は、使う feature を足す slice で足す。 */
-export type FeatureTickContext = FeatureStageContext & Readonly<{ tick: number }>;
+export type FeatureTickContext<Content> = FeatureStageContext<Content> & Readonly<{ tick: number }>;
 
 /** restore で feature の state を作るときの文脈。`expectedTick` は snapshot が次に受け付ける tick。 */
-export type FeatureRestoreContext = FeatureStageContext & Readonly<{ expectedTick: number }>;
+export type FeatureRestoreContext<Content> = FeatureStageContext<Content> & Readonly<{ expectedTick: number }>;
 
 /** 1 tick の決まった位置で feature の state を進める。error を返すと stage session は fatal になる。 */
-export type FeatureSystem<State> = (state: State, context: FeatureTickContext) => CoreResult<State>;
-
-export type FeatureContentDiagnostics = Readonly<{
-  errors: readonly CoreError[];
-  warnings: readonly CoreWarning[];
-}>;
+export type FeatureSystem<State, Content> = (state: State, context: FeatureTickContext<Content>) => CoreResult<State>;
 
 /**
  * optional feature が basic core に差し込む処理（design 20）。
@@ -42,17 +40,21 @@ export type FeatureContentDiagnostics = Readonly<{
  * JSON 互換の plain data とし（実行時の状態を持たない feature は `null`）、Core は committed state に有効な feature ごとに必ず 1 つ持って
  * freeze する。hook が返した state が plain data でなければ、startStage と tick は `stageSession.fatal`、restore は
  * `state.invalidShape` にする。serialize は `SerializedEnabledFeatureState`、state hash は feature state として canonical encoding に入れる。
+ * `Content` は load 時に 1 度だけ作る feature の content（id の索引など）で、Core は読まずに hook の文脈へ渡す。hook は変更しない。
  */
-export type FeatureModule<State extends SerializedJsonValue> = Readonly<{
+export type FeatureModule<State extends SerializedJsonValue, Content> = Readonly<{
   feature: EnabledFeature;
   /** serialize する state の version（正の safe integer）。restore は同じ version の state だけを受け付ける。 */
   stateVersion: number;
-  /** basic の検証に通った definition を feature の規則で検証する。error があれば load は失敗する。 */
-  validateContent(definition: GameDefinition): FeatureContentDiagnostics;
+  /**
+   * basic の検証に通った definition を feature の規則で検証し、stage と tick が使う feature の content を作る。error を返せば load は
+   * 失敗し、成功の warning は load の warning に足す。
+   */
+  loadContent(definition: GameDefinition): CoreResult<Content>;
   /** `startStage()` で feature の state の初期値を作る。 */
-  createInitialState(context: FeatureStageContext): State;
+  createInitialState(context: FeatureStageContext<Content>): State;
   /** tick の位置ごとの system。 */
-  systems: Readonly<Partial<Record<FeatureTickSlot, FeatureSystem<State>>>>;
+  systems: Readonly<Partial<Record<FeatureTickSlot, FeatureSystem<State, Content>>>>;
   /** public serialize の payload。 */
   serializeState(state: State): SerializedJsonValue;
   /** state hash に入れる値。serialize と契約が異なるため、本文が同じでも別に持つ。 */
@@ -61,14 +63,17 @@ export type FeatureModule<State extends SerializedJsonValue> = Readonly<{
    * JSON の形を検証済みの payload から state を作る。payload の形と、spawn から `expectedTick` までに到達できる state であることを
    * 検証し、受け付けない state は `state.invalidShape` などの error にする。
    */
-  restoreState(payload: SerializedJsonValue, context: FeatureRestoreContext): CoreResult<State>;
+  restoreState(payload: SerializedJsonValue, context: FeatureRestoreContext<Content>): CoreResult<State>;
 }>;
 
-/** state の型を消した feature module。Core の中ではこの形で持つ。 */
-export type AnyFeatureModule = FeatureModule<SerializedJsonValue>;
+/** state と content の型を消した feature module。Core の中ではこの形で持つ。 */
+export type AnyFeatureModule = FeatureModule<SerializedJsonValue, unknown>;
+
+/** load した有効な feature。module と、その module が load 時に作った content。 */
+export type LoadedFeature = Readonly<{ module: AnyFeatureModule; content: unknown }>;
 
 const FEATURE_MODULE: unique symbol = Symbol("shooting-core.featureModule");
-const MODULE_FUNCTIONS = Object.freeze(["validateContent", "createInitialState", "serializeState", "hashState", "restoreState"] as const);
+const MODULE_FUNCTIONS = Object.freeze(["loadContent", "createInitialState", "serializeState", "hashState", "restoreState"] as const);
 /** `defineFeature()` が作った feature。symbol を取り出して作った偽の feature を受け付けないために使う。 */
 const definedFeatures = new WeakSet<object>();
 
@@ -85,7 +90,7 @@ export type ShootingCoreFeature = Readonly<{
  *
  * 既知でない feature、正の safe integer でない `stateVersion`、関数でない hook は feature の実装の誤りなので TypeError を投げる。
  */
-export function defineFeature<State extends SerializedJsonValue>(module: FeatureModule<State>): ShootingCoreFeature {
+export function defineFeature<State extends SerializedJsonValue, Content>(module: FeatureModule<State, Content>): ShootingCoreFeature {
   if (!KNOWN_ENABLED_FEATURES.includes(module.feature)) {
     throw new TypeError(`Unknown optional feature module: ${String(module.feature)}`);
   }

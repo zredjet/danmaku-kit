@@ -5,7 +5,7 @@ import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
 import { toReadonlyEntityState } from "../entities/runtime-entity.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import { freezeFeatureState } from "../extension/feature-module.ts";
-import type { AnyFeatureModule, FeatureStageContext, FeatureTickSlot } from "../extension/feature-module.ts";
+import type { FeatureStageBase, FeatureTickSlot, LoadedFeature } from "../extension/feature-module.ts";
 import type { InputFrame } from "../input/input-frame.ts";
 import { consumeWorkingMutationFailureForTesting } from "../instrumentation/stage-session-testing-hooks.ts";
 import type { ActiveStageSessionTestingHooks } from "../instrumentation/stage-session-testing-hooks.ts";
@@ -36,10 +36,10 @@ export type StageTickContent = Pick<
   patternProgramsById: ReadonlyMap<string, PatternProgram>;
   stage: StageDefinition;
   player: PlayerDefinition;
-  /** 有効な feature の module（canonical feature order）。committed state の `featureStates` と同じ順に並ぶ。 */
-  features: readonly AnyFeatureModule[];
-  /** feature の system に渡す stage の文脈。 */
-  featureStageContext: FeatureStageContext;
+  /** 有効な feature（canonical feature order）。committed state の `featureStates` と同じ順に並ぶ。 */
+  features: readonly LoadedFeature[];
+  /** feature の system に渡す stage の文脈（feature の content は feature ごとに足す）。 */
+  featureStageBase: FeatureStageBase;
 }>;
 
 /**
@@ -275,7 +275,7 @@ function advanceFeatureSystems(
   content: StageTickContent,
   slot: FeatureTickSlot,
 ): StageTickOutcome | null {
-  for (const [index, module] of content.features.entries()) {
+  for (const [index, { module, content: featureContent }] of content.features.entries()) {
     const system = module.systems[slot];
     if (!system) {
       continue;
@@ -284,7 +284,7 @@ function advanceFeatureSystems(
     if (current?.feature !== module.feature) {
       return fatalTickOutcome([{ code: "stageSession.fatal", message: `Feature state not found: ${module.feature}` }]);
     }
-    const advanced = system(current.state, { ...content.featureStageContext, tick: working.expectedTick });
+    const advanced = system(current.state, { ...content.featureStageBase, content: featureContent, tick: working.expectedTick });
     if (!advanced.ok) {
       return fatalTickOutcome(advanced.errors);
     }

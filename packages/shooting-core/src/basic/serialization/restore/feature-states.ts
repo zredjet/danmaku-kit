@@ -1,5 +1,5 @@
 import { freezeFeatureState } from "../../extension/feature-module.ts";
-import type { AnyFeatureModule, FeatureRestoreContext } from "../../extension/feature-module.ts";
+import type { FeatureStageBase, LoadedFeature } from "../../extension/feature-module.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
 import type { CommittedFeatureState } from "../../state/committed-state.ts";
@@ -14,22 +14,22 @@ import type { SerializedEnabledFeatureState } from "../types.ts";
  */
 export function restoreFeatureStates(
   states: readonly SerializedEnabledFeatureState[],
-  features: readonly AnyFeatureModule[],
-  context: FeatureRestoreContext,
+  features: readonly LoadedFeature[],
+  context: FeatureStageBase & Readonly<{ expectedTick: number }>,
 ): CoreResult<readonly CommittedFeatureState[]> {
-  if (states.length !== features.length || states.some((state, index) => state.feature !== features[index]!.feature)) {
+  if (states.length !== features.length || states.some((state, index) => state.feature !== features[index]!.module.feature)) {
     return coreError(
       "state.featureMismatch",
       "state.enabledFeatureStates must have one state for each enabled feature module",
     );
   }
   const restored: CommittedFeatureState[] = [];
-  for (const [index, module] of features.entries()) {
+  for (const [index, { module, content }] of features.entries()) {
     const state = states[index]!;
     if (state.stateVersion !== module.stateVersion) {
       return coreError("state.featureMismatch", `unsupported ${module.feature} feature stateVersion: ${state.stateVersion}`);
     }
-    const value = module.restoreState(state.payload, context);
+    const value = module.restoreState(state.payload, { ...context, content });
     if (!value.ok) {
       return value;
     }

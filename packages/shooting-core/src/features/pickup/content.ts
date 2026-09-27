@@ -1,4 +1,4 @@
-import type { EnemyDefinition, GameDefinition, PickupDefinition } from "../../basic/content/types.ts";
+import type { EnemyDefinition, GameDefinition, PickupDefinition, PickupId } from "../../basic/content/types.ts";
 import {
   validateAllowedKeys,
   validateAssetReference,
@@ -8,14 +8,15 @@ import {
   validateNonEmptyString,
   validateNonNegativeInteger,
   validateNonNegativeNumberAtMost,
+  validateNumberAtMost,
   validateObjectArray,
   validatePositiveInteger,
   validatePositiveIntegerAtMost,
   validatePositiveNumber,
   validateUniqueIds,
 } from "../../basic/extension/content-validation.ts";
-import type { FeatureContentDiagnostics } from "../../basic/extension/feature-module.ts";
-import type { CoreError } from "../../basic/result.ts";
+import { errorResult, okResult } from "../../basic/result.ts";
+import type { CoreError, CoreResult } from "../../basic/result.ts";
 import { asRecord } from "../../basic/shared/guards.ts";
 import {
   MAX_PICKUP_COLLECT_RADIUS,
@@ -25,21 +26,30 @@ import {
   MAX_PICKUP_SPEED_PER_AXIS,
 } from "./budgets.ts";
 
+/** pickup feature が load 時に作る content。 */
+export type PickupContent = Readonly<{
+  pickupsById: ReadonlyMap<PickupId, PickupDefinition>;
+}>;
+
 /**
- * pickup feature の content を検証する（design 9.9 / 20）。
+ * pickup feature の content を検証し、pickup の索引を作る（design 9.9 / 20）。
  *
- * basic の検証に通った definition の `content.features.pickups` と、enemy の `drops` の形を検証し、形が正しければ pickup の id、
- * asset、drops の参照を解決する。pickup を持たない（`content.features.pickups` のない）content でも、drops は pickup を参照できない
- * ので error になる。
+ * 有効な pickup feature は `content.features.pickups` を必要とする（pickup のない content は空の配列にする）。その pickup と enemy の
+ * `drops` の形を検証し、形が正しければ pickup の id、asset、drops の参照を解決する。
  */
-export function validatePickupContent(definition: GameDefinition): FeatureContentDiagnostics {
+export function loadPickupContent(definition: GameDefinition): CoreResult<PickupContent> {
   const errors: CoreError[] = [];
-  const pickups = definition.content.features?.pickups ?? [];
-  if (definition.content.features?.pickups !== undefined) {
-    const records = validateObjectArray("content.features.pickups", definition.content.features.pickups, errors);
-    for (const { record, index } of records.items) {
-      validateContentItem(`content.features.pickups[${index}]`, "pickup", record, errors, () => validatePickupShape(record, errors));
-    }
+  const pickups = definition.content.features?.pickups;
+  if (pickups === undefined) {
+    return errorResult([{
+      code: "definition.invalidShape",
+      message: "content.features.pickups must be an array when the pickup feature is enabled",
+      schemaPath: "content.features.pickups",
+    }]);
+  }
+  const records = validateObjectArray("content.features.pickups", pickups, errors);
+  for (const { record, index } of records.items) {
+    validateContentItem(`content.features.pickups[${index}]`, "pickup", record, errors, () => validatePickupShape(record, errors));
   }
   definition.content.enemies.forEach((enemy, index) => {
     if (enemy.drops !== undefined) {
@@ -47,7 +57,7 @@ export function validatePickupContent(definition: GameDefinition): FeatureConten
     }
   });
   if (errors.length > 0) {
-    return { errors, warnings: [] };
+    return errorResult(errors);
   }
 
   validateUniqueIds("pickup", "features.pickups", pickups, errors);
@@ -58,9 +68,9 @@ export function validatePickupContent(definition: GameDefinition): FeatureConten
     { schemaPath: `content.features.pickups[${index}].asset`, referrerId: pickup.id },
     errors,
   ));
-  const pickupIds = new Set(pickups.map((pickup) => pickup.id));
-  definition.content.enemies.forEach((enemy, enemyIndex) => validateDropReferences(enemy, enemyIndex, pickupIds, errors));
-  return { errors, warnings: [] };
+  const pickupsById = new Map(pickups.map((pickup) => [pickup.id, pickup] as const));
+  definition.content.enemies.forEach((enemy, enemyIndex) => validateDropReferences(enemy, enemyIndex, pickupsById, errors));
+  return errors.length > 0 ? errorResult(errors) : okResult(Object.freeze({ pickupsById }));
 }
 
 function validatePickupShape(pickup: Record<string, unknown>, errors: CoreError[]): void {
@@ -70,14 +80,16 @@ function validatePickupShape(pickup: Record<string, unknown>, errors: CoreError[
   validateNonEmptyString("pickup.asset", pickup.asset, errors);
   validateNonNegativeInteger("pickup.score", pickup.score, errors);
   validatePositiveNumber("pickup.collectRadius", pickup.collectRadius, errors);
-  if (typeof pickup.collectRadius === "number" && pickup.collectRadius > MAX_PICKUP_COLLECT_RADIUS) {
-    errors.push({
-      code: "definition.invalidShape",
-      message: `pickup.collectRadius must be less than or equal to ${MAX_PICKUP_COLLECT_RADIUS}`,
-    });
-  }
+  validateNumberAtMost("pickup.collectRadius", pickup.collectRadius, MAX_PICKUP_COLLECT_RADIUS, String(MAX_PICKUP_COLLECT_RADIUS), errors);
   if (pickup.magnetRadius !== undefined) {
     validateNonNegativeNumberAtMost("pickup.magnetRadius", pickup.magnetRadius, MAX_PICKUP_MAGNET_RADIUS, errors);
+    // 回収する距離より内側の吸い寄せは意味がない。
+    if (
+      typeof pickup.magnetRadius === "number" && typeof pickup.collectRadius === "number"
+      && pickup.magnetRadius <= pickup.collectRadius
+    ) {
+      errors.push({ code: "definition.invalidShape", message: "pickup.magnetRadius must be greater than pickup.collectRadius" });
+    }
   }
   const velocity = asRecord(pickup.velocity);
   if (!velocity) {
@@ -86,7 +98,9 @@ function validatePickupShape(pickup: Record<string, unknown>, errors: CoreError[
   }
   validateAllowedKeys("pickup.velocity", velocity, ["x", "y"], errors);
   validateFiniteNumberWithinAbs("pickup.velocity.x", velocity.x, MAX_PICKUP_SPEED_PER_AXIS, errors);
-  validateFiniteNumberWithinAbs("pickup.velocity.y", velocity.y, MAX_PICKUP_SPEED_PER_AXIS, errors);
+  // pickup は下へ落ちて、回収されなければ playfield の下から出て消える（止まったまま残り続けない）。
+  validatePositiveNumber("pickup.velocity.y", velocity.y, errors);
+  validateNumberAtMost("pickup.velocity.y", velocity.y, MAX_PICKUP_SPEED_PER_AXIS, String(MAX_PICKUP_SPEED_PER_AXIS), errors);
 }
 
 /** enemy の `drops`（1 つ以上、`count` の合計が上限以内）の形を検証する。 */
@@ -95,6 +109,7 @@ function validateDropsShape(value: unknown, errors: CoreError[]): void {
   if (Array.isArray(value) && drops.sourceLength === 0) {
     errors.push({ code: "definition.invalidShape", message: "enemy.drops must contain at least 1 drop" });
   }
+  const errorStart = errors.length;
   let total = 0;
   for (const { record: drop, index } of drops.items) {
     const path = `enemy.drops[${index}]`;
@@ -106,7 +121,8 @@ function validateDropsShape(value: unknown, errors: CoreError[]): void {
     }
     total += typeof drop.count === "number" && Number.isSafeInteger(drop.count) && drop.count > 0 ? drop.count : 0;
   }
-  if (total > MAX_PICKUP_DROPS_PER_ENEMY) {
+  // drop ごとの error があれば、合計は数え直した後にだけ見る。
+  if (errors.length === errorStart && total > MAX_PICKUP_DROPS_PER_ENEMY) {
     errors.push({
       code: "definition.invalidConstraint",
       message: `enemy.drops must drop at most ${MAX_PICKUP_DROPS_PER_ENEMY} pickups in total`,
@@ -118,7 +134,7 @@ function validateDropsShape(value: unknown, errors: CoreError[]): void {
 function validateDropReferences(
   enemy: EnemyDefinition,
   enemyIndex: number,
-  pickupIds: ReadonlySet<PickupDefinition["id"]>,
+  pickupsById: ReadonlyMap<PickupId, PickupDefinition>,
   errors: CoreError[],
 ): void {
   enemy.drops?.forEach((drop, dropIndex) => {
@@ -127,7 +143,7 @@ function validateDropReferences(
     if (!validateNamespacedReference("enemy.drops[].pickup", "pickup", drop.pickup, errors, context)) {
       return;
     }
-    if (!pickupIds.has(drop.pickup)) {
+    if (!pickupsById.has(drop.pickup)) {
       errors.push({ code: "pickup.notFound", message: `Pickup not found: ${drop.pickup}`, ...context });
     }
   });

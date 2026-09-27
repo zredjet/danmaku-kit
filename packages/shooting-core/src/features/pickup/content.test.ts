@@ -1,40 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createMinimumDefinition } from "../../../../../tests/fixtures/minimum-game-definition.ts";
 import { createShootingCore } from "../../basic/core.ts";
 import type { GameDefinition } from "../../basic/content/types.ts";
 import { pickupFeature } from "./index.ts";
+import { SCORE_SMALL_PICKUP, createPickupDefinition, without } from "./test-support/pickup-definitions.ts";
 
-const scoreSmall = Object.freeze({
-  id: "pickup.score_small",
-  version: 1,
-  asset: "enemy.scout",
-  score: 100,
-  collectRadius: 10,
-  magnetRadius: 80,
-  velocity: { x: 0, y: 1.5 },
-});
-
-/** pickup を有効にした最小の定義に、pickup と enemy の drops を足す。 */
-function pickupDefinition(pickups: unknown, drops?: unknown): GameDefinition {
-  const definition = createMinimumDefinition();
-  return {
-    ...definition,
-    enabledFeatures: ["pickup"],
-    content: {
-      ...definition.content,
-      enemies: definition.content.enemies.map((enemy) => ({ ...enemy, ...(drops === undefined ? {} : { drops }) })),
-      features: { pickups },
-    },
-  } as unknown as GameDefinition;
-}
-
-/** `key` を持たない copy。`undefined` の field は JSON 互換でないため、省略した定義はこれで作る。 */
-function without(record: Readonly<Record<string, unknown>>, key: string): Record<string, unknown> {
-  const { [key]: _omitted, ...rest } = record;
-  return rest;
-}
+const scoreSmall = SCORE_SMALL_PICKUP;
+const pickupDefinition = (pickups: unknown, drops?: unknown) => createPickupDefinition({ pickups, drops });
 
 function load(definition: GameDefinition) {
   return createShootingCore({ features: [pickupFeature] }).load(definition);
@@ -72,7 +45,7 @@ test("rejects malformed pickups with their schema paths", () => {
     ["definition.invalidShape", "content.features.pickups[0].magnetRadius", "pickup.magnetRadius must be less than or equal to 256"],
     ["definition.invalidShape", "content.features.pickups[1].collectRadius", "pickup.collectRadius must be less than or equal to 64"],
     ["definition.invalidShape", "content.features.pickups[1].velocity.x", "pickup.velocity.x must be between -8 and 8"],
-    ["definition.invalidShape", "content.features.pickups[1].velocity.y", "pickup.velocity.y must be a finite number"],
+    ["definition.invalidShape", "content.features.pickups[1].velocity.y", "pickup.velocity.y must be a positive number"],
     ["definition.invalidShape", "content.features.pickups[2].version", "pickup.version must be a positive integer"],
     ["definition.invalidShape", "content.features.pickups[2].asset", "pickup.asset must be a string"],
     ["definition.invalidShape", "content.features.pickups[2].velocity", "pickup.velocity must be an object"],
@@ -92,7 +65,6 @@ test("rejects malformed enemy drops and drops over the per-enemy budget", () => 
     ["definition.invalidShape", "content.enemies[0].drops[0].spread", "enemy.drops[0].spread must be a non-negative number"],
     ["definition.invalidShape", "content.enemies[0].drops[1].pickup", "enemy.drops[1].pickup must be a string"],
     ["definition.invalidShape", "content.enemies[0].drops[1].count", "enemy.drops[1].count must be at most 16"],
-    ["definition.invalidConstraint", "content.enemies[0].drops", "enemy.drops must drop at most 16 pickups in total"],
   ]);
   assert.deepEqual(errorsOf(pickupDefinition([scoreSmall], [])).map(([, schemaPath, message]) => [schemaPath, message]), [
     ["content.enemies[0].drops", "enemy.drops must contain at least 1 drop"],
@@ -101,6 +73,23 @@ test("rejects malformed enemy drops and drops over the per-enemy budget", () => 
     { pickup: "pickup.score_small", count: 9 },
     { pickup: "pickup.score_small", count: 8 },
   ])).map(([code]) => code), ["definition.invalidConstraint"]);
+});
+
+test("requires the pickup collection, falling pickups and a magnet wider than the collect radius", () => {
+  assert.deepEqual(errorsOf(createPickupDefinition({})), [[
+    "definition.invalidShape",
+    "content.features.pickups",
+    "content.features.pickups must be an array when the pickup feature is enabled",
+  ]]);
+  assert.deepEqual(errorsOf(pickupDefinition([
+    { ...scoreSmall, velocity: { x: 1, y: 0 } },
+    { ...scoreSmall, id: "pickup.rising", velocity: { x: 0, y: -1 } },
+    { ...scoreSmall, id: "pickup.magnet", magnetRadius: 10 },
+  ])).map(([, schemaPath, message]) => [schemaPath, message]), [
+    ["content.features.pickups[0].velocity.y", "pickup.velocity.y must be a positive number"],
+    ["content.features.pickups[1].velocity.y", "pickup.velocity.y must be a positive number"],
+    ["content.features.pickups[2].magnetRadius", "pickup.magnetRadius must be greater than pickup.collectRadius"],
+  ]);
 });
 
 test("resolves pickup ids, assets and drop references", () => {
