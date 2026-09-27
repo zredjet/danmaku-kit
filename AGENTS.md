@@ -61,7 +61,7 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 - `instrumentation/`（test hook 有効化 guard、stage session testing hook、headless debug checkpoint）は通常 runtime から到達してよい session の差し込み口で、import してよいのは `core.ts`、`session/`、`testing/` だけ。
 - `hash/` は DTO、encoder、digest だけを持ち、上位 layer を import しない。`hash/` を import してよいのは `state/hashable-projection.ts`、`instrumentation/`、`testing/` だけ。
 - `shared/`（guard、immutable、UTF-8 順序比較、field order helper）は最下層とし、`src/basic/` 内の他 module を import しない。
-- `extension/`（optional feature の module の型、`defineFeature()`、登録の解決、feature 向けの content 検証 helper の facade）は `content/types.ts`、`content/validation/` の `fields.ts` / `references.ts` / `schema-path.ts`、`result.ts`、`serialization/types.ts`、`shared/` だけを import し、`extension/` を import してよいのは `core.ts`、`api-types.ts`、`index.ts`、`session/`、`state/`、`serialization/restore/`、`instrumentation/`、`testing/` だけ。
+- `extension/`（optional feature の module の型、`defineFeature()`、登録の解決、feature 向けの content 検証 helper と playfield の facade、feature の frame の型）は `content/types.ts`、`content/runtime-budgets.ts`、`content/validation/` の `fields.ts` / `references.ts` / `schema-path.ts`、`entities/runtime-entity.ts`、`events/game-event.ts`、`simulation/entity.ts`、`result.ts`、`serialization/types.ts`、`shared/` だけを import し、`extension/` を import してよいのは `core.ts`、`api-types.ts`、`index.ts`、`session/`、`state/`、`serialization/restore/`、`instrumentation/`、`testing/` だけ。
 - `entities/*/snapshot.ts` を import してよいのは `serialization/types.ts`、`state/`、`hash/`、`entities/*/restore.ts` だけ。`entities/*/restore.ts` は `serialization/restore/` からだけ、`entities/restore-common.ts` はそれと `entities/*/restore.ts` からだけ、`serialization/restore-plain-data.ts` は restore 層と entities の restore module からだけ import する。layer rule の `*` は `/` を含まない1 segment に一致する。
 - `entities/<kind>/` の module は別 kind の directory を型 import も含めて import しない。
 - `index.ts` から実行時 import で到達する範囲に test / tooling 専用の `hash/` と `testing/` を含めない。`testing/` は非 test source から型 import も含めて import しない。state hash と headless debug dump の digest は test helper 側で計算する。
@@ -94,7 +94,8 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 - basic は `src/features/` を import しない。feature は同じ feature の directory と basic の `extension/`、`shared/`、`result.ts`、`content/types.ts`、`serialization/types.ts` だけを型 import も含めて import し、feature 同士は import しない（`tests/module-graph.test.mjs` の `FEATURE_ALLOWED_BASIC_TARGETS`）。basic の module が要るときは、feature の hook の文脈（`FeatureStageContext`、`FeatureTickContext`、`FeatureRestoreContext`）に足す。
 - feature の state は JSON 互換の plain data にし、有効な feature は必ず 1 つの state を持つ（状態のない feature は `null`）。serialize（`serializeState()`）と hash（`hashState()`）は契約が異なるため、本文が同じでも別に持つ。`restoreState()` は payload の形と、spawn から `expectedTick` までに到達できる state であることを検証する。
 - tick の system は `spawn` と `scoring` の位置で canonical feature order に実行する。system order に新しい位置を足すときは design 7.1 と `FEATURE_TICK_SLOTS` を同時に更新する。
-- feature の entity は basic の entity union に足さず、feature の directory の model / snapshot / restore に分ける。
+- feature の entity は basic の entity union に足さず、feature の directory の model / snapshot / restore（と tick の systems）に分ける。id は tick の文脈の `allocateEntityIds()` で basic と同じ allocator から採番し、restore は `entityAllocationTicks` で basic の entity との採番順を、`maxAllocations()` で allocation envelope を合わせる。位置は basic の entity と同じく spawn からの式で求め直す。
+- feature が出す event は `FeatureGameEvent` に足してから出す（basic の event は出せない）。score は `scoring` の文脈の `addScore()` だけで足す。feature の entity が残る間に stage を終わらせたくなければ `holdsStageClear()` を使う。
 
 feature を追加するとき:
 

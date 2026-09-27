@@ -225,7 +225,7 @@ packages/shooting-core/src/
 
 依存方向は `core.ts` → `session/` → `serialization/restore/` / `state/` → 下位 module（`content/`、`simulation/`、`hash/` など）→ `shared/` とし、下位 module から上位 layer を import しない。`instrumentation/` は `core.ts`、`session/`、`testing/` だけが使う session の差し込み口で、通常 runtime から到達してよい。runtime entity は kind ごとに `entities/<kind>/` の model / snapshot / restore へ縦に分け、各 file はそれぞれの layer に属する。`entities/*/snapshot.ts` は `serialization/types.ts`、`state/`、`hash/`、kind 別 restore から、`entities/*/restore.ts` は `serialization/restore/` からだけ使い、kind directory 同士は import しない。非 test source について、`core.ts`、`session/`、`serialization/restore/`、`state/`、`instrumentation/`、`hash/`、`testing/`、`entities/*/snapshot.ts`、`entities/*/restore.ts` を import してよい module と、kind directory 同士が import しないこと、`shared/` が他 module を import しないことは型 import も含めて、runtime import cycle と `index.ts` から `hash/` / `testing/` へ実行時に到達しないことは実行時 import で、`tests/module-graph.test.mjs` が検査する。同じ test は rule の path が実在する module を指すことと、shooting-core / validate-content の非 test source が `*.test.ts` / `test-support/` を import しないこと、shooting-core の非 test source が同じ `src/` 配下の module だけを相対 path で import し、npm package、`node:`、triple-slash reference directive を型 import も含めて使わないことも検査する。state hash と headless debug dump の digest は test helper 側で計算する。
 
-`extension/` は optional feature が basic に差し込む口（Phase 2B-4）で、`content/types.ts`、`content/validation/` の field / schema path / reference の helper（feature は `extension/content-validation.ts` を通して使う）、`result.ts`、`serialization/types.ts`、`shared/` だけを import し、`core.ts`、`api-types.ts`、`index.ts`、`session/`、`state/`、`serialization/restore/`、`instrumentation/`、`testing/` から使う。basic は `src/features/` を import せず、feature は同じ feature の directory と basic の `extension/`、`shared/`、`result.ts`、`content/types.ts`、`serialization/types.ts` だけを型 import も含めて import し、feature 同士は import しない（`tests/module-graph.test.mjs`）。package の export map は root と、`src/features/` の directory ごとの `./features/<feature>` だけを持つ（`tests/package-boundary.test.mjs`）。
+`extension/` は optional feature が basic に差し込む口（Phase 2B-4）で、`content/types.ts`、`content/runtime-budgets.ts`（playfield の大きさ、feature は `extension/playfield.ts` を通して使う）、`content/validation/` の field / schema path / reference の helper（feature は `extension/content-validation.ts` を通して使う）、`entities/runtime-entity.ts` と `events/game-event.ts` と `simulation/entity.ts` の型、`result.ts`、`serialization/types.ts`、`shared/` だけを import し、`core.ts`、`api-types.ts`、`index.ts`、`session/`、`state/`、`serialization/restore/`、`instrumentation/`、`testing/` から使う。basic は `src/features/` を import せず、feature は同じ feature の directory と basic の `extension/`、`shared/`、`result.ts`、`content/types.ts`、`serialization/types.ts` だけを型 import も含めて import し、feature 同士は import しない（`tests/module-graph.test.mjs`）。package の export map は root と、`src/features/` の directory ごとの `./features/<feature>` だけを持つ（`tests/package-boundary.test.mjs`）。
 
 ## 5. レイヤー責務
 
@@ -434,7 +434,7 @@ tick 0 の `stageStarted` は system order 外の pending lifecycle event とし
 
 `cleanup destroyed entities` の後に stage の終了を判定する（Phase 2A-6、`simulation/stage-status.ts`）。自機の残機が 0 なら `gameOver`、timeline をすべて処理して active な enemy がいなければ `stageCleared` とし、同じ tick に両方が成り立てば `gameOver` を優先する。敵弾が残っていても `stageCleared` にし、timeline が空の stage は tick 0 の終わりに `stageCleared` になる。判定結果は `GameFrame.state.status` と committed state の `stageStatus` に入り、終わった tick の frame が stage の最後の frame になる。
 
-Rank feature が有効な場合だけ step 12 に rank update、Phase 2B の Pickup feature が有効な場合だけ step 6 に pickup spawn、step 12 に pickup score / collect processing を追加する。feature 追加分も登録順と entity id 昇順で安定化し、Core minimum の system order を暗黙に変更しない。
+Rank feature が有効な場合だけ step 12 に rank update、Phase 2B の Pickup feature が有効な場合だけ step 12 に pickup の生成（その tick に撃破した enemy の drops）、回収と pickup score を追加する（Phase 2B-6。撃破と同じ tick に出すため、step 6 ではなく scoring で生成する）。feature 追加分も登録順と entity id 昇順で安定化し、Core minimum の system order を暗黙に変更しない。feature の system は step 6 の後（`spawn`）と step 12（`scoring`、basic の scoring の後で cleanup の前）で canonical feature order に実行し、feature が採番する id は同じ tick の basic の採番の後に来る。timeline を処理し終えて enemy がいなくなっても、feature が entity を残す間（回収されていない pickup）は stageCleared にしない。
 
 Bomb が有効な title では、`resolve immediate player defensive actions` で bomb cost、無敵付与、弾消し予約を処理する。同 tick に bomb 入力と player hit が重なった場合、bomb の無敵付与と弾消しを player hit 判定より先に適用する。
 
@@ -809,7 +809,9 @@ drops:
 
 - pickup は `score`（0 以上の整数）、`collectRadius`（0 より大きく 64 以下）、省略できる `magnetRadius`（`collectRadius` より大きく 256 以下）、`velocity`（px / tick、x は ±8、y は 0 より大きく 8 以下）を持つ。下へ落ちるので、回収されなければ playfield の下から出て消える。
 - enemy の `drops` は 1 つ以上の `{ pickup, count, spread? }` で、`count` の合計は 1 enemy あたり 16 以下にする。撃破した位置を中心に `count` 個を横へ `spread` px（0〜128）の幅で等間隔に並べる。乱数は使わない。
-- 生成、移動、回収、吸い寄せ（`magnetRadius` を Core で扱うか描画の演出にするか）と state は Phase 2B-6 で決める。
+- Phase 2B-6 の simulation: 撃破した tick の scoring で、collision resolution の順、drop の順、横の並びの順に pickup を出して採番し、`pickupsSpawnedBatch` で知らせる。pickup の位置は `spawnPosition + velocity * age` で毎 tick 求め直す。playfield の下の境界（32 px 外）を越えるか、左右の境界の外で playfield へ戻らなければ event なしで取り除き、上の境界の外に出た pickup は落ちて入るので残す。自機の中心から `collectRadius` 以内で回収し（`pickupCollected` と reason `pickupCollected` の `scoreChanged`）、`magnetRadius` 以内なら吸い寄せに入る。吸い寄せに入った pickup は位置を止め、12 tick 後に回収する（描画はその間、自機へ寄せる演出にしてよい）。吸い寄せを Core で扱うので、回収の tick は描画に依存しない。
+- active な pickup は 300 まで（design 14）。超える drop は pickup を出さずに `pickup.budgetExceeded` の fatal にする。回収されていない pickup が残る間は stage を clear にしないため、pickup は 0.5 px / tick 以上で落ちる必要がある。
+- frame は `state.features.pickups`（`ReadonlyPickupState`: id、定義、位置、吸い寄せ中か）を持つ。pickup の state は pickup feature の state（`stateVersion` 2、serialize は `enabledFeatureStates` の payload）で、restore は id と出た tick の順、basic の entity との採番順、定義ごとの drop 数、吸い寄せの tick、cleanup を検証する。撃破した位置は入力で決まるため検証しない。
 
 ### 9.10 Scoring / Rank 定義例
 
@@ -1061,7 +1063,7 @@ Phase 2B で追加する collision pair:
 
 | Pair | Broad phase |
 | --- | --- |
-| player vs pickup | pickup grid |
+| player vs pickup | 自機 1 体との距離の比較（pickup feature の scoring、Phase 2B-6。grid は使わない） |
 
 Phase 3 で追加する collision pair:
 
@@ -1095,7 +1097,7 @@ MVP の performance budget は以下を目標にする。
 | enemy bullet | 2,000 |
 | player shot | 300 |
 | enemy | 100 |
-| simulation events / tick | 500 |
+| simulation events / tick | 500（Core では検査しない目安。pickup は 1 個の回収で 2 event を出すので、同じ tick にまとめて回収すると超えうる） |
 | render events / tick | 2,500 |
 | pattern commands / tick | 2,000 |
 | collision candidates / tick | 20,000 |
@@ -1152,7 +1154,9 @@ Event payload は各 system step で発生した時点の事実を表し、`Game
 | `playerHit` | 被弾、残機処理、無敵演出 |
 | `bombUsed` | ボム演出、弾消し |
 | `bossPhaseChanged` | UI、BGM、背景演出 |
-| `scoreChanged` | HUD 更新 |
+| `scoreChanged` | HUD 更新（reason は `enemyDefeated` か `pickupCollected`） |
+| `pickupsSpawnedBatch` | pickup feature: 撃破した enemy が落とした pickup を batch で通知 |
+| `pickupCollected` | pickup feature: 自機が pickup を回収した（続けて同じ pickup の `scoreChanged`） |
 | `stageCleared` | リザルト遷移 |
 | `gameOver` | 残機切れ、リザルト遷移 |
 
@@ -1776,6 +1780,8 @@ Feature registration（Phase 2B-4、`src/basic/extension/feature-module.ts`）:
 - Core は有効な feature の module を canonical feature order で呼ぶ。`load()` は basic の検証に通った definition に `validateContent()` を当てて error と warning を足し、`startStage()` は `createInitialState()` で state を作り、tick は `spawn`（spawn bullets / player shots の後）と `scoring`（collision resolution と basic の scoring の後、cleanup の前）の位置で system を実行する。serialize は `serializeState()` を `SerializedEnabledFeatureState` の payload に、state hash は `hashState()` を feature state に入れ、restore は feature ごとに 1 つの state と `stateVersion` を確かめてから `restoreState()` で state を作る（spawn から到達できる state だけを受け付けるのは module の責務）。
 - feature の state は JSON 互換の plain data で、Core が committed state に feature ごとに持って freeze する。hook が plain data でない値を返せば、startStage と tick は `stageSession.fatal`、restore は `state.invalidShape` にする。system の error は tick の fatal になる。
 - `loadContent()` は load 時に 1 度だけ feature の content（pickup は `pickupsById`）を作り、Core は hook の文脈の `content` に渡す（Phase 2B-5）。
+- entity を持つ feature のための hook（Phase 2B-6）: tick の文脈は basic の entity、entity id の採番（basic と同じ allocator）、feature の event（`FeatureGameEvent`、文脈の tick のものだけ）の発行を持ち、`scoring` の文脈だけがその tick に撃破された enemy と score の加算（0 以上の safe integer）を持つ。誤った event や score は fatal にする。`projectFrameState()` は frame の `state.features` を、`holdsStageClear()` は stage の clear を待たせるかを返す。restore の文脈は `nextEntityId` と basic の entity の採番 tick（`entityAllocationTicks`）を持ち、`maxAllocations()` は restore の `nextEntityId` の allocation envelope に feature が採番し得る数を足す。stage の状態は feature の state を restore した後に、`holdsStageClear()` を含めて検証する。
+- feature を有効にしない content の frame は `features` を持たず、state hash、replay の golden は変わらない。pickup の state の byte 列は feature の `stateVersion` で区別するため、`SERIALIZED_STATE_HASH_VERSION` は 4 のままにした（basic の byte 列は変わらない）。
 - Phase 2B-4 の時点で登録された feature はなく、state hash、replay、validate-content の golden は変わらない。Phase 2B-5 で pickup の content と gating を足した（state は `null`）。feature が共有 allocator から採番する entity の restore（allocation envelope と restore の文脈）と tick の文脈（entity、event、score）は、pickup の simulation を足す Phase 2B-6 で SPI に足す。
 
 `StageSession.tick()` は stage session が active でない場合、`gameOver` / `stageCleared` 後、または tick mismatch 時に `CoreResult` の error を返す。precondition violation を silent no-op にしない。`gameOver` / `stageCleared` 後の余分な tick と tick mismatch は caller precondition error であり、session を fatal にしない。budget invariant 破壊、不正 state、内部 system order 違反は fatal error とし、以後の `tick()` は同じ fatal reason を返す。tick 更新は commit 前の working state で実行し、成功時だけ committed state に swap するため、部分更新された state は公開しない。Phase 1B-4 で追加済みの `serialize()` は fatal 後に error を返す。Phase 1B-5A で追加済みの `restore()` は version mismatch、top-level content / feature mismatch、top-level shape error を `CoreError[]` として返し、失敗時に既存 handle へ副作用を残さない。runtime entity、pending event、PRNG、allocator、registry reference の deep validation は Phase 1B-5B、feature state の欠落・余剰・wrong feature は Phase 1B-5C の extension state validation で扱う。
@@ -2043,7 +2049,7 @@ CI artifact path は `artifacts/debug-state/<test-name>-tick-<tick>.json` とす
 
 ```ts
 type HeadlessDebugStateDump = Readonly<{
-  schemaVersion: "2";
+  schemaVersion: "3";
   kind: "headless";
   // committed state が次に受け付ける input tick
   tick: number;
@@ -2068,7 +2074,7 @@ type HeadlessDebugStateDump = Readonly<{
 }>;
 ```
 
-`eventCounts` は `GameEvent` の全 type を持つ。Phase 2A-6 で `stageCleared` と `gameOver` を加え、`schemaVersion` を 2 に上げた。
+`eventCounts` は `GameEvent` の全 type を持つ。Phase 2A-6 で `stageCleared` と `gameOver` を加え、`schemaVersion` を 2 に上げた。Phase 2B-6 で pickup feature の `pickupsSpawnedBatch` と `pickupCollected` を加え、`schemaVersion` を 3 に上げた。
 
 Phase 1C-4 では、上記 headless summary schema、artifact naming、state / PRNG hash、count metrics と、21.4 の field-level replay divergence artifact を実装済みである。summary dump だけから entity / component / event / PRNG の値は復元できないため、field-level diff は検証済み replay compatibility metadata と expected / actual の各 `ReplayDivergenceSide` を入力にする。`ok` side だけが `HashableGameState`、順序付き `GameFrame.events`、parse後の `InputFrame`、summaryを持ち、早期終了とtick失敗は `missing` / `error` として扱う。`HeadlessDebugStateDump` はreportの各`ok` sideに置く概要fieldであり、deterministic snapshotの代用にはしない。
 
