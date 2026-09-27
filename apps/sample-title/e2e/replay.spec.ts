@@ -33,6 +33,8 @@ test("replays the browser's inputs headlessly to the same state, tick, entities,
   expect(record.inputs.length).toBe(dump.tick);
   expect(last.tick + 1).toBe(dump.tick);
   expect(countGameStateEntities(last.state)).toEqual(dump.entityCounts);
+  // この入力では drone を撃破して pickup が出ている（pickup の state も含めて一致することを確かめる）。
+  expect(dump.entityCounts.pickup).toBeGreaterThan(0);
   expect(player ? { x: player.position.x, y: player.position.y } : null).toEqual(dump.playerPosition);
   expect(serializedStateDigest(replay.session)).toBe(digestSerializedState(record.state));
   // 入力が実際に効いている（移動と低速移動と shot を含む）ことも確かめる。

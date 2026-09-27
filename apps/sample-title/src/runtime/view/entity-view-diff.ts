@@ -2,7 +2,7 @@ import type { ViewEntity } from "./view-entities.ts";
 
 /** 表示中の view と frame の entity を突き合わせた、生成・更新・破棄する view。 */
 export type EntityViewDiff = Readonly<{
-  /** まだ view がない entity。frame の並び（entity id 昇順）のまま。 */
+  /** まだ view がない entity。渡した並び（Core の entity の id 順の後に pickup の id 順）のまま。 */
   spawned: readonly ViewEntity[];
   /** view がある entity。位置などを frame の state に合わせる。 */
   updated: readonly ViewEntity[];

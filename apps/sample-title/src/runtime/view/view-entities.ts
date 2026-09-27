@@ -20,7 +20,8 @@ export const PICKUP_ATTRACTION_VIEW_TICKS = 12;
  * 吸い寄せに入った pickup を、自機へ寄せていく描画の演出（render-only）。
  *
  * Core は吸い寄せに入った pickup の位置を止めて 12 tick 後に回収するので、描画は吸い寄せに入った tick の位置から自機の位置へ、tick
- * ごとに寄せる。Core の state は変えない。stage が変わったら `clear()` する。
+ * ごとに寄せる。Core の state は変えない。stage が変わったら `clear()` する。吸い寄せに入ったことは frame で知るため、1 render frame
+ * に複数の tick が進むと寄せ始めがその分遅れ、自機の手前で回収されて消えることがある（描画だけの差）。
  */
 export class PickupAttraction {
   readonly #started = new Map<ReadonlyPickupState["id"], Readonly<{ tick: number; from: Point }>>();
@@ -59,17 +60,23 @@ export class PickupAttraction {
   }
 }
 
-/** frame の state から、描画する entity を id の順に並べる（Core の entity の後に pickup）。state がなければ空。 */
-export function collectViewEntities(state: ReadonlyGameState | null, attraction: PickupAttraction): readonly ViewEntity[] {
+/**
+ * frame の state から、描画する entity を並べる（Core の entity を id の順に並べた後に pickup を id の順に並べる）。state がなければ空。
+ *
+ * `attraction` を渡すと吸い寄せ中の pickup を自機へ寄せた位置にし、null なら Core の位置のままにする（debug overlay の collider は
+ * Core の位置を描く）。
+ */
+export function collectViewEntities(state: ReadonlyGameState | null, attraction: PickupAttraction | null): readonly ViewEntity[] {
   if (state === null) {
     return [];
   }
   const pickups = state.features?.pickups ?? [];
   if (pickups.length === 0) {
+    attraction?.clear();
     return state.entities;
   }
   const player = state.entities.find((entity) => entity.kind === "player")?.position ?? null;
-  const positions = attraction.positions(pickups, player, state.tick);
+  const positions = attraction?.positions(pickups, player, state.tick) ?? new Map<number, Point>();
   return [
     ...state.entities,
     ...pickups.map((pickup) => ({

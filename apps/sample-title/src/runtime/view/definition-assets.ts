@@ -1,4 +1,4 @@
-import type { GameDefinition } from "@shooting-sample/shooting-core";
+import type { GameDefinition, PickupDefinition } from "@shooting-sample/shooting-core";
 
 /**
  * content 定義の asset key を definition id から引ける表にする。
@@ -7,10 +7,18 @@ import type { GameDefinition } from "@shooting-sample/shooting-core";
  * 種類ごとの namespace prefix を持つので、全種類を 1 つの表にまとめても衝突しない。
  */
 export function collectDefinitionAssets(definition: GameDefinition): ReadonlyMap<string, string> {
-  const { players, enemies, bullets, playerShots, features } = definition.content;
+  const { players, enemies, bullets, playerShots } = definition.content;
   return new Map<string, string>(
-    [...players, ...enemies, ...bullets, ...playerShots, ...(features?.pickups ?? [])].map((item) => [item.id, item.asset]),
+    [...players, ...enemies, ...bullets, ...playerShots, ...enabledPickups(definition)].map((item) => [item.id, item.asset]),
   );
+}
+
+/**
+ * pickup feature が有効なときの pickup の定義。有効でない feature の collection は Core が検証せずに読み込むだけ（使わない）なので、
+ * view も使わない。
+ */
+export function enabledPickups(definition: GameDefinition): readonly PickupDefinition[] {
+  return definition.enabledFeatures.includes("pickup") ? definition.content.features?.pickups ?? [] : [];
 }
 
 /**

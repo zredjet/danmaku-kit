@@ -41,10 +41,14 @@ test("moves attracted pickups toward the player tick by tick from where the attr
   assert.deepEqual(positionAt(30), { x: 100, y: 400 });
 });
 
+test("keeps the Core positions of attracted pickups without an attraction", () => {
+  assert.deepEqual(collectViewEntities(stateAt(15, [pickup(7, true)]), null)[1]!.position, { x: 100, y: 280 });
+});
+
 test("forgets the attraction of pickups that left the frame and on clear", () => {
   const attraction = new PickupAttraction();
-  attraction.positions([pickup(7, true)], player.position, 10);
-  attraction.positions([], player.position, 11);
+  collectViewEntities(stateAt(10, [pickup(7, true)]), attraction);
+  collectViewEntities(stateAt(11), attraction);
 
   // 同じ id が再び吸い寄せに入っても（別の stage など）、新しい tick から寄せ直す。
   assert.deepEqual(attraction.positions([pickup(7, true)], player.position, 40).get(7), { x: 100, y: 290 });

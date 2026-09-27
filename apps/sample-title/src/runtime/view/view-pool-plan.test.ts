@@ -5,6 +5,7 @@ import type { GameDefinition } from "@shooting-sample/shooting-core";
 
 import { loadSampleTitleDefinition } from "../../test-support/sample-title-game.ts";
 import { collectDefinitionAssets, resolveDefinitionTextures } from "./definition-assets.ts";
+import { collectCollisionRadii } from "./collision-radii.ts";
 import { planViewPoolCapacities } from "./view-pool-plan.ts";
 
 function withPlayerShot(definition: GameDefinition, lifetimeTicks: number, intervalTicks: number): GameDefinition {
@@ -29,8 +30,12 @@ test("sizes the sample stage pools from its content and the runtime budget", asy
     // pickup は drone 18 体が 2 個ずつ落とす 36 個。
     capacities: { player: 1, enemy: 26, enemyBullet: 2_000, playerShot: 21, pickup: 36 },
   });
-  const withoutPickups = planViewPoolCapacities({ ...definition, enabledFeatures: [] }, "stage.stage_01", "player.default");
+  // pickup feature が有効でない content の pickup は、定義が残っていても view を作らず texture も要らない。
+  const disabled = { ...definition, enabledFeatures: [] };
+  const withoutPickups = planViewPoolCapacities(disabled, "stage.stage_01", "player.default");
   assert.equal(withoutPickups.ok && withoutPickups.capacities.pickup, 0);
+  assert.equal(collectDefinitionAssets(disabled).has("pickup.score_small"), false);
+  assert.equal(collectCollisionRadii(disabled).has("pickup.score_small"), false);
 });
 
 test("counts only fireOnSpawn bullets for stages without pattern steps", async () => {

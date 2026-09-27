@@ -5,23 +5,23 @@ import { diffEntityViews } from "../view/entity-view-diff.ts";
 import type { ViewEntity, ViewKind } from "../view/view-entities.ts";
 import { ViewPool } from "../view/view-pool.ts";
 
-type EntityKind = ViewKind;
-
-/** 敵弾を自機より手前に置き、弾幕の読みやすさを優先する。pickup は敵の上、自機の shot より下に置く。 */
-const DEPTH_BY_KIND: Readonly<Record<EntityKind, number>> = {
+/**
+ * 敵弾を自機より手前に置き、弾幕の読みやすさを優先する。pickup は敵の上、撃破の hit spark（1.5）の下に置き、spark を隠さない。
+ */
+const DEPTH_BY_KIND: Readonly<Record<ViewKind, number>> = {
   enemy: 1,
-  pickup: 1.5,
+  pickup: 1.25,
   playerShot: 2,
   player: 3,
   enemyBullet: 4,
 };
-const KINDS = Object.keys(DEPTH_BY_KIND) as EntityKind[];
+const KINDS = Object.keys(DEPTH_BY_KIND) as ViewKind[];
 const PLAYER_HITBOX_COLOR = 0xffffff;
 const PLAYER_HITBOX_DEPTH = 5;
 /** Phaser が必ず持つ texture。pool の view は使う直前に definition の texture へ差し替える。 */
 const PLACEHOLDER_TEXTURE = "__DEFAULT";
 
-type EntityView = Readonly<{ kind: EntityKind; image: GameObjects.Image }>;
+type EntityView = Readonly<{ kind: ViewKind; image: GameObjects.Image }>;
 type EntityId = ViewEntity["id"];
 
 export type EntityViewsOptions = Readonly<{
@@ -30,7 +30,7 @@ export type EntityViewsOptions = Readonly<{
   textures: ReadonlyMap<string, string>;
   /** texture の key から、texture の画素数と内部解像度で描く大きさの比を引く表。載っていない texture は 1。 */
   textureScales: ReadonlyMap<string, number>;
-  capacities: Readonly<Record<EntityKind, number>>;
+  capacities: Readonly<Record<ViewKind, number>>;
 }>;
 
 /**
@@ -44,13 +44,13 @@ export type EntityViewsOptions = Readonly<{
  */
 export class EntityViews {
   readonly #options: EntityViewsOptions;
-  readonly #pools: Readonly<Record<EntityKind, ViewPool<GameObjects.Image>>>;
+  readonly #pools: Readonly<Record<ViewKind, ViewPool<GameObjects.Image>>>;
   readonly #views = new Map<EntityId, EntityView>();
   readonly #playerHitbox: GameObjects.Arc;
 
   constructor(scene: Scene, options: EntityViewsOptions) {
     this.#options = options;
-    const createPool = (kind: EntityKind) => new ViewPool(options.capacities[kind], () => (
+    const createPool = (kind: ViewKind) => new ViewPool(options.capacities[kind], () => (
       scene.add.image(0, 0, PLACEHOLDER_TEXTURE).setDepth(DEPTH_BY_KIND[kind]).setVisible(false).setActive(false)
     ));
     this.#pools = {

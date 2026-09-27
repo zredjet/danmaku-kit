@@ -95,8 +95,9 @@ const SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES = Object.freeze(["hash/", "testing/
 /**
  * sample app の `src/` が package 名で import してよい package と、それを import してよい module。
  *
- * `src/` は browser bundle に入るため、ここに無い package、`node:`、Core の deep import、validate-content は型 import も含めて
- * import しない。`phaser` は Phaser adapter と entry に閉じ込め、それ以外の runtime module を node:test で検査できるようにする。
+ * `src/` は browser bundle に入るため、ここに無い package、`node:`、Core の deep import（root と feature の subpath export 以外）、
+ * validate-content は型 import も含めて import しない。`phaser` は Phaser adapter と entry に閉じ込め、それ以外の runtime module を
+ * node:test で検査できるようにする。optional feature は Core を作る entry だけが登録する。
  * Vite の virtual module は `import.meta` と同じく entry だけが読み、他の module へは引数で渡す。
  * path は `apps/sample-title/src/` からの相対で、表記は `SHOOTING_CORE_LAYER_RULES` と同じ。
  */
@@ -198,7 +199,7 @@ test("keeps shooting-core source free of package and platform imports", async ()
   assert.deepEqual(violations, [], "shooting-core source must import only its own modules by relative path");
 });
 
-test("keeps sample app source on the shooting-core root export and its allowed packages", async () => {
+test("keeps sample app source on the shooting-core root and feature exports and its allowed packages", async () => {
   const violations = [];
 
   for (const file of await collectSampleTitleSourceFiles()) {

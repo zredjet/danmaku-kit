@@ -118,12 +118,14 @@ export class StageScene extends Scene {
     this.#syncedLifecycle = step.lifecycle.state;
     this.#debugOverlayShown = step.debugOverlay;
     // pickup feature の pickup も同じ view pool の仕組みで描く。吸い寄せに入った pickup は tick ごとに自機へ寄せる（render-only）。
+    // frame が変わるのは tick を進めたか stage が変わった render frame だけなので、それ以外は直前の並びを使う。
     const entities = stateChanged
       ? collectViewEntities(step.frame?.state ?? null, this.#attraction)
       : this.#lastEntities;
     this.#lastEntities = entities;
     if (stateChanged || debugOverlayChanged) {
-      this.#colliders?.draw(entities, step.debugOverlay);
+      // collider は Core の位置に描く（吸い寄せ中の pickup は Core では止まっている）。
+      this.#colliders?.draw(collectViewEntities(step.frame?.state ?? null, null), step.debugOverlay);
     }
     if (stateChanged || lifecycleChanged) {
       const exhausted = views.sync(entities, {

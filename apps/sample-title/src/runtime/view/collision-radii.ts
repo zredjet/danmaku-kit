@@ -1,5 +1,7 @@
 import type { GameDefinition } from "@shooting-sample/shooting-core";
 
+import { enabledPickups } from "./definition-assets.ts";
+
 /**
  * content 定義の collision radius を definition id から引ける表にする。
  *
@@ -7,10 +9,10 @@ import type { GameDefinition } from "@shooting-sample/shooting-core";
  * definition id は種類ごとの namespace prefix を持つので、全種類を 1 つの表にまとめても衝突しない。
  */
 export function collectCollisionRadii(definition: GameDefinition): ReadonlyMap<string, number> {
-  const { players, enemies, bullets, playerShots, features } = definition.content;
+  const { players, enemies, bullets, playerShots } = definition.content;
   return new Map<string, number>([
     ...[...players, ...enemies, ...bullets, ...playerShots].map((item) => [item.id, item.collision.radius] as const),
     // pickup は自機の中心がこの半径に入ると回収される。
-    ...(features?.pickups ?? []).map((pickup) => [pickup.id, pickup.collectRadius] as const),
+    ...enabledPickups(definition).map((pickup) => [pickup.id, pickup.collectRadius] as const),
   ]);
 }

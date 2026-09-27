@@ -1,11 +1,10 @@
 import type { GameDefinition, PlayerId, StageId } from "@shooting-sample/shooting-core";
 
+import { enabledPickups } from "./definition-assets.ts";
 import type { ViewKind } from "./view-entities.ts";
 
-type EntityKind = ViewKind;
-
 /** design 14 の runtime budget。kind ごとの view pool の capacity の上限にする。 */
-export const VIEW_POOL_BUDGET: Readonly<Record<EntityKind, number>> = Object.freeze({
+export const VIEW_POOL_BUDGET: Readonly<Record<ViewKind, number>> = Object.freeze({
   player: 1,
   enemy: 100,
   enemyBullet: 2_000,
@@ -15,7 +14,7 @@ export const VIEW_POOL_BUDGET: Readonly<Record<EntityKind, number>> = Object.fre
 
 /** kind ごとの view pool の capacity か、stage を始められない理由。 */
 export type ViewPoolPlan =
-  | Readonly<{ ok: true; capacities: Readonly<Record<EntityKind, number>> }>
+  | Readonly<{ ok: true; capacities: Readonly<Record<ViewKind, number>> }>
   | Readonly<{ ok: false; error: string }>;
 
 /**
@@ -55,7 +54,7 @@ export function planViewPoolCapacities(definition: GameDefinition, stageId: Stag
     enemy.id,
     (enemy.drops ?? []).reduce((total, drop) => total + drop.count, 0),
   ]));
-  const pickups = definition.enabledFeatures.includes("pickup")
+  const pickups = enabledPickups(definition).length > 0
     ? Math.min(VIEW_POOL_BUDGET.pickup, stage.timeline.reduce((total, step) => total + (dropsByEnemyId.get(step.action.enemy) ?? 0), 0))
     : 0;
   return Object.freeze({
