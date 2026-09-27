@@ -37,16 +37,23 @@ export class StageLoop {
   #latestFrame: GameFrame | null = null;
   #latestInput: InputFrame | null = null;
   #failure: Extract<StageLoopStep, { ok: false }> | null = null;
+  readonly #recordedInputs: InputFrame[] | null;
 
   constructor(
     session: StageSession,
     input: StageLoopInput,
-    options: Readonly<{ clock?: FixedTickClock; firstTick?: number }> = {},
+    options: Readonly<{
+      clock?: FixedTickClock;
+      firstTick?: number;
+      /** Core が受け付けた `InputFrame` を順に残す。dev / test build で browser の入力を Node で再生するために使う。 */
+      recordInputs?: boolean;
+    }> = {},
   ) {
     this.#session = session;
     this.#input = input;
     this.#clock = options.clock ?? new FixedTickClock();
     this.#nextTick = options.firstTick ?? 0;
+    this.#recordedInputs = options.recordInputs ? [] : null;
   }
 
   /** render frame の経過時間（ms）ぶん stage を進める。 */
@@ -70,6 +77,7 @@ export class StageLoop {
       executedTicks += 1;
       this.#latestFrame = result.value;
       this.#latestInput = input;
+      this.#recordedInputs?.push(input);
       events.push(...result.value.events);
       if (this.ended) {
         break;
@@ -98,6 +106,16 @@ export class StageLoop {
       ticks,
       droppedTicks,
     });
+  }
+
+  /** Core が受け付けた `InputFrame`（tick 順）。`recordInputs` を指定しなかった loop では null。 */
+  get recordedInputs(): readonly InputFrame[] | null {
+    return this.#recordedInputs;
+  }
+
+  /** stage session の現在の state を serialize する。 */
+  serialize(): ReturnType<StageSession["serialize"]> {
+    return this.#session.serialize();
   }
 
   /** 起動からの `RuntimeDroppedTicks` の合計。 */

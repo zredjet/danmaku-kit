@@ -4,6 +4,7 @@ import test from "node:test";
 import type { CoreError, CoreResult, LoadedGame, StageSession, StartStageOptions } from "@shooting-sample/shooting-core";
 
 import { createFakeSession } from "../../test-support/game-frames.ts";
+import { digestSerializedState, runHeadlessReplay, serializedStateDigest } from "../../test-support/headless-replay.ts";
 import { loadSampleTitleGame } from "../../test-support/sample-title-game.ts";
 import { KeyboardInputAdapter } from "../input/keyboard-input.ts";
 import { GameShell, type GameShellStep } from "./game-shell.ts";
@@ -238,4 +239,48 @@ test("runs the sample title stage from the title with the Core", async () => {
   assert.equal(step.frame?.tick, 2);
   assert.equal(step.frame?.state.player.lives, 3);
   assert.deepEqual(step.events.slice(0, 2).map((event) => event.type), ["stageStarted", "tickAdvanced"]);
+});
+
+test("records the inputs the Core accepted so a headless replay reaches the same state", async () => {
+  const game = await loadSampleTitleGame();
+  const input = new KeyboardInputAdapter();
+  const create = (recordInputs: boolean) => new GameShell({
+    loadedGame: game,
+    stage: { stageId: "stage.stage_01", difficulty: "normal" },
+    nextSeed: () => "replay-record",
+    input,
+    startDurationMs: START_MS,
+    recordInputs,
+  });
+  const key = (type: "keydown" | "keyup", code: string) => input.handleKeyEvent({ type, code, repeat: false, metaKey: false });
+  const shell = create(true);
+  shell.beginLoading();
+  shell.finishLoading();
+  assert.equal(shell.replayRecord(), null);
+
+  press(input, "Enter");
+  shell.advance(START_MS);
+  shell.advance(0);
+  key("keydown", "KeyZ");
+  key("keydown", "ArrowLeft");
+  shell.advance(TICK_MS * 30);
+  key("keyup", "ArrowLeft");
+  key("keydown", "ArrowRight");
+  shell.advance(TICK_MS * 45);
+  const record = shell.replayRecord();
+  assert.ok(record !== null);
+
+  const replay = runHeadlessReplay(game, record.stage, record.inputs);
+  assert.deepEqual(record.stage, { stageId: "stage.stage_01", difficulty: "normal", seed: "replay-record" });
+  assert.equal(record.inputs.length, shell.latestFrame!.tick + 1);
+  assert.deepEqual(replay.frames.at(-1), shell.latestFrame);
+  assert.equal(serializedStateDigest(replay.session), digestSerializedState(record.state));
+
+  const unrecorded = create(false);
+  unrecorded.beginLoading();
+  unrecorded.finishLoading();
+  press(input, "Enter");
+  unrecorded.advance(START_MS);
+  unrecorded.advance(TICK_MS);
+  assert.equal(unrecorded.replayRecord(), null);
 });

@@ -5,6 +5,7 @@ import type {
   GameplayActionId,
   InputFrame,
   LoadedGame,
+  SerializedGameState,
   StageSession,
   StartStageOptions,
 } from "@shooting-sample/shooting-core";
@@ -111,5 +112,10 @@ export function serializedStateDigest(session: StageSession): string {
   if (!serialized.ok) {
     throw new Error(`serialize failed: ${JSON.stringify(serialized.errors)}`);
   }
-  return createHash("sha256").update(JSON.stringify(serialized.value)).digest("hex").slice(0, 16);
+  return digestSerializedState(serialized.value);
+}
+
+/** serialize 済みの snapshot（browser の再生記録の `state` など）を `serializedStateDigest()` と同じ方法で hash する。 */
+export function digestSerializedState(state: SerializedGameState): string {
+  return createHash("sha256").update(JSON.stringify(state)).digest("hex").slice(0, 16);
 }

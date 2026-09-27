@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { build, type Rolldown } from "vite";
 
 const sampleTitleRoot = fileURLToPath(new URL("../", import.meta.url));
-const HOOK_NAME = "__SHOOTING_DEBUG_STATE__";
+const HOOK_NAMES = ["__SHOOTING_DEBUG_STATE__", "__SHOOTING_DEBUG_REPLAY__"];
 
 /** sample app を `mode` で build し、出力した JavaScript をつなげて返す（file には書かない）。 */
 async function buildJavaScript(mode: string): Promise<string> {
@@ -23,9 +23,11 @@ async function buildJavaScript(mode: string): Promise<string> {
     .join("\n");
 }
 
-test("defines the browser debug state hook in test builds but not in production builds", async () => {
+test("defines the browser debug hooks in test builds but not in production builds", async () => {
   const [production, testBuild] = [await buildJavaScript("production"), await buildJavaScript("test")];
 
-  assert.equal(production.includes(HOOK_NAME), false, "production build must not define the debug state hook");
-  assert.equal(testBuild.includes(HOOK_NAME), true, "test build must define the debug state hook");
+  for (const name of HOOK_NAMES) {
+    assert.equal(production.includes(name), false, `production build must not define ${name}`);
+    assert.equal(testBuild.includes(name), true, `test build must define ${name}`);
+  }
 });

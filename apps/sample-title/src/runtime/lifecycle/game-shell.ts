@@ -1,5 +1,6 @@
 import type { CoreError, GameEvent, GameFrame, InputFrame, LoadedGame, StartStageOptions } from "@shooting-sample/shooting-core";
 
+import type { BrowserReplayRecord } from "../debug/browser-replay-record.ts";
 import type { KeyboardInputAdapter, KeyboardInputEvent } from "../input/keyboard-input.ts";
 import type { UiActionId } from "../input/key-bindings.ts";
 import { StageLoop } from "../loop/stage-loop.ts";
@@ -22,6 +23,8 @@ export type GameShellOptions = Readonly<{
   startDurationMs?: number;
   /** debug overlay（collider と debug HUD）を最初から表示するか。`toggleDebug` で切り替える。 */
   debugOverlay?: boolean;
+  /** stage ごとに Core が受け付けた入力を残し、`replayRecord()` で返せるようにする。dev / test build だけで使う。 */
+  recordInputs?: boolean;
 }>;
 
 /** 1 render frame を進めた結果。Core が error を返した後や stage を始められなかった後は、同じ error を返し続ける。 */
@@ -47,6 +50,7 @@ export type GameShellStep =
   | Readonly<{ ok: false; errors: readonly CoreError[] }>;
 
 type ActiveStage = {
+  readonly start: Readonly<StartStageOptions>;
   readonly seed: string;
   readonly loop: StageLoop;
   readonly timer: StageStartTimer;
@@ -99,6 +103,29 @@ export class GameShell {
   /** まだ tick や render frame に渡していない入力の edge の数。 */
   get inputQueueDepth(): number {
     return this.#options.input.latchedEdgeCount;
+  }
+
+  /**
+   * 現在の stage の開始条件、Core が受け付けた入力、現在の serialize 結果。`recordInputs` を指定していないとき、stage の外、
+   * serialize に失敗したときは null。
+   */
+  replayRecord(): BrowserReplayRecord | null {
+    const stage = this.#stage;
+    const inputs = stage?.loop.recordedInputs;
+    if (!stage || !inputs) {
+      return null;
+    }
+    const serialized = stage.loop.serialize();
+    if (!serialized.ok) {
+      return null;
+    }
+    return Object.freeze({
+      schemaVersion: "1",
+      kind: "browserReplay",
+      stage: stage.start,
+      inputs: Object.freeze([...inputs]),
+      state: serialized.value,
+    });
   }
 
   /** keyboard event を入力 adapter へ渡し、割り当てのある key なら true を返す（呼び出し側が既定動作を止める）。 */
@@ -227,14 +254,16 @@ export class GameShell {
 
   #startStage(): void {
     const seed = this.#options.nextSeed();
-    const session = this.#options.loadedGame.startStage({ ...this.#options.stage, seed });
+    const start = Object.freeze({ ...this.#options.stage, seed });
+    const session = this.#options.loadedGame.startStage(start);
     if (!session.ok) {
       this.#failure = Object.freeze({ ok: false, errors: Object.freeze([...session.errors]) });
       return;
     }
     this.#stage = {
+      start,
       seed,
-      loop: new StageLoop(session.value, this.#options.input),
+      loop: new StageLoop(session.value, this.#options.input, { recordInputs: this.#options.recordInputs ?? false }),
       timer: new StageStartTimer(this.#options.startDurationMs ?? STAGE_START_DURATION_MS),
       frame: null,
       latestInput: null,

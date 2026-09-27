@@ -49,6 +49,8 @@ const shell = new GameShell({
   input: new KeyboardInputAdapter(),
   // dev server では debug overlay を最初から出す。どの build でも ` / F3 で切り替えられる。
   debugOverlay: import.meta.env.DEV,
+  // browser の入力を Node の headless replay で再生できるよう、dev と test build だけ Core へ渡した入力を残す。
+  recordInputs: import.meta.env.MODE !== "production",
 });
 
 let assetStatus: AssetStatus = "loading";
