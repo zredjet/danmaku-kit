@@ -4,6 +4,7 @@ import {
   type CoreWarning,
   type GameDefinition,
 } from "@shooting-sample/shooting-core";
+import { pickupFeature } from "@shooting-sample/shooting-core/features/pickup";
 
 import type { ContentSourceIndex } from "./content-source-index.ts";
 import { freezeSchemaDiagnostic } from "./diagnostic-factory.ts";
@@ -33,7 +34,8 @@ export function validateContentDefinition(
   definition: unknown,
   sourceIndex: ContentSourceIndex,
 ): readonly ValidationContentDiagnostic[] {
-  const result = createShootingCore("validate-content").load(definition as GameDefinition);
+  // validate-content は Core の持つ optional feature をすべて登録し、`enabledFeatures` で有効にした feature の content を検証する。
+  const result = createShootingCore({ coreVersion: "validate-content", features: [pickupFeature] }).load(definition as GameDefinition);
   if (!result.ok) {
     return Object.freeze(result.errors.map((error) => mapCoreError(error, sourceIndex)));
   }
@@ -43,7 +45,7 @@ export function validateContentDefinition(
 /** Core error codeをreference / feature gate / schemaの公開diagnostic kindへ分類する。 */
 function mapCoreError(error: CoreError, sourceIndex: ContentSourceIndex): ValidationContentDiagnostic {
   if (error.code.startsWith("feature.")) {
-    return createFeatureGateDiagnostic(error.code, "error", error.message);
+    return createFeatureGateDiagnostic(error, "error", sourceIndex);
   }
   if (REFERENCE_ERROR_CODES.has(error.code)) {
     return createReferenceDiagnostic(error, sourceIndex);
@@ -55,7 +57,10 @@ function mapCoreError(error: CoreError, sourceIndex: ContentSourceIndex): Valida
 function mapCoreWarning(
   warning: CoreWarning,
   sourceIndex: ContentSourceIndex,
-): ParseOrSchemaContentDiagnostic {
+): ParseOrSchemaContentDiagnostic | FeatureGateContentDiagnostic {
+  if (warning.code.startsWith("feature.")) {
+    return createFeatureGateDiagnostic(warning, "warning", sourceIndex);
+  }
   return createSchemaDiagnostic(warning, "warning", sourceIndex);
 }
 
@@ -83,17 +88,19 @@ function createReferenceDiagnostic(error: CoreError, sourceIndex: ContentSourceI
 
 /** feature validationはGameDefinition.enabledFeaturesを正本位置として表す。 */
 function createFeatureGateDiagnostic(
-  code: string,
+  error: Readonly<Pick<CoreError, "code" | "message" | "schemaPath" | "referrerId">> | CoreWarning,
   severity: "error" | "warning",
-  message: string,
+  sourceIndex: ContentSourceIndex,
 ): FeatureGateContentDiagnostic {
+  // `enabledFeatures` の誤りは game definition、無効な feature を使う field（`enemy.drops` など）はその definition の file を指す。
+  const schemaPath = error.schemaPath ?? "enabledFeatures";
   return Object.freeze({
     kind: "featureGate",
-    code,
+    code: error.code,
     severity,
-    message,
-    sourceId: "gameDefinition",
-    schemaPath: "enabledFeatures",
+    message: error.message,
+    sourceId: schemaPath === "enabledFeatures" ? "gameDefinition" : sourceIndex.locateSchemaPath(schemaPath, error.referrerId).sourceId,
+    schemaPath,
   });
 }
 

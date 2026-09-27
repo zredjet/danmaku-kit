@@ -128,9 +128,10 @@ test("keeps Core and validate-content package dependencies pointing in the allow
     ["@shooting-sample/shooting-core", "yaml"],
   );
   await assertSourceImports(corePackageRoot, [], coreDependencies);
+  // validate-content は Core の root export と、検証に登録する optional feature の package entry だけを使う。
   await assertSourceImports(
     packageRoot,
-    ["@shooting-sample/shooting-core", "yaml", "node:"],
+    ["@shooting-sample/shooting-core", "@shooting-sample/shooting-core/features/pickup", "yaml", "node:"],
     validateContentDependencies,
   );
 });
@@ -175,7 +176,9 @@ async function assertSourceImports(root, allowedImports, declaredDependencies) {
         violations.push(`${path.relative(root, file)} -> ${specifier}`);
         continue;
       }
-      if (!isAllowedNodeBuiltin && !declaredDependencies.includes(specifier)) {
+      // subpath export（`@scope/name/features/pickup` など）は package 名で依存の宣言を確かめる。
+      const packageName = specifier.split("/").slice(0, specifier.startsWith("@") ? 2 : 1).join("/");
+      if (!isAllowedNodeBuiltin && !declaredDependencies.includes(packageName)) {
         violations.push(`${path.relative(root, file)} -> ${specifier} (undeclared dependency)`);
       }
     }

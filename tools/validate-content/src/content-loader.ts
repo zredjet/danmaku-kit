@@ -228,9 +228,24 @@ function assembleGameDefinition(
     playerShots: collectDefinitions(collectionSources, "playerShots"),
     patterns: collectDefinitions(collectionSources, "patterns"),
     paths: collectDefinitions(collectionSources, "paths"),
+    ...collectFeatureContent(collectionSources),
   };
   const { contentVersion: _contentVersion, content: _content, ...coreFields } = game;
   return { ...coreFields, content };
+}
+
+/**
+ * optional feature の collection を `content.features` にまとめる。file のある collection だけを置き、feature の content を使わない
+ * content-root では `content.features` を省く。
+ */
+function collectFeatureContent(sources: readonly CollectionSource[]): Readonly<{ features?: Record<string, readonly unknown[]> }> {
+  const features: Record<string, readonly unknown[]> = {};
+  for (const collection of Object.values(COLLECTION_DIRECTORIES)) {
+    if (collection.startsWith("features.") && sources.some((source) => source.collection === collection)) {
+      features[collection.slice("features.".length)] = collectDefinitions(sources, collection);
+    }
+  }
+  return Object.keys(features).length > 0 ? { features } : {};
 }
 
 /** collection fileのUTF-8 path順を保ったまま定義配列へ投影する。 */

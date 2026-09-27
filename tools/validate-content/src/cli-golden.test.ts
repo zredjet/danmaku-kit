@@ -18,6 +18,8 @@ type GoldenCaseName =
   | "pattern-budget-error"
   | "pattern-repeat-error"
   | "pattern-difficulty-warning"
+  | "pickup-disabled-warning"
+  | "pickup-reference-error"
   | "asset-manifest-error"
   | "game-definition-error"
   | "argument-error";
@@ -48,6 +50,8 @@ const GOLDEN_CASES: readonly Readonly<{
   Object.freeze({ name: "pattern-budget-error", exitCode: 1 }),
   Object.freeze({ name: "pattern-repeat-error", exitCode: 1 }),
   Object.freeze({ name: "pattern-difficulty-warning", exitCode: 0 }),
+  Object.freeze({ name: "pickup-disabled-warning", exitCode: 0 }),
+  Object.freeze({ name: "pickup-reference-error", exitCode: 1 }),
   Object.freeze({ name: "asset-manifest-error", exitCode: 1 }),
   Object.freeze({ name: "game-definition-error", exitCode: 1 }),
   Object.freeze({ name: "argument-error", exitCode: 2 }),
@@ -146,6 +150,18 @@ const DIFFICULTY_BRANCH_PATTERN_YAML = [
   "",
 ].join("\n");
 
+const SCORE_PICKUP_YAML = [
+  "id: pickup.score_small",
+  "version: 1",
+  "asset: pickup.score_small",
+  "score: 100",
+  "collectRadius: 10",
+  "velocity:",
+  "  x: 0",
+  "  y: 1.5",
+  "",
+].join("\n");
+
 /** 静的minimum fixtureを隔離領域へ複製し、各失敗ケースの差分だけを適用する。 */
 async function prepareCaseFixture(
   context: Readonly<{ after: (callback: () => Promise<void>) => void }>,
@@ -186,6 +202,20 @@ async function prepareCaseFixture(
     // normal だけの stage が使う pattern の `if` が hard を挙げる。
     await writeFile(path.join(contentRoot, "patterns", "scout_three_way.yaml"), DIFFICULTY_BRANCH_PATTERN_YAML, "utf8");
     await replaceFixtureText(contentRoot, "stages/stage_01.yaml", "      pattern: pattern.basic\n", "      pattern: pattern.scout_three_way\n");
+  } else if (name === "pickup-disabled-warning" || name === "pickup-reference-error") {
+    await mkdir(path.join(contentRoot, "pickups"));
+    await writeFile(path.join(contentRoot, "pickups", "score_small.yaml"), SCORE_PICKUP_YAML, "utf8");
+    await replaceFixtureText(
+      contentRoot,
+      "assets/manifest.yaml",
+      "    path: shot.png\n    required: true\n    usage: gameplay\n",
+      "    path: shot.png\n    required: true\n    usage: gameplay\n  pickup.score_small:\n    type: sprite\n    path: pickup.png\n    required: true\n    usage: gameplay\n",
+    );
+    if (name === "pickup-reference-error") {
+      // pickup を有効にした content の enemy が、定義のない pickup を落とす。
+      await replaceFileText(gameDefinitionPath, "game-definition.yaml", "enabledFeatures: []", "enabledFeatures: [pickup]");
+      await replaceFixtureText(contentRoot, "enemies/scout.yaml", "score: 100\n", "score: 100\ndrops:\n  - pickup: pickup.score_large\n    count: 2\n");
+    }
   } else if (name === "asset-manifest-error") {
     await replaceFixtureText(contentRoot, "assets/manifest.yaml", "    path: shot.png\n", "    path: /shot.png\n");
   } else if (name === "game-definition-error") {
@@ -298,6 +328,9 @@ function expectedDiagnosticPath(
   }
   if (name.startsWith("pattern-")) {
     return path.join(fixture.contentRoot, "patterns", "scout_three_way.yaml");
+  }
+  if (name === "pickup-reference-error") {
+    return path.join(fixture.contentRoot, "enemies", "scout.yaml");
   }
   if (name === "asset-manifest-error") {
     return path.join(fixture.contentRoot, "assets", "manifest.yaml");

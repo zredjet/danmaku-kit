@@ -8,6 +8,8 @@ export const COLLECTION_DIRECTORIES = Object.freeze({
   "player-shots": "playerShots",
   patterns: "patterns",
   paths: "paths",
+  // optional feature の collection は `content.features.<collection>` に入れる（design 20）。
+  pickups: "features.pickups",
 } as const);
 
 export type ContentDirectoryName = keyof typeof COLLECTION_DIRECTORIES;
