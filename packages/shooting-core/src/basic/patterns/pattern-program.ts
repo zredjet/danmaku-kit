@@ -6,12 +6,16 @@ export type PatternFireDirection =
   | Readonly<{ kind: "aimAtPlayer" }>
   | Readonly<{ kind: "angle"; angleSteps: number }>;
 
-/** 正規化した発射命令。fan の各弾は基準の向きから `fanOffsetSteps` だけずれる。 */
+/** 1 発の弾。基準の向きから `offsetSteps` だけずれた向きへ `speed` で撃つ。 */
+export type PatternFireBullet = Readonly<{ offsetSteps: number; speed: number }>;
+
+/**
+ * 正規化した発射命令。`bullets` は fan / radial の向きごとに stream の速さを並べた順（向きが外側、速さが内側）で、この順に敵弾を作る。
+ */
 export type PatternFireCommand = Readonly<{
   bullet: BulletId;
-  speed: number;
   direction: PatternFireDirection;
-  fanOffsetSteps: readonly number[];
+  bullets: readonly PatternFireBullet[];
 }>;
 
 /**
@@ -24,7 +28,7 @@ export type PatternRun = Readonly<{
   fires: readonly PatternFireCommand[];
   bulletCount: number;
   executedCommands: number;
-  /** run が実行する step の index（昇順、重複なし）。到達しない step の検出に使う。 */
+  /** run が実行する top-level step の index（昇順、重複なし。`repeat` の中の命令は `repeat` の step に数える）。到達しない step の検出に使う。 */
   executedSteps: readonly number[];
   next: Readonly<{ cursor: number; waitTicks: number }> | null;
 }>;
@@ -32,59 +36,101 @@ export type PatternRun = Readonly<{
 /**
  * `PatternDefinition.steps` を正規化した命令列（design 10 の PatternProgram）。
  *
- * 命令列に分岐や乱数はないため、cursor ごとの run を load 時に 1 度だけ求めておき、tick と restore は同じ run を引く。
+ * `repeat` は load 時に展開するため、cursor は展開した後の命令の位置を指す（`repeat` のない pattern では step の index と同じ）。命令列に
+ * 分岐や乱数はないため、cursor ごとの run を load 時に 1 度だけ求めておき、tick と restore は同じ run を引く。
  */
 export type PatternProgram = Readonly<{
   patternId: PatternId;
+  /** 元の top-level の step 数。`PatternRun.executedSteps` はこの範囲の index を持つ。 */
+  stepCount: number;
+  /** 展開した後の命令数。 */
   length: number;
   /** cursor 0〜`length` の run。cursor が `length` の run は何もしない。 */
   runs: readonly PatternRun[];
 }>;
 
+/** 展開した命令。`sourceStep` は元の top-level step の index で、`loop` の `target` は展開した後の命令の位置。 */
 type NormalizedPatternCommand =
-  | Readonly<{ kind: "wait"; ticks: number }>
-  | Readonly<{ kind: "fire"; command: PatternFireCommand }>
-  | Readonly<{ kind: "loop"; target: number }>;
+  | Readonly<{ kind: "wait"; ticks: number; sourceStep: number }>
+  | Readonly<{ kind: "fire"; command: PatternFireCommand; sourceStep: number }>
+  | Readonly<{ kind: "loop"; target: number; sourceStep: number }>;
+
+const ANGLE_STEPS_PER_TURN = 1_440;
 
 /** 検証済みの pattern から PatternProgram を作る。`steps` を持たない pattern は null を返す。 */
 export function compilePatternProgram(pattern: PatternDefinition): PatternProgram | null {
   if (!pattern.steps) {
     return null;
   }
-  const commands = pattern.steps.map(normalizePatternStep);
+  const expanded: NormalizedPatternCommand[] = [];
+  const startOfStep: number[] = [];
+  pattern.steps.forEach((step, sourceStep) => {
+    startOfStep.push(expanded.length);
+    appendNormalizedStep(step, sourceStep, expanded);
+  });
+  // `loop` の戻り先は top-level の step の index なので、その step を展開した最初の命令の位置へ付け替える。
+  const commands = expanded.map((command) => command.kind === "loop"
+    ? Object.freeze({ ...command, target: startOfStep[command.target]! })
+    : command);
   const runs = Array.from({ length: commands.length + 1 }, (_, cursor) => resolvePatternRun(commands, cursor));
   return Object.freeze({
     patternId: pattern.id,
+    stepCount: pattern.steps.length,
     length: commands.length,
     runs: Object.freeze(runs),
   });
 }
 
-/** content の step を runner が実行する命令へ変換する。 */
-function normalizePatternStep(step: PatternStepDefinition): NormalizedPatternCommand {
+/** content の step を runner が実行する命令へ変換して `out` に足す。`repeat` は `steps` を `count` 回続けて足す。 */
+function appendNormalizedStep(step: PatternStepDefinition, sourceStep: number, out: NormalizedPatternCommand[]): void {
   if ("wait" in step) {
-    return Object.freeze({ kind: "wait", ticks: step.wait });
+    out.push(Object.freeze({ kind: "wait", ticks: step.wait, sourceStep }));
+  } else if ("fire" in step) {
+    out.push(Object.freeze({ kind: "fire", command: normalizePatternFire(step.fire), sourceStep }));
+  } else if ("loop" in step) {
+    out.push(Object.freeze({ kind: "loop", target: step.loop, sourceStep }));
+  } else {
+    for (let iteration = 0; iteration < step.repeat.count; iteration += 1) {
+      for (const child of step.repeat.steps) {
+        appendNormalizedStep(child, sourceStep, out);
+      }
+    }
   }
-  if ("fire" in step) {
-    return Object.freeze({ kind: "fire", command: normalizePatternFire(step.fire) });
-  }
-  return Object.freeze({ kind: "loop", target: step.loop });
 }
 
-/** 発射命令の向きと fan を角度 step にそろえる。角度が 0.25° の倍数であることは validation が保証する。 */
+/**
+ * 発射命令の向き、fan / radial、stream を角度 step と弾の並びにそろえる。角度が 0.25° の倍数であること、radial の弾数が 1 周の
+ * step 数を割り切ることは validation が保証する。
+ */
 function normalizePatternFire(fire: PatternFireDefinition): PatternFireCommand {
   const direction: PatternFireDirection = fire.aim === "player"
     ? Object.freeze({ kind: "aimAtPlayer" })
     : Object.freeze({ kind: "angle", angleSteps: requireAngleSteps(fire.angleDeg) });
+  const speeds = fire.stream ? patternStreamSpeeds(fire.speed, fire.stream.count, fire.stream.speedStep) : [fire.speed];
+  return Object.freeze({
+    bullet: fire.bullet,
+    direction,
+    bullets: Object.freeze(directionOffsetSteps(fire).flatMap((offsetSteps) => (
+      speeds.map((speed) => Object.freeze({ offsetSteps, speed }))
+    ))),
+  });
+}
+
+/** fan は基準の向きを中心に広げ、radial は基準の向きから 1 周を等分する。どちらもなければ基準の向きの 1 発。 */
+function directionOffsetSteps(fire: PatternFireDefinition): readonly number[] {
+  if (fire.radial) {
+    const gapSteps = ANGLE_STEPS_PER_TURN / fire.radial.count;
+    return Array.from({ length: fire.radial.count }, (_, index) => index * gapSteps);
+  }
   const count = fire.fan?.count ?? 1;
   const spreadSteps = requireAngleSteps(fire.fan?.spreadDeg ?? 0);
   const gapSteps = count > 1 ? spreadSteps / (count - 1) : 0;
-  return Object.freeze({
-    bullet: fire.bullet,
-    speed: fire.speed,
-    direction,
-    fanOffsetSteps: Object.freeze(Array.from({ length: count }, (_, index) => index * gapSteps - spreadSteps / 2)),
-  });
+  return Array.from({ length: count }, (_, index) => index * gapSteps - spreadSteps / 2);
+}
+
+/** stream の各弾の速さ。validation と PatternProgram が同じ式で求める。 */
+export function patternStreamSpeeds(speed: number, count: number, speedStep: number): readonly number[] {
+  return Array.from({ length: count }, (_, index) => speed + index * speedStep);
 }
 
 /** validation 済みの角度を step に変換する。 */
@@ -114,7 +160,7 @@ function resolvePatternRun(commands: readonly NormalizedPatternCommand[], start:
     }
     const command = commands[cursor]!;
     executedCommands += 1;
-    executedSteps.add(cursor);
+    executedSteps.add(command.sourceStep);
     if (command.kind === "wait") {
       return createPatternRun(fires, executedCommands, executedSteps, Object.freeze({ cursor: cursor + 1, waitTicks: command.ticks }));
     }
@@ -136,7 +182,7 @@ function createPatternRun(
 ): PatternRun {
   return Object.freeze({
     fires: Object.freeze([...fires]),
-    bulletCount: fires.reduce((count, fire) => count + fire.fanOffsetSteps.length, 0),
+    bulletCount: fires.reduce((count, fire) => count + fire.bullets.length, 0),
     executedCommands,
     executedSteps: Object.freeze([...executedSteps].sort((left, right) => left - right)),
     next,

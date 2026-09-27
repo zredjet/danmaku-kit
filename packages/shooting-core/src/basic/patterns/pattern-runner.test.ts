@@ -81,6 +81,13 @@ test("resolves the same runner state, runs and bullet counts from the schedule a
     compile([{ fire: threeWay }]),
     compile([{ wait: 1 }, { loop: 0 }]),
     compile([{ wait: 4 }, { fire: aimed }, { wait: 2 }, { wait: 3 }, { loop: 3 }]),
+    compile([{ repeat: { count: 3, steps: [{ fire: threeWay }, { wait: 2 }] } }, { wait: 5 }, { loop: 0 }]),
+    compile([
+      { wait: 1 },
+      { repeat: { count: 2, steps: [{ fire: aimed }, { repeat: { count: 2, steps: [{ wait: 1 }, { fire: threeWay }] } }] } },
+      { wait: 4 },
+      { loop: 1 },
+    ]),
   ];
 
   for (const [programIndex, program] of programs.entries()) {

@@ -392,3 +392,72 @@ export function createClearedByExitDefinition(): GameDefinition {
     },
   };
 }
+
+/**
+ * Phase 2B-2 の `repeat`、`radial`、`stream` で撃つ enemy を出す definition。
+ *
+ * tick 0 に `pattern.radial_stream`（2 tick 待ってから、真下から 8 方向へ速さ 1.5 と 2 の 2 発ずつを 6 tick ごと、id 2）を、tick 1 に
+ * `pattern.repeated_aim`（自機狙いの 3-way を速さ 2.5 と 2 の 2 発ずつ、2 tick おきに 3 回撃って 5 tick 休む、id 3 以降）を出す。
+ */
+export function createExtendedPatternDefinition(): GameDefinition {
+  const definition = createMinimumDefinition();
+  return {
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{
+        ...definition.content.stages[0]!,
+        timeline: [
+          spawnScoutAt(0, "pattern.radial_stream", { x: 192, y: 120 }),
+          spawnScoutAt(1, "pattern.repeated_aim", { x: 96, y: 80 }),
+        ],
+      }],
+      patterns: [
+        ...definition.content.patterns,
+        {
+          id: "pattern.radial_stream",
+          version: 1,
+          steps: [
+            { wait: 2 },
+            {
+              fire: {
+                bullet: "bullet.red_small",
+                angleDeg: 90,
+                radial: { count: 8 },
+                stream: { count: 2, speedStep: 0.5 },
+                speed: 1.5,
+              },
+            },
+            { wait: 6 },
+            { loop: 1 },
+          ],
+        },
+        {
+          id: "pattern.repeated_aim",
+          version: 1,
+          steps: [
+            {
+              repeat: {
+                count: 3,
+                steps: [
+                  {
+                    fire: {
+                      bullet: "bullet.red_small",
+                      aim: "player",
+                      fan: { count: 3, spreadDeg: 30 },
+                      stream: { count: 2, speedStep: -0.5 },
+                      speed: 2.5,
+                    },
+                  },
+                  { wait: 2 },
+                ],
+              },
+            },
+            { wait: 5 },
+            { loop: 0 },
+          ],
+        },
+      ],
+    },
+  };
+}

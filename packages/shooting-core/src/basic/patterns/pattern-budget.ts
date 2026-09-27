@@ -30,6 +30,6 @@ export function analyzePatternProgram(program: PatternProgram): PatternStaticBud
     maxCommandsPerRun: Math.max(0, ...runs.map(({ run }) => run.executedCommands)),
     firstFireTicks: firstFire?.scheduled.elapsedTicks ?? null,
     cycle: schedule.cycle ? Object.freeze({ durationTicks: schedule.cycle.durationTicks, bullets: schedule.cycle.bullets }) : null,
-    unreachableSteps: Object.freeze(Array.from({ length: program.length }, (_, index) => index).filter((index) => !reached.has(index))),
+    unreachableSteps: Object.freeze(Array.from({ length: program.stepCount }, (_, index) => index).filter((index) => !reached.has(index))),
   });
 }

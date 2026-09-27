@@ -16,6 +16,7 @@ type GoldenCaseName =
   | "pattern-warning"
   | "pattern-silent"
   | "pattern-budget-error"
+  | "pattern-repeat-error"
   | "asset-manifest-error"
   | "game-definition-error"
   | "argument-error";
@@ -44,6 +45,7 @@ const GOLDEN_CASES: readonly Readonly<{
   Object.freeze({ name: "pattern-warning", exitCode: 0 }),
   Object.freeze({ name: "pattern-silent", exitCode: 0 }),
   Object.freeze({ name: "pattern-budget-error", exitCode: 1 }),
+  Object.freeze({ name: "pattern-repeat-error", exitCode: 1 }),
   Object.freeze({ name: "asset-manifest-error", exitCode: 1 }),
   Object.freeze({ name: "game-definition-error", exitCode: 1 }),
   Object.freeze({ name: "argument-error", exitCode: 2 }),
@@ -99,6 +101,24 @@ const BURST_PATTERN_YAML = [
   "",
 ].join("\n");
 
+const REPEAT_ERROR_PATTERN_YAML = [
+  "id: pattern.scout_three_way",
+  "version: 1",
+  "steps:",
+  "  - repeat:",
+  "      count: 3",
+  "      steps:",
+  "        - fire:",
+  "            bullet: bullet.red_small",
+  "            angleDeg: 90",
+  "            radial:",
+  "              count: 7",
+  "            speed: 2",
+  "        - wait: 10",
+  "  - loop: 0",
+  "",
+].join("\n");
+
 /** 静的minimum fixtureを隔離領域へ複製し、各失敗ケースの差分だけを適用する。 */
 async function prepareCaseFixture(
   context: Readonly<{ after: (callback: () => Promise<void>) => void }>,
@@ -132,6 +152,9 @@ async function prepareCaseFixture(
   } else if (name === "pattern-budget-error") {
     // fan 64 発を 32 回続けて撃ち、1 tick に 2,048 発になる pattern。
     await writeFile(path.join(contentRoot, "patterns", "scout_three_way.yaml"), BURST_PATTERN_YAML, "utf8");
+  } else if (name === "pattern-repeat-error") {
+    // repeat の中の fire の radial.count が 1 周を 0.25° 刻みに等分しない。
+    await writeFile(path.join(contentRoot, "patterns", "scout_three_way.yaml"), REPEAT_ERROR_PATTERN_YAML, "utf8");
   } else if (name === "asset-manifest-error") {
     await replaceFixtureText(contentRoot, "assets/manifest.yaml", "    path: shot.png\n", "    path: /shot.png\n");
   } else if (name === "game-definition-error") {
@@ -242,7 +265,7 @@ function expectedDiagnosticPath(
   if (name === "schema-error" || name === "budget-error") {
     return path.join(fixture.contentRoot, "players", "default.yaml");
   }
-  if (name === "pattern-error" || name === "pattern-warning" || name === "pattern-silent" || name === "pattern-budget-error") {
+  if (name.startsWith("pattern-")) {
     return path.join(fixture.contentRoot, "patterns", "scout_three_way.yaml");
   }
   if (name === "asset-manifest-error") {

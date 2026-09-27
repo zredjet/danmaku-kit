@@ -9,6 +9,7 @@ import {
   createDestroyedPatternEnemyDefinition,
   createEnemyPatternDefinition,
   createExitingPatternEnemyDefinition,
+  createExtendedPatternDefinition,
 } from "../../test-support/definitions.ts";
 import { tableVelocity } from "../../test-support/geometry.ts";
 import { createMoveInputFrame, createShotInputFrame } from "../../test-support/input-frames.ts";
@@ -113,6 +114,10 @@ function withRunners(
 
 test("restores pattern runners and aimed or fixed-angle pattern bullets at any tick and continues identically", () => {
   assertRestoresAndContinues(loadGameFromDefinition(createEnemyPatternDefinition()), wanderingInputs(24), [1, 2, 3, 4, 5, 6, 9, 13, 17]);
+});
+
+test("restores radial, stream and repeated pattern bullets and runners at any tick and continues identically", () => {
+  assertRestoresAndContinues(loadGameFromDefinition(createExtendedPatternDefinition()), wanderingInputs(24), [1, 2, 3, 4, 5, 6, 8, 12, 13, 15, 20]);
 });
 
 test("restores the bullets of enemies that were destroyed or left the playfield", () => {

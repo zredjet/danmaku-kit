@@ -104,10 +104,10 @@ function planPatternFire(
     baseSteps = angleStepsOfVector(toPlayer);
   }
   const position = Object.freeze({ x: enemy.position.x, y: enemy.position.y });
-  return okResult(Object.freeze(fire.fanOffsetSteps.map((offsetSteps) => Object.freeze({
+  return okResult(Object.freeze(fire.bullets.map(({ offsetSteps, speed }) => Object.freeze({
     bullet,
     position,
-    velocity: resolvePatternBulletVelocity(baseSteps + offsetSteps, fire.speed),
+    velocity: resolvePatternBulletVelocity(baseSteps + offsetSteps, speed),
   }))));
 }
 

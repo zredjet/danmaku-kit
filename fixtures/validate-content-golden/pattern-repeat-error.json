@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1",
+  "contentRoot": "<content-root>",
+  "ok": false,
+  "diagnostics": [
+    {
+      "kind": "schema",
+      "code": "definition.invalidShape",
+      "severity": "error",
+      "message": "pattern.steps[].repeat.steps[].fire.radial.count must divide 360 degrees into 0.25 degree steps",
+      "path": "<content-root>/patterns/scout_three_way.yaml",
+      "line": 11,
+      "column": 22,
+      "endLine": 11,
+      "endColumn": 23,
+      "schemaPath": "content.patterns[1].steps[0].repeat.steps[0].fire.radial.count",
+      "sourceId": "pattern.scout_three_way"
+    }
+  ],
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "infos": 0
+  }
+}

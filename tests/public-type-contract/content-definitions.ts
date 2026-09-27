@@ -206,6 +206,40 @@ const stepsPatternDefinition: PatternDefinition = {
     { loop: 0 },
   ],
 };
+// Phase 2B-2: repeat（load 時に展開）、radial（1 周を等分）、stream（速さを段階的に変えて重ねる）。
+const repeatRadialStreamPatternDefinition: PatternDefinition = {
+  id: "pattern.gunship_burst",
+  version: 1,
+  steps: [
+    {
+      repeat: {
+        count: 3,
+        steps: [
+          { fire: { bullet: "bullet.red_small", angleDeg: 90, radial: { count: 12 }, stream: { count: 2, speedStep: 0.5 }, speed: 1.5 } },
+          { wait: 10 },
+        ],
+      },
+    },
+    { wait: 60 },
+    { loop: 0 },
+  ],
+};
+const invalidPatternRepeatCount: PatternDefinition = {
+  id: "pattern.invalid",
+  version: 1,
+  steps: [
+    // @ts-expect-error repeat count must be a number.
+    { repeat: { count: "3", steps: [{ wait: 1 }] } },
+  ],
+};
+const invalidPatternStream: PatternDefinition = {
+  id: "pattern.invalid",
+  version: 1,
+  steps: [
+    // @ts-expect-error stream needs the speed step between bullets.
+    { fire: { bullet: "bullet.red_small", aim: "player", speed: 2, stream: { count: 3 } } },
+  ],
+};
 const invalidPatternFireWithAimAndAngle: PatternDefinition = {
   id: "pattern.invalid",
   version: 1,
@@ -325,6 +359,9 @@ void invalidFireOnSpawnPatternOffsetY;
 void movingFireOnSpawnPatternDefinition;
 void invalidFireOnSpawnPatternVelocity;
 void stepsPatternDefinition;
+void repeatRadialStreamPatternDefinition;
+void invalidPatternRepeatCount;
+void invalidPatternStream;
 void invalidPatternFireWithAimAndAngle;
 void invalidPatternFireWithoutDirection;
 void invalidPatternFireOrigin;

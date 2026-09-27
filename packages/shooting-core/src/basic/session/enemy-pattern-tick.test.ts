@@ -12,6 +12,7 @@ import {
   createDestroyedPatternEnemyDefinition,
   createEnemyPatternDefinition,
   createExitingPatternEnemyDefinition,
+  createExtendedPatternDefinition,
 } from "../test-support/definitions.ts";
 import { tableVelocity } from "../test-support/geometry.ts";
 import { createMoveInputFrame, createShotInputFrame } from "../test-support/input-frames.ts";
@@ -223,4 +224,37 @@ test("fixes the 3-way golden: bullet counts, aimed angle steps and seed reproduc
   const otherSeed = run("golden-b");
   assert.deepEqual(otherSeed.frames, golden.frames);
   assert.notDeepEqual(otherSeed.snapshot.prngState, golden.snapshot.prngState);
+});
+
+test("fixes the radial, stream and repeat golden: bullet order, directions, speeds and seed reproducibility", () => {
+  const run = (seed: string) => {
+    const loaded = createShootingCore("0.0.0").load(createExtendedPatternDefinition());
+    assert.equal(loaded.ok, true);
+    const started = loaded.ok ? loaded.value.startStage({ stageId: "stage.stage_01", difficulty: "normal", seed }) : null;
+    assert.ok(started?.ok);
+    const frames = emptyInputs(16).map((input) => assertTickOk(started.value.tick(input), `tick ${input.tick}`));
+    return { frames, snapshot: assertSerializeOk(started.value.serialize(), "serialize") };
+  };
+  const golden = run("golden-a");
+  const velocities = new Map(golden.snapshot.state.runtimeEntities.flatMap((entity) => (
+    entity.kind === "enemyBullet" ? [[entity.id, entity.velocity] as const] : []
+  )));
+  const batchAt = (tick: number, x: number, y: number) => spawnedBatches(golden.frames)[tick]!
+    .filter(([, bulletX, bulletY]) => bulletX === x && bulletY === y)
+    .map(([id]) => velocities.get(id!)!);
+
+  // radial 8 方向 × stream 2 発。向きが外側、速さが内側の順に採番する。
+  assert.deepEqual(batchAt(2, 192, 120), [0, 1, 2, 3, 4, 5, 6, 7].flatMap((direction) => (
+    [1.5, 2].map((speed) => tableVelocity(360 + direction * 180, speed))
+  )));
+  // repeat 3 回の自機狙い 3-way × stream 2 発が 2 tick おきに出て、5 tick 休んでから繰り返す。
+  const aimedTicks = spawnedBatches(golden.frames).flatMap((batch, tick) => batch.some(([, x, y]) => x === 96 && y === 80) ? [tick] : []);
+  assert.deepEqual(aimedTicks, [1, 3, 5, 12, 14]);
+  const aimed = batchAt(1, 96, 80);
+  assert.equal(aimed.length, 6);
+  assert.deepEqual(aimed.map((velocity) => Math.round(Math.hypot(velocity.x, velocity.y) * 1_000) / 1_000), [2.5, 2, 2.5, 2, 2.5, 2]);
+  const aimedSteps = aimed.map(angleStepsOfVector);
+  assert.deepEqual([aimedSteps[2]! - aimedSteps[0]!, aimedSteps[4]! - aimedSteps[2]!, aimedSteps[1]! - aimedSteps[0]!], [60, 60, 0]);
+  assert.deepEqual(run("golden-a"), golden);
+  assert.deepEqual(run("golden-b").frames, golden.frames);
 });

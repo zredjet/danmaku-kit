@@ -3,7 +3,7 @@ import type { EnemyBulletRuntimeEntity } from "../../entities/enemy-bullet/model
 import type { EnemyRuntimeEntity } from "../../entities/enemy/model.ts";
 import type { Vector2 } from "../../entities/model-common.ts";
 import { isSameRestorePosition } from "../../entities/restore-common.ts";
-import type { PatternFireCommand, PatternProgram } from "../../patterns/pattern-program.ts";
+import type { PatternFireBullet, PatternFireCommand, PatternProgram } from "../../patterns/pattern-program.ts";
 import { patternRunnerIdOfEnemy } from "../../patterns/pattern-runner.ts";
 import type { EnemyPatternRunner, PatternRunnerState } from "../../patterns/pattern-runner.ts";
 import {
@@ -116,15 +116,15 @@ export function takeRestorePatternBullet(
       if (fire.bullet !== bullet.definitionId) {
         continue;
       }
-      for (const [fanIndex, offsetSteps] of fire.fanOffsetSteps.entries()) {
-        const key = `${source.spawnIndex}:${elapsedTicks}:${fireIndex}:${fanIndex}`;
-        if (consumedBullets.has(key) || !isPatternBulletVelocity(fire, offsetSteps, bullet.velocity)) {
+      for (const [bulletIndex, planned] of fire.bullets.entries()) {
+        const key = `${source.spawnIndex}:${elapsedTicks}:${fireIndex}:${bulletIndex}`;
+        if (consumedBullets.has(key) || !isPatternBulletVelocity(fire, planned, bullet.velocity)) {
           continue;
         }
         consumedBullets.add(key);
         return Object.freeze({
           fireTick,
-          allocationOrder: Object.freeze([1, source.spawnIndex, fireIndex, fanIndex]),
+          allocationOrder: Object.freeze([1, source.spawnIndex, fireIndex, bulletIndex]),
         });
       }
     }
@@ -187,12 +187,12 @@ function resolveLastAliveElapsedTicks(spawnPosition: Vector2, segments: readonly
  * 固定角度の弾は速度が完全に決まる。`aim: player` の基準の向きは発射した tick の自機の位置で決まり、自機の位置は入力の履歴による
  * ため、表のどれかの向きに speed を掛けた速度であることだけを確かめる。
  */
-function isPatternBulletVelocity(fire: PatternFireCommand, offsetSteps: number, velocity: Vector2): boolean {
+function isPatternBulletVelocity(fire: PatternFireCommand, planned: PatternFireBullet, velocity: Vector2): boolean {
   if (fire.direction.kind === "angle") {
-    return isSameRestorePosition(resolvePatternBulletVelocity(fire.direction.angleSteps + offsetSteps, fire.speed), velocity);
+    return isSameRestorePosition(resolvePatternBulletVelocity(fire.direction.angleSteps + planned.offsetSteps, planned.speed), velocity);
   }
   const steps = angleStepsOfVector(velocity);
   return [steps - 1, steps, steps + 1].some((candidate) => (
-    isSameRestorePosition(resolvePatternBulletVelocity(candidate, fire.speed), velocity)
+    isSameRestorePosition(resolvePatternBulletVelocity(candidate, planned.speed), velocity)
   ));
 }

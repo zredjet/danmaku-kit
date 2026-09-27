@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import type { PatternDefinition } from "@shooting-sample/shooting-core";
 import { loadValidatedGameDefinition } from "@shooting-sample/validate-content";
 
 import { loadSampleTitleDefinition } from "../test-support/sample-title-game.ts";
@@ -32,7 +33,7 @@ test("reaches every definition and asset from stage 1 and the default player", a
     paths: timeline.map((action) => action.path),
     patterns: patterns.map((pattern) => pattern.id),
     bullets: patterns.flatMap((pattern) => [
-      ...(pattern.steps ?? []).flatMap((step) => "fire" in step ? [step.fire.bullet] : []),
+      ...firedBullets(pattern.steps ?? []),
       ...(pattern.fireOnSpawn ? [pattern.fireOnSpawn.bullet] : []),
     ]),
     players: [defaultPlayerId],
@@ -50,6 +51,11 @@ test("reaches every definition and asset from stage 1 and the default player", a
     [],
   );
 });
+
+/** pattern の `fire` が撃つ bullet の id。`repeat` の中の step までたどる。 */
+function firedBullets(steps: NonNullable<PatternDefinition["steps"]>): string[] {
+  return steps.flatMap((step) => "fire" in step ? [step.fire.bullet] : "repeat" in step ? firedBullets(step.repeat.steps) : []);
+}
 
 /** content の 1 file の最初の `search` を `replace` に置き換えた copy を検証し、diagnostic の要点を返す。 */
 async function validateWithEdit(file: string, search: string, replace: string) {

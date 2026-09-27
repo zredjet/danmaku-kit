@@ -11,11 +11,13 @@ function compile(steps: readonly PatternStepDefinition[]) {
   return program;
 }
 
+/** 同じ速さで `offsets` の向きへ撃つ発射命令の弾。 */
+const bulletsAt = (speed: number, offsets: readonly number[]) => offsets.map((offsetSteps) => ({ offsetSteps, speed }));
+
 const aimedThreeWay: PatternFireCommand = {
   bullet: "bullet.red_small",
-  speed: 2.5,
   direction: { kind: "aimAtPlayer" },
-  fanOffsetSteps: [-48, 0, 48],
+  bullets: bulletsAt(2.5, [-48, 0, 48]),
 };
 
 test("returns null for patterns without steps", () => {
@@ -39,12 +41,12 @@ test("normalizes fire directions and spreads fan bullets evenly around the base 
 
   assert.deepEqual(program.runs[0]!.fires, [
     aimedThreeWay,
-    { bullet: "bullet.red_small", speed: 3, direction: { kind: "angle", angleSteps: 360 }, fanOffsetSteps: [0] },
-    { bullet: "bullet.red_small", speed: 1, direction: { kind: "angle", angleSteps: -180 }, fanOffsetSteps: [-3, -1, 1, 3] },
-    { bullet: "bullet.red_small", speed: 1, direction: { kind: "angle", angleSteps: 0 }, fanOffsetSteps: [0, 0] },
+    { bullet: "bullet.red_small", direction: { kind: "angle", angleSteps: 360 }, bullets: bulletsAt(3, [0]) },
+    { bullet: "bullet.red_small", direction: { kind: "angle", angleSteps: -180 }, bullets: bulletsAt(1, [-3, -1, 1, 3]) },
+    { bullet: "bullet.red_small", direction: { kind: "angle", angleSteps: 0 }, bullets: bulletsAt(1, [0, 0]) },
   ]);
   assert.equal(program.runs[0]!.bulletCount, 10);
-  assert.equal(Object.is(program.runs[0]!.fires[3]!.fanOffsetSteps[0], -0), false);
+  assert.equal(Object.is(program.runs[0]!.fires[3]!.bullets[0]!.offsetSteps, -0), false);
 });
 
 test("resolves each cursor's run up to the next wait or the end", () => {
@@ -90,4 +92,47 @@ test("follows nested loops back through their waits and runs off the end without
     [1, 1, null],
     [0, 0, null],
   ]);
+});
+
+test("expands repeat into consecutive commands and points loops at the start of the target step", () => {
+  const fire = { bullet: "bullet.red_small", angleDeg: 90, speed: 1 } as const;
+  const program = compile([
+    { wait: 3 },
+    { repeat: { count: 2, steps: [{ fire }, { wait: 5 }] } },
+    { wait: 10 },
+    { loop: 1 },
+  ]);
+
+  // wait, fire, wait, fire, wait, wait, loop の 7 命令に展開し、loop は repeat の最初の命令（cursor 1）へ戻る。
+  assert.deepEqual([program.stepCount, program.length], [4, 7]);
+  assert.deepEqual(program.runs.map((run) => [run.bulletCount, run.executedSteps, run.next]), [
+    [0, [0], { cursor: 1, waitTicks: 3 }],
+    [1, [1], { cursor: 3, waitTicks: 5 }],
+    [0, [1], { cursor: 3, waitTicks: 5 }],
+    [1, [1], { cursor: 5, waitTicks: 5 }],
+    [0, [1], { cursor: 5, waitTicks: 5 }],
+    [0, [2], { cursor: 6, waitTicks: 10 }],
+    [1, [1, 3], { cursor: 3, waitTicks: 5 }],
+    [0, [], null],
+  ]);
+});
+
+test("spreads radial bullets around the circle from the base direction and stacks stream speeds per direction", () => {
+  const program = compile([
+    { fire: { bullet: "bullet.red_small", angleDeg: 90, radial: { count: 4 }, speed: 2 } },
+    { fire: { bullet: "bullet.red_small", aim: "player", fan: { count: 2, spreadDeg: 10 }, stream: { count: 3, speedStep: -0.5 }, speed: 3 } },
+  ]);
+
+  assert.deepEqual(program.runs[0]!.fires.map((fire) => fire.bullets), [
+    bulletsAt(2, [0, 360, 720, 1080]),
+    [
+      { offsetSteps: -20, speed: 3 },
+      { offsetSteps: -20, speed: 2.5 },
+      { offsetSteps: -20, speed: 2 },
+      { offsetSteps: 20, speed: 3 },
+      { offsetSteps: 20, speed: 2.5 },
+      { offsetSteps: 20, speed: 2 },
+    ],
+  ]);
+  assert.equal(program.runs[0]!.bulletCount, 10);
 });

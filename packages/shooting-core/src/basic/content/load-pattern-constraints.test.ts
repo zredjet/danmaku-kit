@@ -67,10 +67,9 @@ test("rejects malformed steps with the step index in the schema path", () => {
   assert.deepEqual(errorsOf(loaded), [
     ["definition.invalidShape", "content.patterns[0].steps[2]", "pattern.steps must contain objects"],
     ["definition.invalidShape", "content.patterns[0].steps[0].wait", "pattern.steps[].wait must be a positive integer"],
-    ["definition.invalidShape", "content.patterns[0].steps[1]", "pattern.steps[] must have exactly one of wait, fire or loop"],
+    ["definition.invalidShape", "content.patterns[0].steps[1]", "pattern.steps[] must have exactly one of wait, fire, loop or repeat"],
     ["definition.invalidShape", "content.patterns[0].steps[1].wait", "pattern.steps[].wait must be at most 3600"],
-    ["definition.unknownField", "content.patterns[0].steps[3].repeat", "Unknown field at pattern.steps[].repeat"],
-    ["definition.invalidShape", "content.patterns[0].steps[3]", "pattern.steps[] must have exactly one of wait, fire or loop"],
+    ["definition.invalidShape", "content.patterns[0].steps[3].repeat", "pattern.steps[].repeat must be an object"],
     ["definition.invalidShape", "content.patterns[0].steps[4].fire", "pattern.steps[].fire must be an object"],
     ["definition.invalidShape", "content.patterns[0].steps[5].wait", "pattern.steps[].wait must be a positive integer"],
   ]);
@@ -268,4 +267,100 @@ test("returns no semantic warnings while the content has errors", () => {
     ...definition,
     content: { ...definition.content, patterns: [{ id: "pattern.none", version: 1, ...afterLoop }] },
   }).warnings.map((warning) => warning.code), ["pattern.unreachableStep"]);
+});
+
+test("accepts repeat, radial and stream within their budgets", () => {
+  const loaded = loadWithPattern({
+    steps: [
+      { wait: 2 },
+      {
+        repeat: {
+          count: 256,
+          steps: [
+            { fire: { bullet: "bullet.red_small", angleDeg: 0, radial: { count: 48 }, stream: { count: 16, speedStep: 0.5 }, speed: 0.5 } },
+            { repeat: { count: 1, steps: [{ repeat: { count: 1, steps: [{ repeat: { count: 1, steps: [{ wait: 1 }] } }] } }] } },
+          ],
+        },
+      },
+      { loop: 1 },
+    ],
+  });
+
+  assert.equal(loaded.ok, true, JSON.stringify(loaded.ok ? null : loaded.errors));
+});
+
+test("rejects malformed repeat, radial and stream with nested schema paths", () => {
+  const loaded = loadWithPattern({
+    steps: [
+      { wait: 1 },
+      { repeat: { count: 0, steps: [{ loop: 0 }, { fire: { ...aimedFire, speed: 9 } }], extra: true } },
+      { fire: { ...aimedFire, fan: { count: 3, spreadDeg: 24 }, radial: { count: 7 } } },
+      { fire: { ...aimedFire, speed: 7, stream: { count: 3, speedStep: 1 } } },
+      { fire: { ...aimedFire, stream: { count: 17, speedStep: -3 } } },
+    ],
+  });
+
+  assert.deepEqual(errorsOf(loaded), [
+    ["definition.unknownField", "content.patterns[0].steps[1].repeat.extra", "Unknown field at pattern.steps[].repeat.extra"],
+    ["definition.invalidShape", "content.patterns[0].steps[1].repeat.count", "pattern.steps[].repeat.count must be a positive integer"],
+    [
+      "definition.invalidShape",
+      "content.patterns[0].steps[1].repeat.steps[0].loop",
+      "pattern.steps[].repeat.steps[].loop must not be placed inside repeat",
+    ],
+    [
+      "definition.invalidShape",
+      "content.patterns[0].steps[1].repeat.steps[1].fire.speed",
+      "pattern.steps[].repeat.steps[].fire.speed must be less than or equal to 8",
+    ],
+    ["definition.invalidShape", "content.patterns[0].steps[2].fire", "pattern.steps[].fire must not have both fan and radial"],
+    [
+      "definition.invalidShape",
+      "content.patterns[0].steps[2].fire.radial.count",
+      "pattern.steps[].fire.radial.count must divide 360 degrees into 0.25 degree steps",
+    ],
+    [
+      "definition.invalidConstraint",
+      "content.patterns[0].steps[3].fire.stream",
+      "pattern.steps[].fire.stream must keep every bullet speed above 0 and at most 8",
+    ],
+    ["definition.invalidShape", "content.patterns[0].steps[4].fire.stream.count", "pattern.steps[].fire.stream.count must be at most 16"],
+  ]);
+});
+
+test("rejects repeat nested too deep and patterns that expand past the command budget", () => {
+  let nested: Record<string, unknown> = { wait: 1 };
+  for (let depth = 0; depth < 5; depth += 1) {
+    nested = { repeat: { count: 1, steps: [nested] } };
+  }
+  const tooDeep = loadWithPattern({ steps: [nested] });
+  const tooLong = loadWithPattern({ steps: [{ repeat: { count: 256, steps: Array.from({ length: 17 }, () => ({ wait: 1 })) } }] });
+
+  assert.deepEqual(errorsOf(tooDeep).map(([code, schemaPath]) => [code, schemaPath]), [
+    ["definition.invalidShape", "content.patterns[0].steps[0].repeat.steps[0].repeat.steps[0].repeat.steps[0].repeat.steps[0].repeat"],
+  ]);
+  assert.deepEqual(errorsOf(tooLong), [
+    ["definition.invalidConstraint", "content.patterns[0].steps", "pattern.steps must expand to at most 4096 commands"],
+  ]);
+});
+
+test("counts a wait inside repeat for the loop range and reports a repeat after a loop as unreachable", () => {
+  const loaded = loadWithPattern({
+    steps: [{ repeat: { count: 2, steps: [fanFire(1), { wait: 3 }] } }, { loop: 0 }, { repeat: { count: 2, steps: [{ wait: 1 }] } }],
+  });
+
+  assert.deepEqual(warningsOf(loaded).map((warning) => [warning.code, warning.schemaPath]), [
+    ["pattern.unreachableStep", "content.patterns[0].steps[2]"],
+  ]);
+});
+
+test("resolves bullet references inside repeat bodies with their nested schema path", () => {
+  const loaded = loadWithPattern({
+    steps: [{ repeat: { count: 2, steps: [{ repeat: { count: 1, steps: [{ fire: { ...aimedFire, bullet: "bullet.missing" } }] } }, { wait: 1 }] } }],
+  });
+
+  assert.deepEqual(
+    loaded.ok ? null : loaded.errors.map((error) => [error.code, error.schemaPath, error.targetId]),
+    [["bullet.notFound", "content.patterns[0].steps[0].repeat.steps[0].repeat.steps[0].fire.bullet", "bullet.missing"]],
+  );
 });

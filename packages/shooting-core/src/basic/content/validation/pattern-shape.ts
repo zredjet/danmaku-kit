@@ -1,11 +1,17 @@
+import { patternStreamSpeeds } from "../../patterns/pattern-program.ts";
 import type { CoreError } from "../../result.ts";
 import { asRecord } from "../../shared/guards.ts";
 import { angleStepsFromDegrees } from "../../shared/angle-steps.ts";
 import {
   MAX_ENEMY_BULLET_SPEED_PER_AXIS,
   MAX_PATTERN_ANGLE_DEGREES,
+  MAX_PATTERN_EXPANDED_COMMANDS,
   MAX_PATTERN_FAN_COUNT,
+  MAX_PATTERN_RADIAL_COUNT,
+  MAX_PATTERN_REPEAT_COUNT,
+  MAX_PATTERN_REPEAT_DEPTH,
   MAX_PATTERN_STEPS,
+  MAX_PATTERN_STREAM_COUNT,
   MAX_PATTERN_WAIT_TICKS,
 } from "../runtime-budgets.ts";
 import {
@@ -22,7 +28,9 @@ import {
 } from "./fields.ts";
 import { addSchemaContext } from "./schema-path.ts";
 
-const PATTERN_STEP_KINDS = Object.freeze(["wait", "fire", "loop"] as const);
+const TOP_LEVEL_STEP_KINDS = Object.freeze(["wait", "fire", "loop", "repeat"] as const);
+const REPEAT_BODY_STEP_KINDS = Object.freeze(["wait", "fire", "repeat"] as const);
+const ANGLE_STEPS_PER_TURN = 1_440;
 
 /** PatternDefinition の shape validation。 */
 export function validatePatternShape(pattern: Record<string, unknown>, errors: CoreError[]): void {
@@ -43,8 +51,9 @@ export function validatePatternShape(pattern: Record<string, unknown>, errors: C
 /**
  * `steps` の命令列を検証する。
  *
- * `loop` は前の step へだけ戻れ、戻り先から loop までの間に `wait` を含む必要がある。これで 1 tick に実行する命令列は必ず `wait` か
- * 末尾で止まる（戻るたびに次に当たる loop の位置が前へ進むため）。
+ * `loop` は前の top-level step へだけ戻れ、戻り先から loop までの間に `wait`（`wait` を含む `repeat` も数える）を含む必要がある。これで
+ * 1 tick に実行する命令列は必ず `wait` か末尾で止まる（戻るたびに次に当たる loop の位置が前へ進むため）。`repeat` は展開した後の命令数が
+ * `MAX_PATTERN_EXPANDED_COMMANDS` 以下である必要がある。
  */
 function validatePatternStepsShape(value: unknown, errors: CoreError[]): void {
   const steps = validateObjectArray("pattern.steps", value, errors);
@@ -54,25 +63,105 @@ function validatePatternStepsShape(value: unknown, errors: CoreError[]): void {
   if (steps.sourceLength > MAX_PATTERN_STEPS) {
     errors.push({ code: "definition.invalidShape", message: `pattern.steps must contain at most ${MAX_PATTERN_STEPS} steps` });
   }
-  const waitStepIndexes = steps.items.filter(({ record }) => record.wait !== undefined).map(({ index }) => index);
+  const waitStepIndexes = steps.items.filter(({ record }) => containsWait(record)).map(({ index }) => index);
   for (const { record: step, index: stepIndex } of steps.items) {
     const stepErrorStart = errors.length;
-    validateAllowedKeys("pattern.steps[]", step, PATTERN_STEP_KINDS, errors);
-    const kinds = PATTERN_STEP_KINDS.filter((kind) => step[kind] !== undefined);
-    if (kinds.length !== 1) {
-      errors.push({ code: "definition.invalidShape", message: "pattern.steps[] must have exactly one of wait, fire or loop" });
-    }
-    if (step.wait !== undefined) {
-      validatePositiveIntegerAtMost("pattern.steps[].wait", step.wait, MAX_PATTERN_WAIT_TICKS, errors);
-    }
-    if (step.fire !== undefined) {
-      validatePatternFireShape(step.fire, errors);
-    }
-    if (step.loop !== undefined) {
-      validatePatternLoopShape(step.loop, stepIndex, waitStepIndexes, errors);
-    }
+    validatePatternStepShape("pattern.steps[]", step, 0, errors, { stepIndex, waitStepIndexes });
     addSchemaContext(errors, stepErrorStart, `pattern.steps[${stepIndex}]`, "pattern.steps[]");
   }
+  const expanded = countExpandedCommands(steps.items.map(({ record }) => record));
+  if (expanded > MAX_PATTERN_EXPANDED_COMMANDS) {
+    errors.push({
+      code: "definition.invalidConstraint",
+      message: `pattern.steps must expand to at most ${MAX_PATTERN_EXPANDED_COMMANDS} commands`,
+    });
+  }
+}
+
+/**
+ * 1 step を検証する。`loop` は top-level（`loop` を渡したとき）だけに置け、`repeat` の中の step は `repeatDepth` で入れ子の深さを数える。
+ */
+function validatePatternStepShape(
+  path: string,
+  step: Record<string, unknown>,
+  repeatDepth: number,
+  errors: CoreError[],
+  loop?: Readonly<{ stepIndex: number; waitStepIndexes: readonly number[] }>,
+): void {
+  const kinds = loop ? TOP_LEVEL_STEP_KINDS : REPEAT_BODY_STEP_KINDS;
+  validateAllowedKeys(path, step, loop ? TOP_LEVEL_STEP_KINDS : [...REPEAT_BODY_STEP_KINDS, "loop"], errors);
+  if (kinds.filter((kind) => step[kind] !== undefined).length + (!loop && step.loop !== undefined ? 1 : 0) !== 1) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must have exactly one of wait, fire, loop or repeat` });
+  }
+  if (step.wait !== undefined) {
+    validatePositiveIntegerAtMost(`${path}.wait`, step.wait, MAX_PATTERN_WAIT_TICKS, errors);
+  }
+  if (step.fire !== undefined) {
+    validatePatternFireShape(`${path}.fire`, step.fire, errors);
+  }
+  if (step.loop !== undefined) {
+    if (loop) {
+      validatePatternLoopShape(step.loop, loop.stepIndex, loop.waitStepIndexes, errors);
+    } else {
+      errors.push({ code: "definition.invalidShape", message: `${path}.loop must not be placed inside repeat` });
+    }
+  }
+  if (step.repeat !== undefined) {
+    validatePatternRepeatShape(`${path}.repeat`, step.repeat, repeatDepth + 1, errors);
+  }
+}
+
+/** `repeat` の回数、入れ子の深さ、`steps` を検証する。 */
+function validatePatternRepeatShape(path: string, value: unknown, depth: number, errors: CoreError[]): void {
+  const repeat = asRecord(value);
+  if (!repeat) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must be an object` });
+    return;
+  }
+  validateAllowedKeys(path, repeat, ["count", "steps"], errors);
+  validatePositiveIntegerAtMost(`${path}.count`, repeat.count, MAX_PATTERN_REPEAT_COUNT, errors);
+  if (depth > MAX_PATTERN_REPEAT_DEPTH) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must be nested at most ${MAX_PATTERN_REPEAT_DEPTH} deep` });
+    return;
+  }
+  const steps = validateObjectArray(`${path}.steps`, repeat.steps, errors);
+  if (Array.isArray(repeat.steps) && steps.sourceLength === 0) {
+    errors.push({ code: "definition.invalidShape", message: `${path}.steps must contain at least 1 step` });
+  }
+  if (steps.sourceLength > MAX_PATTERN_STEPS) {
+    errors.push({ code: "definition.invalidShape", message: `${path}.steps must contain at most ${MAX_PATTERN_STEPS} steps` });
+  }
+  for (const { record: step, index } of steps.items) {
+    const stepErrorStart = errors.length;
+    validatePatternStepShape(`${path}.steps[]`, step, depth, errors);
+    addSchemaContext(errors, stepErrorStart, `${path}.steps[${index}]`, `${path}.steps[]`);
+  }
+}
+
+/** step が `wait` か、`wait` を含む `repeat` か。 */
+function containsWait(step: Record<string, unknown>): boolean {
+  if (step.wait !== undefined) {
+    return true;
+  }
+  const body = asRecord(step.repeat)?.steps;
+  return Array.isArray(body) && body.some((child) => {
+    const record = asRecord(child);
+    return record !== null && containsWait(record);
+  });
+}
+
+/** `repeat` を展開した後の命令数。上限を超えた時点で打ち切り、上限 + 1 を返す。形の壊れた step は 1 命令と数える。 */
+function countExpandedCommands(steps: readonly unknown[]): number {
+  let total = 0;
+  for (const value of steps) {
+    const repeat = asRecord(asRecord(value)?.repeat);
+    const count = repeat && typeof repeat.count === "number" && Number.isSafeInteger(repeat.count) && repeat.count > 0 ? repeat.count : 1;
+    total += repeat && Array.isArray(repeat.steps) ? count * countExpandedCommands(repeat.steps) : 1;
+    if (total > MAX_PATTERN_EXPANDED_COMMANDS) {
+      return MAX_PATTERN_EXPANDED_COMMANDS + 1;
+    }
+  }
+  return total;
 }
 
 /** `loop` が前の step へ戻り、戻り先から loop までの間に `wait` を含むことを検証する。 */
@@ -98,37 +187,40 @@ function validatePatternLoopShape(
   }
 }
 
-/** `fire` の弾、発射元、向き、fan、速さを検証する。 */
-function validatePatternFireShape(value: unknown, errors: CoreError[]): void {
+/** `fire` の弾、発射元、向き、fan / radial、stream、速さを検証する。 */
+function validatePatternFireShape(path: string, value: unknown, errors: CoreError[]): void {
   const fire = asRecord(value);
   if (!fire) {
-    errors.push({ code: "definition.invalidShape", message: "pattern.steps[].fire must be an object" });
+    errors.push({ code: "definition.invalidShape", message: `${path} must be an object` });
     return;
   }
-  validateAllowedKeys("pattern.steps[].fire", fire, ["bullet", "origin", "aim", "angleDeg", "fan", "speed"], errors);
-  validateNonEmptyString("pattern.steps[].fire.bullet", fire.bullet, errors);
+  validateAllowedKeys(path, fire, ["bullet", "origin", "aim", "angleDeg", "fan", "radial", "stream", "speed"], errors);
+  validateNonEmptyString(`${path}.bullet`, fire.bullet, errors);
   if (fire.origin !== undefined && fire.origin !== "self") {
-    errors.push({ code: "definition.invalidShape", message: "pattern.steps[].fire.origin must be self" });
+    errors.push({ code: "definition.invalidShape", message: `${path}.origin must be self` });
   }
   if ((fire.aim === undefined) === (fire.angleDeg === undefined)) {
-    errors.push({ code: "definition.invalidShape", message: "pattern.steps[].fire must have exactly one of aim or angleDeg" });
+    errors.push({ code: "definition.invalidShape", message: `${path} must have exactly one of aim or angleDeg` });
   }
   if (fire.aim !== undefined && fire.aim !== "player") {
-    errors.push({ code: "definition.invalidShape", message: "pattern.steps[].fire.aim must be player" });
+    errors.push({ code: "definition.invalidShape", message: `${path}.aim must be player` });
   }
   if (fire.angleDeg !== undefined) {
-    validatePatternAngleDegrees("pattern.steps[].fire.angleDeg", fire.angleDeg, -MAX_PATTERN_ANGLE_DEGREES, errors);
+    validatePatternAngleDegrees(`${path}.angleDeg`, fire.angleDeg, -MAX_PATTERN_ANGLE_DEGREES, errors);
   }
-  validatePositiveNumber("pattern.steps[].fire.speed", fire.speed, errors);
-  validateNumberAtMost(
-    "pattern.steps[].fire.speed",
-    fire.speed,
-    MAX_ENEMY_BULLET_SPEED_PER_AXIS,
-    String(MAX_ENEMY_BULLET_SPEED_PER_AXIS),
-    errors,
-  );
+  validatePositiveNumber(`${path}.speed`, fire.speed, errors);
+  validateNumberAtMost(`${path}.speed`, fire.speed, MAX_ENEMY_BULLET_SPEED_PER_AXIS, String(MAX_ENEMY_BULLET_SPEED_PER_AXIS), errors);
+  if (fire.fan !== undefined && fire.radial !== undefined) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must not have both fan and radial` });
+  }
   if (fire.fan !== undefined) {
-    validatePatternFanShape(fire.fan, errors);
+    validatePatternFanShape(`${path}.fan`, fire.fan, errors);
+  }
+  if (fire.radial !== undefined) {
+    validatePatternRadialShape(`${path}.radial`, fire.radial, errors);
+  }
+  if (fire.stream !== undefined) {
+    validatePatternStreamShape(`${path}.stream`, fire.stream, fire.speed, errors);
   }
 }
 
@@ -138,24 +230,59 @@ function validatePatternFireShape(value: unknown, errors: CoreError[]): void {
  * 弾は基準の向きから `-spread / 2 + i * spread / (count - 1)` step ずれるため、広がりの step 数が 2 と `count - 1` で割り切れる
  * ことを要求し、すべての弾を 0.25° 刻みの step に載せる。
  */
-function validatePatternFanShape(value: unknown, errors: CoreError[]): void {
+function validatePatternFanShape(path: string, value: unknown, errors: CoreError[]): void {
   const fan = asRecord(value);
   if (!fan) {
-    errors.push({ code: "definition.invalidShape", message: "pattern.steps[].fire.fan must be an object" });
+    errors.push({ code: "definition.invalidShape", message: `${path} must be an object` });
     return;
   }
-  validateAllowedKeys("pattern.steps[].fire.fan", fan, ["count", "spreadDeg"], errors);
-  validatePositiveIntegerAtMost("pattern.steps[].fire.fan.count", fan.count, MAX_PATTERN_FAN_COUNT, errors);
-  const spreadSteps = validatePatternAngleDegrees("pattern.steps[].fire.fan.spreadDeg", fan.spreadDeg, 0, errors);
+  validateAllowedKeys(path, fan, ["count", "spreadDeg"], errors);
+  validatePositiveIntegerAtMost(`${path}.count`, fan.count, MAX_PATTERN_FAN_COUNT, errors);
+  const spreadSteps = validatePatternAngleDegrees(`${path}.spreadDeg`, fan.spreadDeg, 0, errors);
   if (spreadSteps === null || typeof fan.count !== "number" || !Number.isSafeInteger(fan.count) || fan.count < 1) {
     return;
   }
   if (fan.count === 1 && spreadSteps !== 0) {
-    errors.push({ code: "definition.invalidShape", message: "pattern.steps[].fire.fan.spreadDeg must be 0 when fan.count is 1" });
+    errors.push({ code: "definition.invalidShape", message: `${path}.spreadDeg must be 0 when fan.count is 1` });
   } else if (fan.count > 1 && (spreadSteps % 2 !== 0 || spreadSteps % (fan.count - 1) !== 0)) {
+    errors.push({ code: "definition.invalidShape", message: `${path}.spreadDeg must place every bullet on a 0.25 degree step` });
+  }
+}
+
+/** `radial` の弾数が 1 周（1,440 step）を割り切り、すべての弾を 0.25° 刻みの step に載せることを検証する。 */
+function validatePatternRadialShape(path: string, value: unknown, errors: CoreError[]): void {
+  const radial = asRecord(value);
+  if (!radial) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must be an object` });
+    return;
+  }
+  validateAllowedKeys(path, radial, ["count"], errors);
+  const countErrorStart = errors.length;
+  validatePositiveIntegerAtMost(`${path}.count`, radial.count, MAX_PATTERN_RADIAL_COUNT, errors);
+  if (errors.length === countErrorStart && ANGLE_STEPS_PER_TURN % (radial.count as number) !== 0) {
+    errors.push({ code: "definition.invalidShape", message: `${path}.count must divide 360 degrees into 0.25 degree steps` });
+  }
+}
+
+/** `stream` の弾数と速さの差を検証し、すべての弾の速さが 0 より大きく上限以下になることを確かめる。 */
+function validatePatternStreamShape(path: string, value: unknown, speed: unknown, errors: CoreError[]): void {
+  const stream = asRecord(value);
+  if (!stream) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must be an object` });
+    return;
+  }
+  validateAllowedKeys(path, stream, ["count", "speedStep"], errors);
+  const errorStart = errors.length;
+  validatePositiveIntegerAtMost(`${path}.count`, stream.count, MAX_PATTERN_STREAM_COUNT, errors);
+  validateFiniteNumber(`${path}.speedStep`, stream.speedStep, errors);
+  if (errors.length > errorStart || typeof speed !== "number" || !Number.isFinite(speed)) {
+    return;
+  }
+  const speeds = patternStreamSpeeds(speed, stream.count as number, stream.speedStep as number);
+  if (speeds.some((streamSpeed) => !(streamSpeed > 0) || streamSpeed > MAX_ENEMY_BULLET_SPEED_PER_AXIS)) {
     errors.push({
-      code: "definition.invalidShape",
-      message: "pattern.steps[].fire.fan.spreadDeg must place every bullet on a 0.25 degree step",
+      code: "definition.invalidConstraint",
+      message: `${path} must keep every bullet speed above 0 and at most ${MAX_ENEMY_BULLET_SPEED_PER_AXIS}`,
     });
   }
 }

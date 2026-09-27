@@ -62,6 +62,23 @@ export const MAX_PATTERN_WAIT_TICKS = 3_600;
 /** pattern の `fire` 1 つが並べる fan の弾数上限。 */
 export const MAX_PATTERN_FAN_COUNT = 64;
 
+/** pattern の `fire.radial.count` の上限。 */
+export const MAX_PATTERN_RADIAL_COUNT = 64;
+
+/** pattern の `fire.stream.count` の上限。 */
+export const MAX_PATTERN_STREAM_COUNT = 16;
+
+/** pattern の `repeat.count` の上限。 */
+export const MAX_PATTERN_REPEAT_COUNT = 256;
+
+/** `repeat` の入れ子の深さの上限。 */
+export const MAX_PATTERN_REPEAT_DEPTH = 4;
+
+/**
+ * `repeat` を展開した後の pattern の命令数の上限。load 時の展開と PatternProgram の run の表の大きさを抑える。
+ */
+export const MAX_PATTERN_EXPANDED_COMMANDS = 4_096;
+
 /** pattern の `angleDeg` の絶対値と `fan.spreadDeg` の上限（度）。 */
 export const MAX_PATTERN_ANGLE_DEGREES = 360;
 

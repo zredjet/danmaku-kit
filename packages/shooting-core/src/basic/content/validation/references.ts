@@ -1,6 +1,6 @@
 import type { CoreError } from "../../result.ts";
 import { MAX_IDENTIFIER_LENGTH, isNamespacedId, isSafeAssetKey } from "../identifier.ts";
-import type { ContentRegistry } from "../types.ts";
+import type { BulletId, ContentRegistry, PatternStepDefinition } from "../types.ts";
 
 /** namespace prefix と重複 ID を検証する。 */
 export function validateUniqueIds(
@@ -108,13 +108,7 @@ export function validatePatternBulletReferences(registry: ContentRegistry, error
       ...(pattern.fireOnSpawn
         ? [{ bulletId: pattern.fireOnSpawn.bullet, localPath: "pattern.fireOnSpawn.bullet", schemaPath: `content.patterns[${index}].fireOnSpawn.bullet` }]
         : []),
-      ...(pattern.steps ?? []).flatMap((step, stepIndex) => "fire" in step
-        ? [{
-          bulletId: step.fire.bullet,
-          localPath: "pattern.steps[].fire.bullet",
-          schemaPath: `content.patterns[${index}].steps[${stepIndex}].fire.bullet`,
-        }]
-        : []),
+      ...collectStepBulletReferences(pattern.steps ?? [], `content.patterns[${index}].steps`, "pattern.steps[]"),
     ];
     for (const { bulletId, localPath, schemaPath } of references) {
       const context = { schemaPath, referrerId: pattern.id, targetId: bulletId } as const;
@@ -126,6 +120,23 @@ export function validatePatternBulletReferences(registry: ContentRegistry, error
       }
     }
   }
+}
+
+/** `fire` の bullet 参照を、`repeat` の中の step まで schema path 付きで集める。 */
+function collectStepBulletReferences(
+  steps: readonly PatternStepDefinition[],
+  schemaPrefix: string,
+  localPrefix: string,
+): { bulletId: BulletId; localPath: string; schemaPath: string }[] {
+  return steps.flatMap((step, stepIndex) => {
+    if ("fire" in step) {
+      return [{ bulletId: step.fire.bullet, localPath: `${localPrefix}.fire.bullet`, schemaPath: `${schemaPrefix}[${stepIndex}].fire.bullet` }];
+    }
+    if ("repeat" in step) {
+      return collectStepBulletReferences(step.repeat.steps, `${schemaPrefix}[${stepIndex}].repeat.steps`, `${localPrefix}.repeat.steps[]`);
+    }
+    return [];
+  });
 }
 
 /** Stage timeline 内の enemy / pattern / path 参照を検証する。 */

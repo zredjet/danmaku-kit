@@ -148,8 +148,8 @@ export type PlayerShotDefinition = {
 /**
  * 敵 pattern の content 定義。
  *
- * `fireOnSpawn` は spawn 直後に 1 batch だけ敵弾を生成する最小形、`steps` は `wait` / `fire` / `loop` の命令列（PatternProgram）で、
- * 1 つの pattern ではどちらか一方だけを使う。`repeat`、`parallel`、`if`、`randomSpread` は Phase 2B の DSL で追加する。
+ * `fireOnSpawn` は spawn 直後に 1 batch だけ敵弾を生成する最小形、`steps` は `wait` / `fire` / `loop` / `repeat` の命令列
+ * （PatternProgram）で、1 つの pattern ではどちらか一方だけを使う。`parallel`、`set`、`move`、`randomSpread` などは後続の DSL で扱う。
  */
 export type PatternDefinition = {
   id: PatternId;
@@ -170,7 +170,7 @@ export type PatternDefinition = {
   };
 };
 
-/** pattern の 1 命令。1 step は `wait`、`fire`、`loop` のどれか 1 つの key だけを持つ。 */
+/** pattern の 1 命令。1 step は `wait`、`fire`、`loop`、`repeat` のどれか 1 つの key だけを持つ。 */
 export type PatternStepDefinition =
   | {
     /** 次の命令を実行するまで待つ tick 数。 */
@@ -180,25 +180,52 @@ export type PatternStepDefinition =
     fire: PatternFireDefinition;
   }
   | {
-    /** 同じ tick のうちに戻る step index。戻った先から loop までの間に `wait` を含む必要がある。 */
+    /**
+     * 同じ tick のうちに戻る top-level の step index。戻った先から loop までの間に `wait` を含む必要がある。`repeat` の `steps` の中には
+     * 置けない。
+     */
     loop: number;
+  }
+  | {
+    repeat: PatternRepeatDefinition;
   };
+
+/**
+ * `steps` を `count` 回続けて実行する命令。load 時に展開して PatternProgram の run に正規化するため、runner の状態は増えない。
+ *
+ * `steps` には `wait`、`fire`、`repeat` を置ける（`loop` は置けない）。
+ */
+export type PatternRepeatDefinition = {
+  count: number;
+  steps: readonly PatternStepDefinition[];
+};
 
 /**
  * pattern の発射命令。
  *
  * 向きは自機を狙う `aim: player` か、+x を 0°、+y（下）へ回る向きを正とする `angleDeg` のどちらか一方で指定し、0.25° 刻みの角度
- * step にそろえる。`fan` は基準の向きを中心に `count` 発を、最初と最後の弾の間が `spreadDeg` になるよう等間隔に並べる。
+ * step にそろえる。`fan` は基準の向きを中心に `count` 発を、最初と最後の弾の間が `spreadDeg` になるよう等間隔に並べ、`radial` は
+ * 基準の向きから 1 周を `count` 等分した向きに並べる（`fan` と `radial` はどちらか一方）。`stream` は各向きに、`speed` から
+ * `speedStep` ずつ変えた速さの弾を `count` 発重ねる。
  */
 export type PatternFireDefinition = {
   bullet: BulletId;
   /** 発射元。現在は発射する enemy の位置だけを扱う。 */
   origin?: "self";
-  /** 敵弾の速さ（px / tick）。 */
+  /** 敵弾の速さ（px / tick）。`stream` では最初の弾の速さ。 */
   speed: number;
   fan?: {
     count: number;
     spreadDeg: number;
+  };
+  radial?: {
+    /** 1 周を等分する弾数。360° を `count` で割った角度が 0.25° の倍数になる数だけを受け付ける。 */
+    count: number;
+  };
+  stream?: {
+    count: number;
+    /** 次の弾へ足す速さ（px / tick）。負なら遅くなる。すべての弾の速さが正で上限以下になる必要がある。 */
+    speedStep: number;
   };
 } & (
   | {
