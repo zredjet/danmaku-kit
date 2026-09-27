@@ -2,41 +2,38 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import type { GameDefinition, PatternDefinition } from "@shooting-sample/shooting-core";
+import type { Difficulty, GameDefinition, PatternId } from "@shooting-sample/shooting-core";
 
-import { loadSampleTitleDefinition } from "../test-support/sample-title-game.ts";
+import { expandInputScript, runHeadlessReplay } from "../test-support/headless-replay.ts";
+import { createSampleTitleCore, loadSampleTitleDefinition } from "../test-support/sample-title-game.ts";
 
 // docs/sample-content-spec.md の「機械で読める仕様」（Phase 2B-13）を、sample content と stage 1 の headless replay golden に照らして
 // 確かめる。content か golden を変えたら spec も合わせて変える。
 
 const SPEC_URL = new URL("../../../../docs/sample-content-spec.md", import.meta.url);
 const GOLDEN_URL = new URL("./stage-01-replay.golden.json", import.meta.url);
+/** 撃たない敵と撃たない自機で、すべての敵が退場するまで進める上限（tick）。 */
+const IDLE_TICK_LIMIT = 6_000;
+const SILENT_PATTERN_ID: PatternId = "pattern.spec_silent";
 
 type Spec = Readonly<{
   stage: string;
-  difficulties: readonly string[];
-  player: string;
+  difficulties: readonly Difficulty[];
+  player: Readonly<{ id: string; movement: unknown; collision: unknown; life: unknown; shot: string }>;
+  playerShot: Readonly<{ id: string; collision: unknown; damage: number; fire: unknown; projectile: unknown }>;
+  bullets: Readonly<Record<string, Readonly<{ radius: number }>>>;
+  enemies: Readonly<Record<string, Readonly<{ hp: number; score: number; radius: number; drops: Readonly<Record<string, number>> }>>>;
+  pickups: Readonly<Record<string, Readonly<{ score: number; collectRadius: number; magnetRadius?: number; velocity: unknown }>>>;
+  patterns: Readonly<Record<string, readonly unknown[]>>;
   waves: readonly Readonly<{
     wave: number;
     ticks: readonly [number, number];
     spawns: Readonly<Record<string, number>>;
+    paths: readonly string[];
     patterns: readonly string[];
   }>[];
-  enemies: Readonly<Record<string, Readonly<{ hp: number; score: number; drops: Readonly<Record<string, number>> }>>>;
-  patterns: Readonly<Record<string, readonly string[]>>;
-  pickups: Readonly<Record<string, Readonly<{ score: number }>>>;
-  golden: Readonly<{
-    seed: string;
-    weavePeriodTicks: number;
-    clearTick: number;
-    score: number;
-    lives: number;
-    defeats: Readonly<Record<string, number>>;
-    pickups: Readonly<{ dropped: number; collected: number; score: number }>;
-    playerHits: readonly number[];
-    firstThreeWayTick: number;
-    firstRadialTick: number;
-  }>;
+  idleClearTick: number;
+  golden: Readonly<Record<string, unknown>>;
 }>;
 
 type Golden = Readonly<{
@@ -50,11 +47,29 @@ type Golden = Readonly<{
   firstRadial: Readonly<{ tick: number }> | null;
 }>;
 
+const SPEC_KEYS = [
+  "bullets",
+  "difficulties",
+  "enemies",
+  "golden",
+  "idleClearTick",
+  "patterns",
+  "pickups",
+  "player",
+  "playerShot",
+  "stage",
+  "waves",
+];
+const WAVE_KEYS = ["paths", "patterns", "spawns", "ticks", "wave"];
+
 async function readSpec(): Promise<Spec> {
   const markdown = await readFile(SPEC_URL, "utf8");
-  const blocks = [...markdown.matchAll(/^```json sample-content-spec\n([\s\S]*?)^```$/gmu)];
+  const blocks = [...markdown.matchAll(/^```json sample-content-spec\r?\n([\s\S]*?)^```\r?$/gmu)];
   assert.equal(blocks.length, 1, "the spec must have one sample-content-spec block");
-  return JSON.parse(blocks[0]![1]!) as Spec;
+  const spec = JSON.parse(blocks[0]![1]!) as Spec;
+  assert.deepEqual(Object.keys(spec).sort(), SPEC_KEYS);
+  spec.waves.forEach((wave) => assert.deepEqual(Object.keys(wave).sort(), WAVE_KEYS, `wave ${wave.wave} keys`));
+  return spec;
 }
 
 function countBy(values: readonly string[]): Record<string, number> {
@@ -65,35 +80,8 @@ function countBy(values: readonly string[]): Record<string, number> {
   return counts;
 }
 
-/** pattern が使う Pattern DSL の命令と fire の修飾（`wait` と `fire` そのもの、`bullet`、`speed` などの必須の値は除く）。 */
-function patternFeatures(pattern: PatternDefinition): readonly string[] {
-  const features = new Set<string>();
-  const visit = (steps: readonly object[]): void => {
-    for (const step of steps) {
-      if ("fire" in step) {
-        const fire = step.fire as object;
-        for (const key of ["aim", "angleDeg", "fan", "radial", "stream"]) {
-          if (key in fire) {
-            features.add(key);
-          }
-        }
-      }
-      if ("loop" in step) {
-        features.add("loop");
-      }
-      if ("repeat" in step) {
-        features.add("repeat");
-        visit((step.repeat as { steps: readonly object[] }).steps);
-      }
-      if ("if" in step) {
-        features.add("if");
-        const branch = step.if as { then: readonly object[]; else?: readonly object[] };
-        visit([...branch.then, ...branch.else ?? []]);
-      }
-    }
-  };
-  visit(pattern.steps ?? []);
-  return [...features].sort();
+function sortedUnique(values: readonly string[]): string[] {
+  return [...new Set(values)].sort();
 }
 
 function stageOf(definition: GameDefinition, spec: Spec) {
@@ -107,7 +95,6 @@ test("matches the waves of the spec with the stage timeline", async () => {
   const stage = stageOf(definition, spec);
 
   assert.deepEqual(stage.difficulties, spec.difficulties);
-  assert.equal(definition.defaultPlayerId, spec.player);
   for (const [index, wave] of spec.waves.entries()) {
     assert.equal(wave.wave, index + 1);
     assert.ok(wave.ticks[0] <= wave.ticks[1] && (index === 0 || spec.waves[index - 1]!.ticks[1] < wave.ticks[0]));
@@ -116,33 +103,91 @@ test("matches the waves of the spec with the stage timeline", async () => {
   assert.deepEqual(unassigned.map((step) => step.tick), [], "every spawn must belong to a wave");
   for (const wave of spec.waves) {
     const steps = stage.timeline.filter((step) => wave.ticks[0] <= step.tick && step.tick <= wave.ticks[1]);
-    assert.deepEqual(countBy(steps.map((step) => step.action.enemy)), wave.spawns, `wave ${wave.wave} spawns`);
-    assert.deepEqual([...new Set(steps.map((step) => step.action.pattern))].sort(), [...wave.patterns].sort(), `wave ${wave.wave} patterns`);
-    assert.equal(steps[0]?.tick, wave.ticks[0], `wave ${wave.wave} starts with a spawn`);
-    assert.equal(steps.at(-1)?.tick, wave.ticks[1], `wave ${wave.wave} ends with a spawn`);
+    assert.deepEqual(
+      {
+        ticks: [steps[0]?.tick, steps.at(-1)?.tick],
+        spawns: countBy(steps.map((step) => step.action.enemy)),
+        paths: sortedUnique(steps.map((step) => step.action.path)),
+        patterns: sortedUnique(steps.map((step) => step.action.pattern)),
+      },
+      { ticks: wave.ticks, spawns: wave.spawns, paths: [...wave.paths].sort(), patterns: [...wave.patterns].sort() },
+      `wave ${wave.wave}`,
+    );
   }
 });
 
-test("matches the enemies, patterns and pickups of the spec with the content", async () => {
+test("matches the player, shot, bullets, enemies, pickups and patterns of the spec with the content", async () => {
+  const [spec, definition] = [await readSpec(), await loadSampleTitleDefinition()];
+  const { content } = definition;
+  const stage = stageOf(definition, spec);
+  const byId = <T extends { id: string }>(values: readonly T[], id: string): T => {
+    const found = values.find((value) => value.id === id);
+    assert.ok(found, `${id} must be in the sample content`);
+    return found;
+  };
+
+  const player = byId(content.players, definition.defaultPlayerId);
+  assert.deepEqual(
+    { id: player.id, movement: player.movement, collision: player.collision, life: player.life, shot: player.shot.definition },
+    spec.player,
+  );
+  const shot = byId(content.playerShots, player.shot.definition);
+  assert.deepEqual(
+    { id: shot.id, collision: shot.collision, damage: shot.damage, fire: shot.fire, projectile: shot.projectile },
+    spec.playerShot,
+  );
+  const usedPatterns = content.patterns.filter((pattern) => stage.timeline.some((step) => step.action.pattern === pattern.id));
+  const usedBullets = sortedUnique(JSON.stringify(usedPatterns).match(/"bullet\.[^"]+"/gu)?.map((id) => JSON.parse(id) as string) ?? []);
+  assert.deepEqual(
+    Object.fromEntries(usedBullets.map((id) => [id, { radius: byId(content.bullets, id).collision.radius }])),
+    spec.bullets,
+  );
+  const spawned = sortedUnique(stage.timeline.map((step) => step.action.enemy));
+  assert.deepEqual(
+    Object.fromEntries(spawned.map((id) => {
+      const enemy = byId(content.enemies, id);
+      const drops = Object.fromEntries((enemy.drops ?? []).map((drop) => [drop.pickup, drop.count]));
+      return [id, { hp: enemy.hp, score: enemy.score, radius: enemy.collision.radius, drops }];
+    })),
+    spec.enemies,
+  );
+  assert.deepEqual(
+    Object.fromEntries((content.features?.pickups ?? []).map((pickup) => [pickup.id, {
+      score: pickup.score,
+      collectRadius: pickup.collectRadius,
+      ...(pickup.magnetRadius === undefined ? {} : { magnetRadius: pickup.magnetRadius }),
+      velocity: pickup.velocity,
+    }])),
+    spec.pickups,
+  );
+  assert.deepEqual(Object.fromEntries(usedPatterns.map((pattern) => [pattern.id, pattern.steps])), spec.patterns);
+});
+
+test("clears the stage with no defeats when no enemy fires and the player does nothing", async () => {
   const [spec, definition] = [await readSpec(), await loadSampleTitleDefinition()];
   const stage = stageOf(definition, spec);
-  const { content } = definition;
-  const spawned = new Set(stage.timeline.map((step) => step.action.enemy));
-  const usedPatterns = new Set(stage.timeline.map((step) => step.action.pattern));
+  // どの敵も撃たない pattern に差し替え、何もしない自機で、すべての path が敵を画面の外まで運んで clear になることを確かめる。
+  const silent: GameDefinition = {
+    ...definition,
+    content: {
+      ...definition.content,
+      patterns: [...definition.content.patterns, { id: SILENT_PATTERN_ID, version: 1 }],
+      stages: definition.content.stages.map((candidate) => candidate.id !== stage.id ? candidate : {
+        ...candidate,
+        timeline: candidate.timeline.map((step) => ({ ...step, action: { ...step.action, pattern: SILENT_PATTERN_ID } })),
+      }),
+    },
+  };
+  const loaded = createSampleTitleCore().load(silent);
+  assert.ok(loaded.ok, JSON.stringify(loaded.ok ? null : loaded.errors));
+  const { frames } = runHeadlessReplay(
+    loaded.value,
+    { stageId: stage.id, difficulty: spec.difficulties[0]!, seed: "idle" },
+    expandInputScript([{ fromTick: 0 }], IDLE_TICK_LIMIT),
+  );
+  const last = frames.at(-1)!;
 
-  assert.deepEqual(Object.keys(spec.enemies).sort(), [...spawned].sort());
-  for (const [id, expected] of Object.entries(spec.enemies)) {
-    const enemy = content.enemies.find((candidate) => candidate.id === id)!;
-    const drops = Object.fromEntries((enemy.drops ?? []).map((drop) => [drop.pickup, drop.count]));
-    assert.deepEqual({ hp: enemy.hp, score: enemy.score, drops }, expected, id);
-  }
-  assert.deepEqual(Object.keys(spec.patterns).sort(), [...usedPatterns].sort());
-  for (const [id, features] of Object.entries(spec.patterns)) {
-    const pattern = content.patterns.find((candidate) => candidate.id === id)!;
-    assert.deepEqual(patternFeatures(pattern), [...features].sort(), id);
-  }
-  const pickups = content.features?.pickups ?? [];
-  assert.deepEqual(Object.fromEntries(pickups.map((pickup) => [pickup.id, { score: pickup.score }])), spec.pickups);
+  assert.deepEqual([last.state.status, last.tick, last.state.score], ["stageCleared", spec.idleClearTick, 0]);
 });
 
 test("matches the golden values of the spec with the stage 1 replay golden", async () => {
