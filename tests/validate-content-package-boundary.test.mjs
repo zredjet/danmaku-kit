@@ -17,6 +17,7 @@ test("imports validate-content through the workspace package export", async () =
   const validateContent = await import("@shooting-sample/validate-content");
 
   assert.deepEqual(Object.keys(validateContent).sort(), [
+    "VALIDATE_CONTENT_DIAGNOSTIC_CODES",
     "createToolErrorRunResult",
     "createValidationRunResult",
     "formatValidateContentHuman",
@@ -43,11 +44,14 @@ test("keeps the validate-content root type export surface explicit", async () =>
     "ParseOrSchemaContentDiagnostic",
     "ReferenceContentDiagnostic",
     "ToolContentDiagnostic",
+    "ValidateContentDiagnosticCode",
     "ValidateContentExitCode",
     "ValidateContentJsonOutput",
     "ValidateContentRunResult",
     "ValidateContentSourcePaths",
+    "ValidateContentToolDiagnosticCode",
     "ValidationContentDiagnostic",
+    "YamlParserDiagnosticCode",
   ]);
 });
 

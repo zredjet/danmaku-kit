@@ -6,10 +6,12 @@ import {
   parseDocument,
   visit,
   type Document,
+  type ErrorCode,
   type Node,
   type YAMLError,
 } from "yaml";
 
+import type { ValidateContentDiagnosticCode } from "./diagnostic-codes.ts";
 import { createRootParseDiagnostic, defaultSpan } from "./diagnostic-factory.ts";
 import type { ParseOrSchemaContentDiagnostic } from "./types.ts";
 
@@ -113,7 +115,7 @@ function validateAstBudget(
   lineCounter: LineCounter,
 ): ParseOrSchemaContentDiagnostic | null {
   let nodeCount = 0;
-  const violation: { code: string; message: string | null; node: unknown } = {
+  const violation: { code: ValidateContentDiagnosticCode; message: string | null; node: unknown } = {
     code: "yaml.resource",
     message: null,
     node: null,
@@ -158,7 +160,7 @@ function createParseDiagnostic(
   const hasDistinctEnd = end.line > start.line || (end.line === start.line && end.col >= start.col);
   const base = {
     kind: "parse",
-    code: `yaml.parse.${error.code.toLowerCase()}`,
+    code: `yaml.parse.${error.code.toLowerCase() as Lowercase<ErrorCode>}`,
     severity,
     message: error.message,
     path,
@@ -269,7 +271,7 @@ function resourceFailure(
   path: string,
   span: YamlSourceSpan,
   message: string,
-  code = "yaml.resource",
+  code: ValidateContentDiagnosticCode = "yaml.resource",
 ): ParseYamlSourceResult {
   return Object.freeze({
     ok: false,
@@ -282,7 +284,7 @@ function createResourceDiagnostic(
   path: string,
   span: YamlSourceSpan,
   message: string,
-  code = "yaml.resource",
+  code: ValidateContentDiagnosticCode = "yaml.resource",
 ): ParseOrSchemaContentDiagnostic {
   const base = {
     kind: "parse",

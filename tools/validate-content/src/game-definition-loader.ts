@@ -4,7 +4,7 @@ import type { AssetManifest } from "./asset-manifest.ts";
 import { createNodeContentFileSystem, type ContentFileSystem } from "./content-file-system.ts";
 import { loadContentSource, type LoadContentSourceResult } from "./content-loader.ts";
 import { validateContentDefinition } from "./core-diagnostic-adapter.ts";
-import { createToolErrorRunResult, createValidationRunResult } from "./output.ts";
+import { createOwnToolErrorRunResult, createValidationRunResult } from "./output.ts";
 import type { ValidateContentRunResult } from "./types.ts";
 
 /** validate-content が読む game-definition file と content root の path。 */
@@ -54,7 +54,7 @@ export async function loadValidatedGameDefinitionWith(
   if (!sourcePaths) {
     return Object.freeze({
       ok: false,
-      runResult: createToolErrorRunResult(
+      runResult: createOwnToolErrorRunResult(
         "",
         "tool.invalidInput",
         "paths must be an object with string gameDefinitionPath and contentRoot",
@@ -79,7 +79,7 @@ export async function loadValidatedGameDefinitionWith(
     }
     return Object.freeze({ ok: false, runResult });
   } catch (cause) {
-    const runResult = createToolErrorRunResult(
+    const runResult = createOwnToolErrorRunResult(
       sourcePaths.contentRoot,
       isFileSystemError(cause) ? "tool.readFailed" : "tool.unexpected",
       safeErrorMessage(cause),

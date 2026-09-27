@@ -1,4 +1,4 @@
-import { freezeSchemaDiagnostic } from "./diagnostic-factory.ts";
+import { freezeSchemaDiagnostic, type OwnSchemaDiagnosticCode } from "./diagnostic-factory.ts";
 import type { ParseOrSchemaContentDiagnostic } from "./types.ts";
 import type { ParsedYamlSource } from "./yaml-source.ts";
 
@@ -230,7 +230,7 @@ function entryPath(key: string, field?: string): string {
 function report(
   context: ManifestDiagnostics,
   sourcePath: readonly (string | number)[],
-  code: string,
+  code: OwnSchemaDiagnosticCode,
   message: string,
   schemaPath: string,
   sourceId: string,

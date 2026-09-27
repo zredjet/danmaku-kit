@@ -1,5 +1,5 @@
 import { normalizeDiagnostics, snapshotOwnDataRecord } from "./diagnostic-normalization.ts";
-import { createToolErrorRunResult, createValidationRunResult } from "./output.ts";
+import { createOwnToolErrorRunResult, createToolErrorRunResult, createValidationRunResult } from "./output.ts";
 import type {
   ContentDiagnostic,
   ContentDiagnosticSummary,
@@ -40,11 +40,11 @@ function normalizeOutputForFormatting(value: unknown): ValidateContentJsonOutput
   try {
     const output = snapshotOwnDataRecord(value);
     if (!output || output.schemaVersion !== "1" || typeof output.contentRoot !== "string") {
-      return createToolErrorRunResult("", "tool.invalidOutput", "Validate-content output is invalid").output;
+      return createOwnToolErrorRunResult("", "tool.invalidOutput", "Validate-content output is invalid").output;
     }
     const normalized = normalizeDiagnostics(output.diagnostics);
     if (!normalized.ok) {
-      return createToolErrorRunResult(output.contentRoot, "tool.invalidOutput", normalized.message).output;
+      return createOwnToolErrorRunResult(output.contentRoot, "tool.invalidOutput", normalized.message).output;
     }
     const toolDiagnostics = normalized.value.filter((diagnostic) => diagnostic.kind === "tool");
     if (toolDiagnostics.length > 0) {
@@ -52,7 +52,7 @@ function normalizeOutputForFormatting(value: unknown): ValidateContentJsonOutput
         const toolDiagnostic = toolDiagnostics[0]!;
         return createToolErrorRunResult(output.contentRoot, toolDiagnostic.code, toolDiagnostic.message).output;
       }
-      return createToolErrorRunResult(
+      return createOwnToolErrorRunResult(
         output.contentRoot,
         "tool.invalidOutput",
         "Tool diagnostics cannot be mixed with validation diagnostics",
@@ -63,7 +63,7 @@ function normalizeOutputForFormatting(value: unknown): ValidateContentJsonOutput
       normalized.value as readonly ValidationContentDiagnostic[],
     ).output;
   } catch {
-    return createToolErrorRunResult("", "tool.invalidOutput", "Validate-content output could not be read safely").output;
+    return createOwnToolErrorRunResult("", "tool.invalidOutput", "Validate-content output could not be read safely").output;
   }
 }
 

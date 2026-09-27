@@ -1,3 +1,4 @@
+import type { ValidateContentToolDiagnosticCode } from "./diagnostic-codes.ts";
 import { normalizeDiagnostics } from "./diagnostic-normalization.ts";
 import type {
   ContentDiagnostic,
@@ -20,11 +21,11 @@ export function createValidationRunResult(
   diagnostics: readonly ValidationContentDiagnostic[],
 ): ValidateContentRunResult {
   if (typeof contentRoot !== "string") {
-    return createToolErrorRunResult("", "tool.invalidInput", "contentRoot must be a string");
+    return createOwnToolErrorRunResult("", "tool.invalidInput", "contentRoot must be a string");
   }
   const normalized = normalizeDiagnostics(diagnostics);
   if (!normalized.ok) {
-    return createToolErrorRunResult(contentRoot, "tool.invalidDiagnostic", normalized.message);
+    return createOwnToolErrorRunResult(contentRoot, "tool.invalidDiagnostic", normalized.message);
   }
   const toolDiagnostic = normalized.value.find((diagnostic) => diagnostic.kind === "tool");
   if (toolDiagnostic) {
@@ -36,6 +37,18 @@ export function createValidationRunResult(
     return Object.freeze({ exitCode: 0, output });
   }
   return Object.freeze({ exitCode: 1, output });
+}
+
+/**
+ * validate-content 自身の tool error。code を `VALIDATE_CONTENT_DIAGNOSTIC_CODES` の tool の code に限る（公開の
+ * `createToolErrorRunResult()` は、受け取った tool 診断の code をそのまま出し直すため string を受ける）。
+ */
+export function createOwnToolErrorRunResult(
+  contentRoot: string,
+  code: ValidateContentToolDiagnosticCode,
+  message: string,
+): ValidateContentRunResult {
+  return createToolErrorRunResult(contentRoot, code, message);
 }
 
 /**

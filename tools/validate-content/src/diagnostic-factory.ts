@@ -1,9 +1,16 @@
+import type { CoreErrorCode } from "@shooting-sample/shooting-core";
+
 import type { ContentSourceContext } from "./content-source-index.ts";
+import type { ValidateContentDiagnosticCode } from "./diagnostic-codes.ts";
 import type { ParseOrSchemaContentDiagnostic } from "./types.ts";
 import type { YamlSourceSpan } from "./yaml-source.ts";
 
 /** YAML value 変換や source file 読み込みなど、位置を特定できない失敗を document root の parse 診断へ正規化する。 */
-export function createRootParseDiagnostic(path: string, code: string, message: string): ParseOrSchemaContentDiagnostic {
+export function createRootParseDiagnostic(
+  path: string,
+  code: ValidateContentDiagnosticCode,
+  message: string,
+): ParseOrSchemaContentDiagnostic {
   return Object.freeze({
     kind: "parse",
     code,
@@ -15,6 +22,9 @@ export function createRootParseDiagnostic(path: string, code: string, message: s
     schemaPath: "$",
   });
 }
+
+/** validate-content が作る schema 診断の code（自分の code と、loader が Core と同じ分類で出す Core の code）。 */
+export type OwnSchemaDiagnosticCode = ValidateContentDiagnosticCode | CoreErrorCode;
 
 /** 空documentなどAST rangeがない場合に使う安定したfallback位置。 */
 export function defaultSpan(path: string): YamlSourceSpan {

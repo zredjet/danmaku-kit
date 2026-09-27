@@ -1,5 +1,5 @@
 import { formatValidateContentHuman, formatValidateContentJson } from "./output-format.ts";
-import { createToolErrorRunResult } from "./output.ts";
+import { createOwnToolErrorRunResult } from "./output.ts";
 import {
   loadValidatedGameDefinitionWith,
   safeErrorMessage,
@@ -49,7 +49,7 @@ export async function runValidateContentCli(
 ): Promise<number> {
   const parsed = parseValidateContentArguments(argv);
   if (!parsed.ok) {
-    const result = createToolErrorRunResult("", "tool.invalidArguments", parsed.message);
+    const result = createOwnToolErrorRunResult("", "tool.invalidArguments", parsed.message);
     return await writeCliOutput(io, formatResult(result, parsed.format), result.exitCode);
   }
   if (parsed.kind === "help") {
@@ -63,7 +63,7 @@ export async function runValidateContentCli(
     text = formatResult(runResult, options.format);
   } catch (cause) {
     // formatter の予期しない例外も process を落とさず、exit code 2 の tool error として出力する。
-    const toolError = createToolErrorRunResult(options.contentRoot, "tool.unexpected", safeErrorMessage(cause));
+    const toolError = createOwnToolErrorRunResult(options.contentRoot, "tool.unexpected", safeErrorMessage(cause));
     return await writeCliOutput(io, formatResult(toolError, options.format), toolError.exitCode);
   }
   return await writeCliOutput(io, text, runResult.exitCode);

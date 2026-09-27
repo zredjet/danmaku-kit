@@ -16,7 +16,12 @@ import {
   type ContentFileSystem,
 } from "./content-file-system.ts";
 import { createContentSourceIndex, type ContentSourceIndex } from "./content-source-index.ts";
-import { createRootParseDiagnostic, defaultSpan, freezeSchemaDiagnostic } from "./diagnostic-factory.ts";
+import {
+  createRootParseDiagnostic,
+  defaultSpan,
+  freezeSchemaDiagnostic,
+  type OwnSchemaDiagnosticCode,
+} from "./diagnostic-factory.ts";
 import type { ParseOrSchemaContentDiagnostic } from "./types.ts";
 import {
   parseYamlSource,
@@ -335,7 +340,7 @@ async function readYamlSource(
 /** loader 固有の source file / manifest 構造エラーを error severity の schema diagnostic にする。 */
 function createSchemaDiagnostic(
   span: YamlSourceSpan,
-  code: string,
+  code: OwnSchemaDiagnosticCode,
   message: string,
   schemaPath: string,
   sourceId: string,
