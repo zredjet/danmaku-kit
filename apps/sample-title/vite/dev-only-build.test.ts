@@ -11,8 +11,7 @@ const DEV_ONLY_MARKERS = [
   "__SHOOTING_DEBUG_REPLAY__",
   "preview-panel",
   "stage.preview",
-  "preview-invincible",
-  "_jump",
+  "_preview_cheat",
 ];
 
 /** sample app を `mode` で build し、出力した JavaScript をつなげて返す（file には書かない）。 */

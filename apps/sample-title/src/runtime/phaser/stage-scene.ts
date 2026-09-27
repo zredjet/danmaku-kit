@@ -218,11 +218,13 @@ export class StageScene extends Scene {
     const { shell } = this.#options;
     const onKey = (event: KeyboardEvent): void => {
       // Preview の panel の入力欄へ打つ key は game の入力にしない。keyup は押したままの key が残らないよう受け、Meta 付きの keydown も
-      // 受ける（macOS は Meta を押している間の keyup を送らないので、入力 adapter が keyup まで key を無視する）。
-      if (event.type === "keydown" && !event.metaKey && isFormField(event.target)) {
+      // 受ける（macOS は Meta を押している間の keyup を送らないので、入力 adapter が keyup まで key を無視する）。入力欄の既定動作
+      // （Space で checkbox を切り替えるなど）は止めない。
+      const formField = isFormField(event.target);
+      if (event.type === "keydown" && !event.metaKey && formField) {
         return;
       }
-      if (shell.handleKeyEvent(event)) {
+      if (shell.handleKeyEvent(event) && !formField) {
         event.preventDefault();
       }
     };

@@ -359,6 +359,7 @@ function previewStyle(): HTMLStyleElement {
     .preview-field { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 4px; }
     .preview-field > select, .preview-field > input { min-width: 0; font: inherit; }
     .preview-field > input[type="checkbox"] { justify-self: start; margin: 0; }
+    .preview-field:has(> input[type="checkbox"]) { justify-self: start; }
     .preview-buttons { display: flex; gap: 4px; }
     .preview-buttons > button { flex: 1; font: inherit; }
     .preview-overlay { position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }

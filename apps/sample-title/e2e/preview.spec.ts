@@ -70,23 +70,35 @@ test("jumps into the stage with an invincible player and reopens the same cheats
   await page.locator(".preview-invincible").check();
   await waitForLifecycle(page, "playing");
   await expect(page.locator(".hud-lives")).toHaveText("LIVES ▲×60000");
-  expect((await readReplay(page)).stage.stageId).toBe("stage.stage_01");
+  // cheat を当てた stage は複製した id で始め、content の stage の再生記録に見えないようにする。
+  expect((await readReplay(page)).stage.stageId).toBe("stage.stage_01_preview_cheat");
 
-  // stage jump は選んだ tick より前の spawn を除いて詰めた stage を始める。
-  const jumpTick = (await page.locator(".preview-jump option").allTextContents())[2]!;
+  // stage jump は選んだ spawn の tick より前の spawn を除いて詰めた stage を始める。
+  const jumpTicks = await page.locator(".preview-jump option").allTextContents();
+  expect(jumpTicks.length).toBeGreaterThan(2);
+  const jumpTick = jumpTicks[Math.floor(jumpTicks.length / 2)]!;
   await page.locator(".preview-jump").selectOption(jumpTick);
-  await expect.poll(async () => (await readReplay(page)).stage.stageId).toBe("stage.stage_01_jump");
-  await waitForLifecycle(page, "playing");
-  await expect.poll(async () => (await readDump(page)).entityCounts.enemy).toBeGreaterThan(0);
   await expect(page.locator(".preview-info")).toContainText(`invincible  jump ${jumpTick}`);
+  await waitForLifecycle(page, "playing");
+  // content の stage は tick 90 まで敵を出さないが、詰めた stage は始めてすぐに出す。
+  await expect.poll(async () => {
+    const dump = await readDump(page);
+    return dump.entityCounts.enemy > 0 && dump.tick < 90;
+  }).toBe(true);
   expect(previewParameters(page)).toEqual({ preview: "stage:stage.stage_01", seed: "preview-cheat", difficulty: "normal" });
   expect(new URL(page.url()).searchParams.get("invincible")).toBe("1");
   expect(new URL(page.url()).searchParams.get("jump")).toBe(jumpTick);
 
   await page.reload();
   await waitForLifecycle(page, "playing");
-  expect((await readReplay(page)).stage).toEqual({ stageId: "stage.stage_01_jump", difficulty: "normal", seed: "preview-cheat" });
+  expect((await readReplay(page)).stage).toEqual({ stageId: "stage.stage_01_preview_cheat", difficulty: "normal", seed: "preview-cheat" });
   await expect(page.locator(".preview-invincible")).toBeChecked();
   await expect(page.locator(".preview-jump")).toHaveValue(jumpTick);
+
+  // focus した checkbox は Space で切り替わる（game の confirm にはならない）。
+  await page.locator(".preview-invincible").focus();
+  await page.keyboard.press("Space");
+  await expect(page.locator(".preview-invincible")).not.toBeChecked();
+  await expect(page.locator(".hud-lives")).toHaveText("LIVES ▲▲▲");
   expect(pageErrors).toEqual([]);
 });

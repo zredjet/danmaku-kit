@@ -21,16 +21,28 @@ export const NO_PREVIEW_CHEATS: PreviewCheats = Object.freeze({ invincible: fals
  */
 export const PREVIEW_INVINCIBLE_LIVES = 60_000;
 
+/** cheat を当てた stage の id の suffix。content の stage と同じ id の再生記録にならないよう、cheat を当てた stage は複製する。 */
+export const PREVIEW_CHEAT_STAGE_SUFFIX = "_preview_cheat";
+
 /** stage jump で選べる tick（0 と、timeline の spawn の tick を重複なく昇順に）。 */
 export function stageJumpTicks(stage: StageDefinition): readonly number[] {
   return Object.freeze([...new Set([0, ...stage.timeline.map((step) => step.tick)])].sort((left, right) => left - right));
 }
 
 /**
- * 合成した definition に cheat を当てる。
+ * `tick` を `stage` の jump で選べる tick に寄せる（`tick` 以下で最大の spawn の tick）。hot reload で jump 先の spawn の tick が
+ * 動いても、その近くから始め直せるようにする。
+ */
+export function snapStageJumpTick(stage: StageDefinition, tick: number): number {
+  return stageJumpTicks(stage).findLast((candidate) => candidate <= tick) ?? 0;
+}
+
+/**
+ * 合成した definition に cheat を当てる。cheat を 1 つでも当てるなら、`stageId` の stage を content の id と重ならない id
+ * （`<id>_preview_cheat`）で複製し、その stage で始める（content の stage は変えないので、cheat を当てた再生記録が content の stage の
+ * 記録に見えない）。
  *
- * - stage jump は、`stageId` の stage の timeline から `jumpTick` より前の spawn を除き、残りを `jumpTick` だけ前へ詰めた stage を
- *   content の id と重ならない id で足す（content の stage は変えないので、元の stage の再生記録と混ざらない）。
+ * - stage jump は、複製した stage の timeline から `jumpTick` より前の spawn を除き、残りを `jumpTick` だけ前へ詰める。
  * - invincible は既定の自機の lives を `PREVIEW_INVINCIBLE_LIVES` にする。
  */
 export function applyPreviewCheats(
@@ -39,39 +51,29 @@ export function applyPreviewCheats(
   cheats: PreviewCheats,
 ): Readonly<{ definition: GameDefinition; stageId: StageId }> {
   const stage = definition.content.stages.find((candidate) => candidate.id === stageId);
-  const jumped = stage && cheats.jumpTick > 0 ? jumpStage(definition, stage, cheats.jumpTick) : { definition, stageId };
+  if (!stage || (!cheats.invincible && cheats.jumpTick <= 0)) {
+    return Object.freeze({ definition, stageId });
+  }
+  const cheatStage: StageDefinition = {
+    ...stage,
+    id: unusedId(`${stage.id}${PREVIEW_CHEAT_STAGE_SUFFIX}` as StageId, definition.content.stages),
+    timeline: stage.timeline
+      .filter((step) => step.tick >= cheats.jumpTick)
+      .map((step) => ({ ...step, tick: step.tick - cheats.jumpTick })),
+  };
+  const content = { ...definition.content, stages: [...definition.content.stages, cheatStage] };
   return Object.freeze({
-    definition: cheats.invincible ? withInvinciblePlayer(jumped.definition) : jumped.definition,
-    stageId: jumped.stageId,
-  });
-}
-
-function jumpStage(
-  definition: GameDefinition,
-  stage: StageDefinition,
-  jumpTick: number,
-): Readonly<{ definition: GameDefinition; stageId: StageId }> {
-  const stageId = unusedId(`${stage.id}_jump` as StageId, definition.content.stages);
-  const timeline = stage.timeline
-    .filter((step) => step.tick >= jumpTick)
-    .map((step) => ({ ...step, tick: step.tick - jumpTick }));
-  return {
     definition: {
       ...definition,
-      content: { ...definition.content, stages: [...definition.content.stages, { ...stage, id: stageId, timeline }] },
+      content: cheats.invincible
+        ? {
+          ...content,
+          players: content.players.map((player) => player.id === definition.defaultPlayerId
+            ? { ...player, life: { ...player.life, initialLives: PREVIEW_INVINCIBLE_LIVES } }
+            : player),
+        }
+        : content,
     },
-    stageId,
-  };
-}
-
-function withInvinciblePlayer(definition: GameDefinition): GameDefinition {
-  return {
-    ...definition,
-    content: {
-      ...definition.content,
-      players: definition.content.players.map((player) => player.id === definition.defaultPlayerId
-        ? { ...player, life: { ...player.life, initialLives: PREVIEW_INVINCIBLE_LIVES } }
-        : player),
-    },
-  };
+    stageId: cheatStage.id,
+  });
 }

@@ -2,7 +2,7 @@ import type { Difficulty, GameDefinition, ShootingCore, StageDefinition } from "
 
 import type { GameShellContent } from "../lifecycle/game-shell.ts";
 import { selectStageDifficulty } from "../lifecycle/stage-difficulty.ts";
-import { applyPreviewCheats, stageJumpTicks, type PreviewCheats } from "./preview-cheats.ts";
+import { applyPreviewCheats, snapStageJumpTick, stageJumpTicks, type PreviewCheats } from "./preview-cheats.ts";
 import {
   composePreviewDefinition,
   formatPreviewTarget,
@@ -19,7 +19,7 @@ export type PreviewSelectionOptions = Readonly<{
   requestedDifficulty: string | null;
   /** `?invincible=1`。 */
   invincible?: boolean;
-  /** `?jump=` の値。stage の対象で、その stage の `stageJumpTicks()` にある tick だけを使う。 */
+  /** `?jump=` の値。stage の対象だけで使い、その stage の spawn の tick に寄せる（`snapStageJumpTick()`）。 */
   jumpTickParameter?: string | null;
 }>;
 
@@ -31,7 +31,7 @@ export type PreviewComposition =
 /**
  * Preview（design 19）の選択（対象、seed、difficulty、dev-only の cheat）。DOM と Phaser に依存せず、panel はこれを変えて `compose()` の
  * content で stage を始め直す。difficulty は対象で選べるもの（`difficulties()`）に合わせる（なければ最初の difficulty）。stage jump は
- * stage の対象だけに当て、対象を変えると 0 に戻す。
+ * stage の対象だけが持ち、対象を変えると 0 に戻し、content が変わったら jump 先の tick 以下で最大の spawn の tick に寄せる。
  */
 export class PreviewSelection {
   #definition: GameDefinition;
@@ -47,7 +47,8 @@ export class PreviewSelection {
     this.#seed = options.seed;
     this.#difficulty = options.requestedDifficulty;
     this.#invincible = options.invincible ?? false;
-    this.#jumpTick = Number(options.jumpTickParameter ?? 0);
+    const jumpTick = Number(options.jumpTickParameter ?? 0);
+    this.#jumpTick = Number.isSafeInteger(jumpTick) ? this.#snapJumpTick(jumpTick) : 0;
   }
 
   get definition(): GameDefinition {
@@ -67,12 +68,8 @@ export class PreviewSelection {
     return this.#difficulty;
   }
 
-  /** 当てる cheat。stage jump は今の対象で選べる tick でなければ 0 にする。 */
   get cheats(): PreviewCheats {
-    return Object.freeze({
-      invincible: this.#invincible,
-      jumpTick: this.jumpTicks().includes(this.#jumpTick) ? this.#jumpTick : 0,
-    });
+    return Object.freeze({ invincible: this.#invincible, jumpTick: this.#jumpTick });
   }
 
   /** `?preview=` の値の形の対象を選ぶ。content にない対象なら選択を変えず false を返す。 */
@@ -103,11 +100,19 @@ export class PreviewSelection {
 
   /** stage jump で選べる tick（panel の選択肢）。stage の対象だけが持つ。 */
   jumpTicks(): readonly number[] {
-    const target = this.#target;
-    const stage = target.kind === "stage"
-      ? this.#definition.content.stages.find((candidate) => candidate.id === target.stageId)
-      : undefined;
+    const stage = this.#targetStage();
     return stage ? stageJumpTicks(stage) : [];
+  }
+
+  /** 今の対象の stage の spawn の tick に寄せた jump の tick。stage の対象でなければ 0。 */
+  #snapJumpTick(tick: number): number {
+    const stage = this.#targetStage();
+    return stage ? snapStageJumpTick(stage, tick) : 0;
+  }
+
+  #targetStage(): StageDefinition | undefined {
+    const target = this.#target;
+    return target.kind === "stage" ? this.#definition.content.stages.find((stage) => stage.id === target.stageId) : undefined;
   }
 
   /** 空白だけの seed は受けない。 */
@@ -128,13 +133,16 @@ export class PreviewSelection {
    * content に移す。load できなければ選択を変えずに error を返す。
    */
   replaceDefinition(definition: GameDefinition, core: Pick<ShootingCore, "load">): PreviewComposition {
-    const previous = { definition: this.#definition, target: this.#target };
+    const previous = { definition: this.#definition, target: this.#target, jumpTick: this.#jumpTick };
     this.#definition = definition;
-    this.#target = parsePreviewTarget(formatPreviewTarget(this.#target), definition) ?? firstStageTarget(definition);
+    const target = parsePreviewTarget(formatPreviewTarget(this.#target), definition);
+    this.#target = target ?? firstStageTarget(definition);
+    this.#jumpTick = target ? this.#snapJumpTick(this.#jumpTick) : 0;
     const composed = this.compose(core);
     if (!composed.ok) {
       this.#definition = previous.definition;
       this.#target = previous.target;
+      this.#jumpTick = previous.jumpTick;
     }
     return composed;
   }

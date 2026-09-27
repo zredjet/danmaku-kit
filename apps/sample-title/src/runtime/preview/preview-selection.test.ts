@@ -136,13 +136,15 @@ test("applies the stage jump to stage targets only and the invincible player to 
   const selection = new PreviewSelection(definition, { ...OPTIONS, jumpTickParameter: "7" });
   const ticks = selection.jumpTicks();
 
-  // URL の jump が stage の spawn の tick でなければ jump しない。
+  // URL の jump は stage の spawn の tick に寄せる（最初の spawn より前なら jump しない）。
   assert.deepEqual(selection.cheats, { invincible: false, jumpTick: 0 });
+  assert.equal(new PreviewSelection(definition, { ...OPTIONS, jumpTickParameter: String(ticks[2]! + 1) }).cheats.jumpTick, ticks[2]);
+  assert.equal(new PreviewSelection(definition, { ...OPTIONS, jumpTickParameter: "x" }).cheats.jumpTick, 0);
   assert.equal(selection.setJumpTick(ticks[2]! + 1), false);
   assert.equal(selection.setJumpTick(ticks[2]!), true);
   const jumped = selection.compose(core);
   assert.ok(jumped.ok);
-  assert.deepEqual([jumped.content.stage.stageId, jumped.stage.timeline[0]!.tick], ["stage.stage_01_jump", 0]);
+  assert.deepEqual([jumped.content.stage.stageId, jumped.stage.timeline[0]!.tick], ["stage.stage_01_preview_cheat", 0]);
 
   // 対象を変えると jump を外し、stage 以外の対象は jump を持たない。
   selection.selectTarget("pattern:pattern.drone_aimed_shot");
@@ -161,4 +163,32 @@ test("applies the stage jump to stage targets only and the invincible player to 
   );
   assert.equal(frames[0]!.state.player.lives, PREVIEW_INVINCIBLE_LIVES);
   assert.equal(new PreviewSelection(definition, { ...OPTIONS, invincible: true, jumpTickParameter: String(ticks[1]) }).cheats.jumpTick, ticks[1]);
+});
+
+test("snaps the jump to the moved spawns of reloaded content and drops it when the stage goes away", async () => {
+  const definition = await loadSampleTitleDefinition();
+  const core = createSampleTitleCore();
+  const selection = new PreviewSelection(definition, OPTIONS);
+  const ticks = selection.jumpTicks();
+  selection.setJumpTick(ticks[3]!);
+  const [stage] = definition.content.stages;
+  const moved = (by: number): GameDefinition => ({
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{ ...stage!, timeline: stage!.timeline.map((step) => step.tick === ticks[3] ? { ...step, tick: step.tick + by } : step) }],
+    },
+  });
+
+  // jump 先の spawn を前へ動かすと、動かした spawn の tick へ寄せる。
+  assert.ok(selection.replaceDefinition(moved(-5), core).ok);
+  assert.equal(selection.cheats.jumpTick, ticks[3]! - 5);
+  // 後ろへ動かすと、jump の tick 以下で最大の spawn の tick へ寄せる。
+  assert.ok(selection.replaceDefinition(moved(5), core).ok);
+  assert.equal(selection.cheats.jumpTick, ticks[2]);
+
+  // stage がなくなって最初の stage に戻ったら jump を外す。
+  const other = { ...definition, content: { ...definition.content, stages: [{ ...stage!, id: "stage.other" as const }] } };
+  assert.ok(selection.replaceDefinition(other, core).ok);
+  assert.deepEqual([selection.target, selection.cheats.jumpTick], [{ kind: "stage", stageId: "stage.other" }, 0]);
 });
