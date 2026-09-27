@@ -6,7 +6,6 @@ import {
   parseDocument,
   visit,
   type Document,
-  type ErrorCode,
   type Node,
   type YAMLError,
 } from "yaml";
@@ -160,7 +159,7 @@ function createParseDiagnostic(
   const hasDistinctEnd = end.line > start.line || (end.line === start.line && end.col >= start.col);
   const base = {
     kind: "parse",
-    code: `yaml.parse.${error.code.toLowerCase() as Lowercase<ErrorCode>}`,
+    code: `yaml.parse.${error.code.toLowerCase()}`,
     severity,
     message: error.message,
     path,

@@ -7,7 +7,7 @@ import {
 import { pickupFeature } from "@shooting-sample/shooting-core/features/pickup";
 
 import type { ContentSourceIndex } from "./content-source-index.ts";
-import { freezeSchemaDiagnostic } from "./diagnostic-factory.ts";
+import { freezeCoreSchemaDiagnostic } from "./diagnostic-factory.ts";
 import type {
   FeatureGateContentDiagnostic,
   ParseOrSchemaContentDiagnostic,
@@ -114,13 +114,7 @@ function createSchemaDiagnostic(
   sourceIndex: ContentSourceIndex,
 ): ParseOrSchemaContentDiagnostic {
   const schemaPath = error.schemaPath ?? inferSchemaPath(error.code, error.message);
-  return freezeSchemaDiagnostic(
-    error.code,
-    severity,
-    error.message,
-    schemaPath,
-    sourceIndex.locateSchemaPath(schemaPath, error.referrerId),
-  );
+  return freezeCoreSchemaDiagnostic(error, severity, schemaPath, sourceIndex.locateSchemaPath(schemaPath, error.referrerId));
 }
 
 /** Core messageのpath表現を可能な範囲で抽出し、code別fallbackを必ず返す。 */

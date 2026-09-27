@@ -1,4 +1,4 @@
-import type { CoreErrorCode } from "@shooting-sample/shooting-core";
+import type { CoreError, CoreErrorCode, CoreWarning } from "@shooting-sample/shooting-core";
 
 import type { ContentSourceContext } from "./content-source-index.ts";
 import type { ValidateContentDiagnosticCode } from "./diagnostic-codes.ts";
@@ -31,15 +31,37 @@ export function defaultSpan(path: string): YamlSourceSpan {
   return Object.freeze({ path, line: 1, column: 1 });
 }
 
-/** source contextをschema diagnosticのpaired end spanへ投影する。 */
+/** validate-content 自身の schema 診断。source context を schema diagnostic の paired end span へ投影する。 */
 export function freezeSchemaDiagnostic(
-  code: string,
+  code: OwnSchemaDiagnosticCode,
   severity: "error" | "warning",
   message: string,
   schemaPath: string,
   context: ContentSourceContext,
 ): ParseOrSchemaContentDiagnostic {
-  const base = {
+  return freezeSchemaDiagnosticWithCode(code, severity, message, schemaPath, context);
+}
+
+/**
+ * Core の検証が返した error / warning を、その code のまま schema 診断にする。Core の warning の code は Core の型でも string なので、
+ * validate-content 自身の code とは分けて受ける。
+ */
+export function freezeCoreSchemaDiagnostic(
+  problem: Readonly<Pick<CoreError | CoreWarning, "code" | "message">>,
+  severity: "error" | "warning",
+  schemaPath: string,
+  context: ContentSourceContext,
+): ParseOrSchemaContentDiagnostic {
+  return freezeSchemaDiagnosticWithCode(problem.code, severity, problem.message, schemaPath, context);
+}
+
+function freezeSchemaDiagnosticWithCode(
+  code: string,
+  severity: "error" | "warning",
+  message: string,
+  schemaPath: string,
+  context: ContentSourceContext,
+): ParseOrSchemaContentDiagnostic {  const base = {
     kind: "schema",
     code,
     severity,

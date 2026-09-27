@@ -1,6 +1,6 @@
 # Content の診断と error の手引き
 
-validate-content と Core が返す診断の code ごとに、原因、直し方、関連する schema path を載せる。見出しの code の一覧は、Core の `CoreErrorCode`、Core の warning の code、validate-content の `VALIDATE_CONTENT_DIAGNOSTIC_CODES` と一致する（`tests/error-guide.test.ts` が過不足を検査する）。content の最小の例は [examples](examples/README.md) にある。
+validate-content と Core が返す診断の code ごとに、原因、直し方、関連する schema path を載せる。見出しの code の一覧は、Core の `CoreErrorCode`、Core の warning の code、validate-content の `VALIDATE_CONTENT_DIAGNOSTIC_CODES` と一致する（`tests/error-guide.test.mjs` が過不足と各節の項目を検査する）。content の最小の例は [examples](examples/README.md) にある。
 
 ## 診断の読み方
 
@@ -10,9 +10,9 @@ validate-content の human 形式は、1 行に 1 つの診断を出す。
 content/stages/example.yaml:22:16-22:35 [ERROR] pattern.notFound: Pattern not found: pattern.example_rng (schema=content.stages[0].timeline[1].action.pattern, referrer=stage.example, target=pattern.example_rng)
 ```
 
-- 先頭は file と位置（行:列、範囲がわかれば終わりの行:列）。
+- 先頭は file と位置（行:列、範囲がわかれば終わりの行:列）。optional feature の診断（`kind` が `featureGate`）は file の代わりに直す場所の source（`gameDefinition` か definition の id）で始まり、tool error は位置を持たない。
 - `[ERROR]` / `[WARNING]` / `[INFO]` は重要度。error が 1 つでもあれば content は使えない（CLI の exit code 1）。warning と info は content を使えるが、意図と違う書き方の知らせ。
-- `schema=` は content の中の位置（`content.<collection>[<index>].<field>`）。`referrer=` は問題のある definition の id、`target=` は見つからない参照先の id や feature。
+- `schema=` は content の中の位置（`content.<collection>[<index>].<field>`）。`source=` は診断のある definition の id（id がなければ file）。参照の診断（`kind` が `reference`）は、問題のある definition の id を `referrer=`、見つからない参照先の id を `target=` に出す。
 - `--format json` は同じ内容を `diagnostics` の配列で出す（`kind` は `parse`、`schema`、`reference`、`featureGate`、`tool`）。
 
 validate-content は YAML の読み込みと content root の形を先に調べ、次に Core の `load()` と同じ検証（形、値の範囲、参照、optional feature、pattern の意味）を行う。形の error があると参照の検証まで進まないので、直してから validate-content をもう一度実行する。validation を最後まで行えなかったとき（file を読めないなど）は tool error で、CLI の exit code は 2 になる。
@@ -51,7 +51,7 @@ validate-content は YAML の読み込みと content root の形を先に調べ�
 
 - 重要度: error
 - 原因: 1 つの file が読み込みの上限（大きさ、node の数、入れ子の深さ）を超えた。
-- 直し方: definition を複数の file に分ける。深すぎる入れ子は `repeat` の段を減らすなど、書き方を変える。
+- 直し方: file を小さくする（長い timeline は stage を分けるなど）。深すぎる入れ子は `repeat` や `if` の段を減らす。
 - schema path: `$`
 
 ### `content.unknownEntry`
@@ -80,30 +80,30 @@ validate-content は YAML の読み込みと content root の形を先に調べ�
 ### `assetManifest.invalidShape`
 
 - 重要度: error
-- 原因: manifest か entry の形の誤り。`version` が 1 でない、`assets` が object でない、entry の `type` / `path` / `required` / `usage` がないか値が誤り、`path` が base URL と合成できる相対 path でない、`runtime.` で始まる key を定義した（runtime の built-in に予約）。
-- 直し方: message の field を直す。`type` は `sprite`、`atlas`、`tilemap`、`audio`、`particle`、`effect`、`usage` は `gameplay`、`ui`、`decorative`、`audio` から選ぶ。
-- schema path: `assetManifest.version`、`assetManifest.assets.<key>.<field>`
+- 原因: manifest か entry の形の誤り。manifest が object でない、`version` が 1 でない、`assets` が object でない、entry の `type` / `path` / `required` / `usage` がないか値が誤り、`path` が base URL と合成できる相対 path でない、`usage: audio` と `type: audio` が組になっていない、`fallback` が空、`license` / `author` / `source` が文字列でない、`runtime.` で始まる key を定義した（runtime の built-in に予約）。
+- 直し方: message の field を直す。`type` は `sprite`、`atlas`、`tilemap`、`audio`、`particle`、`effect`、`usage` は `gameplay`、`ui`、`decorative`、`audio` から選ぶ（audio の asset は type も usage も `audio`）。
+- schema path: `assetManifest.version`、`assetManifest.assets["<key>"].<field>`（manifest か `assets` が object でなければ `content.assetKeys` / `content.assetKeys.keys`）
 
 ### `assetManifest.unknownField`
 
 - 重要度: error
 - 原因: manifest の root か entry に知らない field がある（綴りの誤りが多い）。
 - 直し方: field を消すか綴りを直す。entry が持てるのは `type`、`path`、`required`、`usage`、`fallback`、`license`、`author`、`source`。
-- schema path: `assetManifest.<field>`、`assetManifest.assets.<key>.<field>`
+- schema path: `assetManifest.<field>`、`assetManifest.assets["<key>"].<field>`
 
 ### `assetManifest.invalidFallback`
 
 - 重要度: error
 - 原因: `fallback` が manifest にない key、type の違う asset、`required: true` の entry から指している。
 - 直し方: `fallback` は `required: false` の entry に置き、同じ type の manifest の key か `runtime.` の built-in の key を指す。
-- schema path: `assetManifest.assets.<key>.fallback`
+- schema path: `assetManifest.assets["<key>"].fallback`
 
 ### `assetManifest.fallbackCycle`
 
 - 重要度: error
 - 原因: `fallback` をたどると元の entry に戻る。
 - 直し方: 連鎖のどこかで、読み込みに失敗しない asset か `runtime.` の built-in を指して終わらせる。
-- schema path: `assetManifest.assets.<key>.fallback`
+- schema path: `assetManifest.assets["<key>"].fallback`
 
 ## 形と値（Core）
 
@@ -117,7 +117,7 @@ validate-content は YAML の読み込みと content root の形を先に調べ�
 ### `definition.invalidShape`
 
 - 重要度: error
-- 原因: 必須の field がない、型が違う、値が範囲の外（負の `hp`、0 以下の `duration`、上限を超える数など）、1 つの pattern の step に `wait` / `fire` / `loop` / `repeat` / `if` のうち 2 つ以上の key がある、`steps` と `fireOnSpawn` を両方書いた、など。message に field と条件が出る。
+- 原因: 必須の field がない、型が違う、値が範囲の外（負の `hp`、0 以下の `duration`、上限を超える数など）、1 つの pattern の step に `wait` / `fire` / `loop` / `repeat` / `if` のうち 2 つ以上の key がある、`steps` と `fireOnSpawn` を両方書いた、など。validate-content も、game-definition の `contentVersion` がない、collection の file が object でない、といった読み込みの形の誤りをこの code で出す。message に field と条件が出る。
 - 直し方: message の field を条件どおりに直す。
 
   ```yaml
@@ -145,8 +145,8 @@ validate-content は YAML の読み込みと content root の形を先に調べ�
 ### `id.invalidNamespace`
 
 - 重要度: error
-- 原因: id が collection の namespace で始まっていない（enemy の id は `enemy.` で始める）。参照の値が参照先の namespace でない場合も出る。
-- 直し方: id を `player.`、`playerShot.`、`bullet.`、`enemy.`、`path.`、`pattern.`、`pickup.`、`stage.` の namespace で始め、namespace の後は英数字で始まる英数字、`.`、`_`、`-` にする（`..` は使えない）。
+- 原因: id が collection の namespace で始まっていない（enemy の id は `enemy.` で始める）、namespace の後に使えない文字がある、128 文字を超える。参照の値が参照先の namespace の id の形でない場合も出る。
+- 直し方: id を `player.`、`playerShot.`、`bullet.`、`enemy.`、`path.`、`pattern.`、`pickup.`、`stage.` の namespace で始め、namespace の後は英数字で始まる英数字、`.`、`_`、`-` にする（`..` は使えない。全体で 128 文字まで）。
 - schema path: `content.<collection>[<index>].id` か参照の field
 
 ### `id.duplicate`
@@ -159,15 +159,15 @@ validate-content は YAML の読み込みと content root の形を先に調べ�
 ### `asset.invalidKey`
 
 - 重要度: error
-- 原因: asset の key が空、使えない文字を含む、長すぎる。definition の `asset` の値が key の規則に合わない場合も出る。
-- 直し方: key は英数字で始まる英数字、`.`、`_`、`-` にする（`..` は使えない）。
+- 原因: asset の key が空、使えない文字を含む、128 文字を超える。definition の `asset` の値が key の規則に合わない場合も出る。
+- 直し方: key は英数字で始まる英数字、`.`、`_`、`-` にする（`..` は使えない。128 文字まで）。
 - schema path: `content.assetKeys.keys`、`content.<collection>[<index>].asset`
 
 ### `asset.duplicate`
 
 - 重要度: error
-- 原因: asset の key が重複している。
-- 直し方: manifest の key を 1 つにする。
+- 原因: Core に渡した asset の key の一覧に重複がある。validate-content は manifest の key から一覧を作るので、manifest の key の重複は YAML の読み込みで `yaml.parse.duplicate_key` になり、この code は Core を直接呼ぶ tool で出る。
+- 直し方: key を 1 つにする。
 - schema path: `content.assetKeys.keys`
 
 ### `timeline.invalidOrder`
@@ -245,7 +245,7 @@ validate-content は YAML の読み込みと content root の形を先に調べ�
 ### `playerShot.notFound`
 
 - 重要度: error
-- 原因: player の `shot.definition` が、ない player shot を指している。実行中に出たときは、restore した state や runtime の組み立てが content と合っていない。
+- 原因: player の `shot.definition` が、ない player shot を指している。tick の途中に `stageSession.fatal` の message に出たときは Core の不整合。
 - 直し方: `player-shots/` に player shot を足すか、id の綴りを直す。
 - schema path: `content.players[<index>].shot.definition`
 
@@ -255,7 +255,7 @@ validate-content は YAML の読み込みと content root の形を先に調べ�
 
 - 重要度: error
 - 原因: `enabledFeatures` に Core の知らない feature の名前がある。
-- 直し方: 綴りを直す。今ある feature は `pickup`。
+- 直し方: 綴りを直す。Core が知る名前は `pickup`、`bomb`、`graze`、`affinity`、`rank`、`advancedScoring` で、今 module があるのは `pickup` だけ（他は予約した名前で、`feature.unsupported` になる）。
 - schema path: `enabledFeatures`
 
 ### `feature.duplicate`
@@ -268,8 +268,8 @@ validate-content は YAML の読み込みと content root の形を先に調べ�
 ### `feature.unsupported`
 
 - 重要度: error
-- 原因: `enabledFeatures` の feature の module が、Core に登録されていない（runtime が `createShootingCore({ features })` に渡していない）。
-- 直し方: content を使う runtime で feature の module を登録する（sample title は `src/main.ts` で `pickupFeature` を渡す）。使わない feature なら `enabledFeatures` から外す。
+- 原因: `enabledFeatures` の feature の module が、Core に登録されていない。`bomb`、`graze`、`affinity`、`rank`、`advancedScoring` は名前だけ予約していて module がまだないので、validate-content（`pickup` を登録している）ではこれらを書くとこの error になる。自分で Core を作る runtime では、`createShootingCore({ features })` に module を渡し忘れた場合も出る。
+- 直し方: module のない feature は `enabledFeatures` から外す。`pickup` なら、content を使う runtime で module を登録する（sample title は `src/main.ts` で `pickupFeature` を渡す）。
 - schema path: `enabledFeatures`
 
 ### `feature.disabled`
@@ -305,13 +305,15 @@ validate-content は YAML の読み込みと content root の形を先に調べ�
 ### `pattern.unusedBranch`
 
 - 重要度: warning
-- 原因: `if` の `then` か `else` が、その pattern を使う stage のどの difficulty でも選ばれない（`difficulty: [hard]` の pattern を normal だけの stage で使うなど）。
-- 直し方: stage の `difficulties` か `if.difficulty` を見直す。複数の stage で共有していて意図どおりなら、そのままでよい。
-- schema path: `content.patterns[<index>].steps[<index>].if.then` / `.else`
+- 原因: `if.difficulty` に、その step が実行される difficulty（pattern を使う stage の `difficulties`）にない difficulty がある、または `else` がどの difficulty でも選ばれない（`difficulty: [hard]` の `if` を hard のない stage だけで使う、stage の difficulty がすべて `then` を選ぶ、など）。`then` が使われていても、届かない difficulty を書いていれば出る。
+- 直し方: stage の `difficulties` か `if.difficulty` を見直し、使われない `else` は消す。複数の stage で共有していて意図どおりなら、そのままでよい。
+- schema path: `content.patterns[<index>].steps[<index>].if.difficulty` か `.if.else`
 
 ## stage の開始と実行（Core API を呼ぶ runtime 向け）
 
 content を直すより、Core を呼ぶ側（runtime、tool、test）の引数や使い方を直す error。content が原因のときはその旨を書く。
+
+`startStage()` の error はそのまま返る。`tick()` では、引数の誤り（`input.*`）と終わった stage への `tick()`（`stageSession.ended`）はその error を返すだけで session は使い続けられる。tick の処理の途中の error は session を止め、元の code と message を message に並べた `stageSession.fatal` として返す（以後の `tick()` と `serialize()` も同じ error を返す）。下の節で「`stageSession.fatal` の message に出る」と書いた code は、この形で見る。
 
 ### `startStage.invalidShape`
 
@@ -327,9 +329,9 @@ content を直すより、Core を呼ぶ側（runtime、tool、test）の引数�
 
 ### `player.notFound`
 
-- 重要度: error
-- 原因: `startStage()` の `playerId` の player が content にない。実行中に出たときは、自機の entity が state にない（restore した state の不整合）。
-- 直し方: content の player の id を渡すか、`playerId` を省いて `defaultPlayerId` を使う。
+- 重要度: error（tick の途中なら `stageSession.fatal` の message に出る）
+- 原因: `startStage()` の `playerId` の player が content にない。tick の途中なら、自機の entity が state にない（Core の不整合）。
+- 直し方: content の player の id を渡すか、`playerId` を省いて `defaultPlayerId` を使う。tick の途中で出たら Core の不具合として報告する。
 
 ### `difficulty.notSupported`
 
@@ -340,14 +342,14 @@ content を直すより、Core を呼ぶ側（runtime、tool、test）の引数�
 ### `input.invalidShape`
 
 - 重要度: error
-- 原因: `tick()` に渡した `InputFrame` の形が誤り（`axes` の値が -1 / 0 / 1 でない、知らない action、知らない field など）。
+- 原因: `tick()` に渡した `InputFrame` の形が誤り（`axes` の値が -1 / 0 / 1 でない、知らない action、知らない field など）。session はそのまま使える。
 - 直し方: `{ tick, axes: { moveX, moveY }, held, pressed, released }` の形で渡す。
 
 ### `input.tickMismatch`
 
 - 重要度: error
-- 原因: `InputFrame.tick` が、session が次に受け付ける tick と違う。tick を飛ばしたか、同じ tick を 2 回渡した。
-- 直し方: 0 から 1 ずつ増やした tick を順に渡す。
+- 原因: `InputFrame.tick` が、session が次に受け付ける tick と違う。tick を飛ばしたか、同じ tick を 2 回渡した。session はそのまま使える。
+- 直し方: 次に受け付ける tick（始めた session なら 0、restore した session なら state の `expectedTick`）から 1 ずつ増やして渡す。
 
 ### `stageSession.ended`
 
@@ -358,43 +360,43 @@ content を直すより、Core を呼ぶ側（runtime、tool、test）の引数�
 ### `stageSession.fatal`
 
 - 重要度: error
-- 原因: tick の処理が続けられない状態になり、session がその error を返し続ける（optional feature の state が JSON 互換でない、feature が規則に反する event や score を出したなど）。
-- 直し方: message の原因を直し、新しい session で始め直す。feature を作っているなら feature module の hook を見直す。
+- 原因: tick の処理が続けられない状態になった。message の `Stage session entered a fatal state:` の後に、元の code と message が `<code>: <message>` の形で並ぶ（敵弾や pickup の上限、1 tick の pattern の命令の上限、optional feature の state が JSON 互換でない、feature が規則に反する event や score を出した、Core の内部の不整合など）。
+- 直し方: message の先頭の code の節を見て原因を直し、新しい session で始め直す（止まった session は `tick()` も `serialize()` も同じ error を返し続ける）。feature を作っているなら feature module の hook を見直す。
 
 ### `enemyBullet.budgetExceeded`
 
-- 重要度: error（session は fatal になる）
-- 原因: 敵弾の数が active の上限を超えそうになった。1 tick の弾数は load 時に調べるが、弾が長く残って積み上がると実行中に超える。
+- 重要度: error（`stageSession.fatal` の message に出る）
+- 原因: 敵弾の数が active の上限を超えそうになった。1 tick に撃つ弾の数は load 時に調べるが、弾が長く残って積み上がると実行中に超える。
 - 直し方: pattern の弾数や発射の頻度を減らすか、弾が早く画面の外へ出るよう速さを上げる。
 
 ### `pickup.budgetExceeded`
 
-- 重要度: error（session は fatal になる）
+- 重要度: error（`stageSession.fatal` の message に出る）
 - 原因: pickup の数が active の上限を超えそうになった（pickup feature）。
 - 直し方: enemy の `drops` の `count` を減らすか、pickup の `velocity` を上げて早く画面の外へ出す。
 
 ### `pattern.budgetExceeded`
 
-- 重要度: error（session は fatal になる）
-- 原因: 1 つの pattern runner が 1 tick に実行する命令の数が上限を超えた。load 時の検証を通った content では起きない想定の保護。
-- 直し方: pattern の `loop` の範囲に `wait` を入れ、1 tick の命令を減らす。content の検証を通して出たなら Core の不具合として報告する。
+- 重要度: error（`stageSession.fatal` の message に出る）
+- 原因: 1 tick に動くすべての敵の pattern が実行する命令の合計が上限を超えた。load 時の検証は 1 つの pattern の 1 回の実行だけを調べるので、命令の多い pattern の敵を同じ tick に多く出すと、検証を通った content でも起きる。
+- 直し方: 同じ tick に出す敵を減らすか spawn の tick をずらす。1 回の実行の命令（`repeat` の展開、`wait` なしで続く `fire`）を減らす。
 
 ### `entityAllocator.invalidState`
 
-- 重要度: error
-- 原因: entity の id の採番が壊れている（restore した state の id が昇順でない、重複する、`nextEntityId` が小さいなど）。
-- 直し方: `serialize()` の結果を書き換えずに `restore()` へ渡す。
+- 重要度: error（`stageSession.fatal` の message に出る）
+- 原因: Core の内部で entity の id の採番が壊れた（Core の不整合）。restore した state の id の誤りは `state.invalidShape` になり、この code にはならない。
+- 直し方: 再現する content、seed、入力を添えて Core の不具合として報告する。
 
 ### `prng.invalidState`
 
-- 重要度: error
-- 原因: 乱数の state が不正（0 や uint32 の外）。
-- 直し方: `serialize()` の結果の `prngState` を書き換えずに渡す。
+- 重要度: error（`stageSession.fatal` の message に出る）
+- 原因: Core の内部で乱数の state が壊れた（Core の不整合）。restore した state の乱数の誤りは `state.prngInvalid` になる。
+- 直し方: 再現する content、seed、入力を添えて Core の不具合として報告する。
 
 ### `testHook.failure`
 
-- 重要度: error（session は fatal になる）
-- 原因: test 専用の hook（Core の内部 test hook を有効にした test）で注入した失敗。通常の runtime では出ない。
+- 重要度: error
+- 原因: test 専用の hook（Core の内部 test hook を有効にした test）で注入した失敗。その tick の途中の state を捨てて error を返し、session は fatal にならずにそのまま使える。通常の runtime では出ない。
 - 直し方: test の意図どおりなら対応は要らない。通常の実行で出たら、test hook を有効にする環境変数が設定されていないかを確かめる。
 
 ## state の restore（Core API を呼ぶ runtime 向け）
@@ -416,14 +418,14 @@ content を直すより、Core を呼ぶ側（runtime、tool、test）の引数�
 ### `state.contentMismatch`
 
 - 重要度: error
-- 原因: state を作った content（version と stage）と、load した content が違う。
+- 原因: state を作った content と、load した content が違う（`contentVersion`、stage、player、difficulty、timeline の位置が合わない）。
 - 直し方: 同じ `contentVersion` の content を load する。content を変えたら古い state は使わない。
 
 ### `state.featureMismatch`
 
 - 重要度: error
-- 原因: state の optional feature の組か feature の state の version が、load した content と Core に登録した feature と合わない。
-- 直し方: 同じ `enabledFeatures` の content と、同じ feature module を登録した Core で restore する。
+- 原因: state の optional feature の組か feature の state の version が、load した content と Core に登録した feature と合わない。pattern runner の state の version が basic の pattern runner と合わない場合も出る。
+- 直し方: 同じ `enabledFeatures` の content と、同じ feature module を登録した同じ version の Core で restore する。
 
 ### `state.coreVersionMismatch`
 
@@ -462,7 +464,7 @@ validation を最後まで行えなかった。content の誤りではなく、�
 ### `tool.invalidArguments`
 
 - 重要度: error
-- 原因: CLI の引数が誤り（`--game-definition` か `--content-root` がない、知らない option、option の値がない、`--format` の値が `human` / `json` でない）。
+- 原因: CLI の引数が誤り（`--game-definition` か `--content-root` がない、同じ option を 2 回書いた、知らない option、option の値がない、`--format` の値が `human` / `json` でない）。
 - 直し方: `validate-content --game-definition <file> --content-root <dir> [--format human|json]` の形で実行する（`--format` は省略すると human）。
 
 ### `tool.invalidInput`
@@ -486,8 +488,8 @@ validation を最後まで行えなかった。content の誤りではなく、�
 ### `tool.invalidDiagnostic`
 
 - 重要度: error
-- 原因: validate-content の中で組み立てた診断が、公開の形の規則に合わない（validate-content の不具合）。
-- 直し方: 再現する content を添えて報告する。
+- 原因: 結果に入れる診断が、公開の形の規則に合わない。validate-content の不具合か、公開の `createValidationRunResult()` に手で作った診断を渡した。
+- 直し方: `createValidationRunResult()` には公開の形（`kind` ごとの必須 field）の診断を渡す。validate-content の CLI や `loadValidatedGameDefinition()` で出たら、再現する content を添えて報告する。
 
 ### `tool.invalidOutput`
 

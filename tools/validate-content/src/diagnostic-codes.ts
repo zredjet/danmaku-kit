@@ -1,8 +1,7 @@
-import type { ErrorCode } from "yaml";
-
 /**
- * validate-content が自分で出す診断の code。Core の検証が返す code（Core の `CoreErrorCode` と warning の code）は、そのまま診断の
- * `code` に入れる。`docs/content-authoring/error-guide.md` はこの一覧と Core の code を見出しに持つ（`tests/error-guide.test.ts`）。
+ * validate-content が自分で出す診断の code（YAML parser の error から作る `yaml.parse.<code>` は除く）。Core の検証が返す code（Core の
+ * `CoreErrorCode` と warning の code）は、そのまま診断の `code` に入れる。`docs/content-authoring/error-guide.md` はこの一覧と Core の
+ * code を見出しに持つ（`tests/error-guide.test.mjs`）。
  */
 export const VALIDATE_CONTENT_DIAGNOSTIC_CODES = Object.freeze([
   "assetManifest.fallbackCycle",
@@ -25,7 +24,7 @@ export const VALIDATE_CONTENT_DIAGNOSTIC_CODES = Object.freeze([
 ] as const);
 
 /** YAML parser（`yaml` package）の error の code を小文字にした診断の code。error guide は `yaml.parse.*` にまとめる。 */
-export type YamlParserDiagnosticCode = `yaml.parse.${Lowercase<ErrorCode>}`;
+export type YamlParserDiagnosticCode = `yaml.parse.${string}`;
 
 /** validate-content が自分で出す診断の code。 */
 export type ValidateContentDiagnosticCode = (typeof VALIDATE_CONTENT_DIAGNOSTIC_CODES)[number] | YamlParserDiagnosticCode;

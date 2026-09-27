@@ -1,5 +1,6 @@
 import type { GameDefinition } from "@shooting-sample/shooting-core";
 import {
+  VALIDATE_CONTENT_DIAGNOSTIC_CODES,
   createToolErrorRunResult,
   createValidationRunResult,
   formatValidateContentHuman,
@@ -21,10 +22,13 @@ import type {
   ReferenceContentDiagnostic,
   ToolContentDiagnostic,
   ValidationContentDiagnostic,
+  ValidateContentDiagnosticCode,
   ValidateContentExitCode,
   ValidateContentJsonOutput,
   ValidateContentRunResult,
   ValidateContentSourcePaths,
+  ValidateContentToolDiagnosticCode,
+  YamlParserDiagnosticCode,
 } from "@shooting-sample/validate-content";
 
 import type { AssertTrue, IsExactly } from "./support/type-assertions.ts";
@@ -106,7 +110,32 @@ type ExpectedLoadResult =
   | Readonly<{ ok: true; definition: GameDefinition; assetManifest: ExpectedAssetManifest; runResult: ExpectedRunResult }>
   | Readonly<{ ok: false; runResult: ExpectedRunResult }>;
 
+type ExpectedOwnDiagnosticCode =
+  | "assetManifest.fallbackCycle"
+  | "assetManifest.invalidFallback"
+  | "assetManifest.invalidShape"
+  | "assetManifest.unknownField"
+  | "content.assetManifestNotFound"
+  | "content.unknownEntry"
+  | "content.unsupportedEntry"
+  | ExpectedToolDiagnosticCode
+  | "yaml.parse.alias_not_supported"
+  | "yaml.parse.invalid_utf8"
+  | "yaml.parse.unsupported_version"
+  | "yaml.resource";
+type ExpectedToolDiagnosticCode =
+  | "tool.invalidArguments"
+  | "tool.invalidDiagnostic"
+  | "tool.invalidInput"
+  | "tool.invalidOutput"
+  | "tool.readFailed"
+  | "tool.unexpected";
+
 type ValidateContentContractAssertions = readonly [
+  AssertTrue<IsExactly<(typeof VALIDATE_CONTENT_DIAGNOSTIC_CODES)[number], ExpectedOwnDiagnosticCode>>,
+  AssertTrue<IsExactly<YamlParserDiagnosticCode, `yaml.parse.${string}`>>,
+  AssertTrue<IsExactly<ValidateContentDiagnosticCode, ExpectedOwnDiagnosticCode | `yaml.parse.${string}`>>,
+  AssertTrue<IsExactly<ValidateContentToolDiagnosticCode, ExpectedToolDiagnosticCode>>,
   AssertTrue<IsExactly<ContentDiagnosticKind, "parse" | "schema" | "reference" | "featureGate" | "tool">>,
   AssertTrue<IsExactly<ContentDiagnosticSeverity, "error" | "warning" | "info">>,
   AssertTrue<IsExactly<ParseOrSchemaContentDiagnostic, ExpectedParseOrSchemaDiagnostic>>,

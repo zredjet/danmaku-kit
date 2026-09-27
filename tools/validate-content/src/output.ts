@@ -29,7 +29,7 @@ export function createValidationRunResult(
   }
   const toolDiagnostic = normalized.value.find((diagnostic) => diagnostic.kind === "tool");
   if (toolDiagnostic) {
-    return createToolErrorRunResult(contentRoot, toolDiagnostic.code, toolDiagnostic.message);
+    return reemitToolDiagnostic(contentRoot, toolDiagnostic);
   }
 
   const output = createJsonOutput(contentRoot, normalized.value as readonly ValidationContentDiagnostic[]);
@@ -41,7 +41,8 @@ export function createValidationRunResult(
 
 /**
  * validate-content 自身の tool error。code を `VALIDATE_CONTENT_DIAGNOSTIC_CODES` の tool の code に限る（公開の
- * `createToolErrorRunResult()` は、受け取った tool 診断の code をそのまま出し直すため string を受ける）。
+ * `createToolErrorRunResult()` は JS の caller のために string を受ける。validate-content の中では、自分の code はこの関数、受け取った
+ * tool 診断の出し直しは `reemitToolDiagnostic()` を使う）。
  */
 export function createOwnToolErrorRunResult(
   contentRoot: string,
@@ -49,6 +50,11 @@ export function createOwnToolErrorRunResult(
   message: string,
 ): ValidateContentRunResult {
   return createToolErrorRunResult(contentRoot, code, message);
+}
+
+/** 受け取った tool 診断を、その code のまま tool error の結果にし直す（code は受け取った診断のもの）。 */
+export function reemitToolDiagnostic(contentRoot: string, diagnostic: ToolContentDiagnostic): ValidateContentRunResult {
+  return createToolErrorRunResult(contentRoot, diagnostic.code, diagnostic.message);
 }
 
 /**

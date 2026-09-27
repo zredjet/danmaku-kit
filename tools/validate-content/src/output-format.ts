@@ -1,5 +1,5 @@
 import { normalizeDiagnostics, snapshotOwnDataRecord } from "./diagnostic-normalization.ts";
-import { createOwnToolErrorRunResult, createToolErrorRunResult, createValidationRunResult } from "./output.ts";
+import { createOwnToolErrorRunResult, createValidationRunResult, reemitToolDiagnostic } from "./output.ts";
 import type {
   ContentDiagnostic,
   ContentDiagnosticSummary,
@@ -49,8 +49,7 @@ function normalizeOutputForFormatting(value: unknown): ValidateContentJsonOutput
     const toolDiagnostics = normalized.value.filter((diagnostic) => diagnostic.kind === "tool");
     if (toolDiagnostics.length > 0) {
       if (toolDiagnostics.length === 1 && normalized.value.length === 1) {
-        const toolDiagnostic = toolDiagnostics[0]!;
-        return createToolErrorRunResult(output.contentRoot, toolDiagnostic.code, toolDiagnostic.message).output;
+        return reemitToolDiagnostic(output.contentRoot, toolDiagnostics[0]!).output;
       }
       return createOwnToolErrorRunResult(
         output.contentRoot,
