@@ -66,6 +66,20 @@ const SAMPLE_TITLE_PACKAGE_IMPORT_RULES = Object.freeze([
 /** `import.meta`（Vite 固有の `import.meta.env` など）を読んでよい sample app の module。他の module へは引数で渡す。 */
 const SAMPLE_TITLE_IMPORT_META_READERS = Object.freeze(["main.ts"]);
 
+/**
+ * sample app `src/` の依存方向。`target` を import してよいのは同じ layer と `allowedImporters` だけ。
+ *
+ * DOM の overlay（`ui/`）、dev / test build 専用の debug hook（`debug/`）、Phaser adapter（`runtime/phaser/`）は entry だけが組み立て、
+ * それ以外の runtime module は DOM と Phaser なしで node:test から検査できる形に保つ。型 import も含め、path の表記は
+ * `SHOOTING_CORE_LAYER_RULES` と同じ。
+ */
+const SAMPLE_TITLE_LAYER_RULES = Object.freeze([
+  { target: "main.ts", allowedImporters: [] },
+  { target: "ui/", allowedImporters: ["main.ts"] },
+  { target: "debug/", allowedImporters: ["main.ts"] },
+  { target: "runtime/phaser/", allowedImporters: ["main.ts"] },
+]);
+
 test("matches dependency rule paths by file, directory, and single-segment wildcard", () => {
   const cases = [
     ["core.ts", "core.ts", true],
@@ -194,11 +208,33 @@ test("points sample app import rules at existing modules", async () => {
   const rulePaths = [
     ...SAMPLE_TITLE_PACKAGE_IMPORT_RULES.flatMap((rule) => rule.allowedImporters),
     ...SAMPLE_TITLE_IMPORT_META_READERS,
+    ...SAMPLE_TITLE_LAYER_RULES.flatMap((rule) => [rule.target, ...rule.allowedImporters]),
   ];
   const stale = [...new Set(rulePaths)]
     .filter((rulePath) => !modulePaths.some((modulePath) => matchesModulePath(modulePath, rulePath)));
 
   assert.deepEqual(stale, [], "sample app import rules must name existing modules");
+});
+
+test("keeps sample app modules inside their dependency layers", async () => {
+  const graph = await collectImportGraph(sampleTitleSourceRoot, { includeTypeOnly: true });
+  const violations = [];
+
+  for (const [file, targets] of graph) {
+    const importer = toSampleTitlePath(file);
+    for (const target of targets.map(toSampleTitlePath)) {
+      for (const rule of SAMPLE_TITLE_LAYER_RULES) {
+        if (!matchesModulePath(target, rule.target) || matchesModulePath(importer, rule.target)) {
+          continue;
+        }
+        if (!rule.allowedImporters.some((allowed) => matchesModulePath(importer, allowed))) {
+          violations.push(`${importer} -> ${target}`);
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(violations, [], "sample app imports cross a dependency layer rule");
 });
 
 test("keeps package source free of runtime import cycles", async () => {
