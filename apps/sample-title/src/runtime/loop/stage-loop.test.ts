@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { CoreResult, GameFrame, InputFrame, StageSession } from "@shooting-sample/shooting-core";
-
+import { createFakeSession } from "../../test-support/game-frames.ts";
 import { startSampleTitleStage } from "../../test-support/sample-title-game.ts";
 import { KeyboardInputAdapter } from "../input/keyboard-input.ts";
 import { StageLoop } from "./stage-loop.ts";
@@ -82,47 +81,11 @@ test("discards paused time and input latches on reset", async () => {
   assert.deepEqual(nextTick.ok && nextTick.latestInput?.held, []);
 });
 
-/** tick ごとに `result` の結果を返し、呼ばれた tick を記録する fake session。 */
-function createFakeSession(
-  ticked: number[],
-  result: (tick: number) => CoreResult<GameFrame> | GameFrame["state"]["status"],
-): StageSession {
-  return {
-    tick(input: InputFrame): CoreResult<GameFrame> {
-      ticked.push(input.tick);
-      const outcome = result(input.tick);
-      if (typeof outcome !== "string") {
-        return outcome;
-      }
-      return {
-        ok: true,
-        value: {
-          tick: input.tick,
-          state: {
-            tick: input.tick,
-            stageId: "stage.fake",
-            playerId: "player.fake",
-            status: outcome,
-            player: { lives: 1, invincibleTicksRemaining: 0 },
-            score: 0,
-            entities: [],
-          },
-          events: [],
-        },
-        warnings: [],
-      };
-    },
-    serialize() {
-      throw new Error("not used");
-    },
-  };
-}
-
 test("stops ticking and keeps returning the error once a tick fails", () => {
   const ticked: number[] = [];
-  const loop = new StageLoop(createFakeSession(ticked, (tick) => (
+  const loop = new StageLoop(createFakeSession((tick) => (
     tick === 1 ? { ok: false, errors: [{ code: "stageSession.fatal", message: "broken" }] } : "playing"
-  )), new KeyboardInputAdapter());
+  ), ticked), new KeyboardInputAdapter());
 
   const failed = loop.advance(TICK_MS * 3);
   const again = loop.advance(TICK_MS * 3);
@@ -134,7 +97,7 @@ test("stops ticking and keeps returning the error once a tick fails", () => {
 
 test("stops at the tick that ends the stage and then stays idle on the last frame", () => {
   const ticked: number[] = [];
-  const loop = new StageLoop(createFakeSession(ticked, (tick) => tick === 2 ? "gameOver" : "playing"), new KeyboardInputAdapter());
+  const loop = new StageLoop(createFakeSession((tick) => tick === 2 ? "gameOver" : "playing", ticked), new KeyboardInputAdapter());
 
   assert.equal(loop.ended, false);
   const ending = loop.advance(TICK_MS * 5);

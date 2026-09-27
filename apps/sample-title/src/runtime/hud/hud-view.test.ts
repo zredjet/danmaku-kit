@@ -1,23 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { GameFrame } from "@shooting-sample/shooting-core";
-
+import { createTestFrame } from "../../test-support/game-frames.ts";
 import { buildHudView, buildLoadingHudView } from "./hud-view.ts";
 
-const frame = {
-  tick: 120,
-  state: {
-    tick: 120,
-    stageId: "stage.stage_01",
-    playerId: "player.default",
-    status: "playing",
-    player: { lives: 2, invincibleTicksRemaining: 0 },
-    score: 300,
-    entities: [],
-  },
-  events: [],
-} satisfies GameFrame;
+const frame = createTestFrame(120, { lives: 2, score: 300 });
 
 test("shows score and lives from the frame state only during a stage", () => {
   assert.deepEqual(buildHudView("playing", frame), { score: 300, lives: 2, banner: null });

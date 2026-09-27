@@ -1,28 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { GameFrame } from "@shooting-sample/shooting-core";
-
+import { createTestFrame } from "../../test-support/game-frames.ts";
 import { computeViewportLayout } from "../view/viewport-layout.ts";
 import { buildBrowserDebugStateDump, type BrowserDebugStateSource } from "./browser-debug-state.ts";
 
-const frame = {
-  tick: 119,
-  state: {
-    tick: 119,
-    stageId: "stage.stage_01",
-    playerId: "player.default",
-    status: "playing",
-    player: { lives: 3, invincibleTicksRemaining: 0 },
-    score: 0,
-    entities: [
-      { id: 1, kind: "player", definitionId: "player.default", position: { x: 180, y: 400 } },
-      { id: 2, kind: "enemy", definitionId: "enemy.scout", position: { x: 192, y: 60 } },
-      { id: 5, kind: "playerShot", definitionId: "playerShot.basic", position: { x: 180, y: 300 } },
-    ],
-  },
-  events: [],
-} satisfies GameFrame;
+const frame = createTestFrame(119, {
+  entities: [
+    { id: 1, kind: "player", definitionId: "player.default", position: { x: 180, y: 400 } },
+    { id: 2, kind: "enemy", definitionId: "enemy.scout", position: { x: 192, y: 60 } },
+    { id: 5, kind: "playerShot", definitionId: "playerShot.basic", position: { x: 180, y: 300 } },
+  ],
+});
 
 const layout = computeViewportLayout({ width: 1000, height: 1000, devicePixelRatio: 2 });
 

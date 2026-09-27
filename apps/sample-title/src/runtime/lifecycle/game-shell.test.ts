@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { CoreResult, GameFrame, InputFrame, LoadedGame, StageSession, StartStageOptions } from "@shooting-sample/shooting-core";
+import type { CoreError, CoreResult, LoadedGame, StageSession, StartStageOptions } from "@shooting-sample/shooting-core";
 
+import { createFakeSession } from "../../test-support/game-frames.ts";
 import { loadSampleTitleGame } from "../../test-support/sample-title-game.ts";
 import { KeyboardInputAdapter } from "../input/keyboard-input.ts";
 import { GameShell, type GameShellStep } from "./game-shell.ts";
@@ -18,34 +19,11 @@ function createScriptedGame(end: StageEnd | null = null) {
   const loadedGame: Pick<LoadedGame, "startStage"> = {
     startStage(options: StartStageOptions): CoreResult<StageSession> {
       seeds.push(options.seed);
-      return {
-        ok: true,
-        value: {
-          tick: (input: InputFrame) => ({ ok: true, value: scriptedFrame(input.tick, end), warnings: [] }),
-          serialize: () => assert.fail("serialize is not used"),
-        },
-        warnings: [],
-      };
+      const session = createFakeSession((tick) => end !== null && tick >= end.tick ? end.status : "playing");
+      return { ok: true, value: session, warnings: [] };
     },
   };
   return { loadedGame, seeds };
-}
-
-function scriptedFrame(tick: number, end: StageEnd | null): GameFrame {
-  const status = end !== null && tick >= end.tick ? end.status : "playing";
-  return {
-    tick,
-    state: {
-      tick,
-      stageId: "stage.scripted",
-      playerId: "player.scripted",
-      status,
-      player: { lives: 2, invincibleTicksRemaining: 0 },
-      score: tick * 10,
-      entities: [],
-    },
-    events: [{ type: "tickAdvanced", tick }],
-  } as unknown as GameFrame;
 }
 
 function createShell(loadedGame: Pick<LoadedGame, "startStage">) {
@@ -216,12 +194,9 @@ test("toggles the debug overlay in any state without changing the lifecycle", ()
 });
 
 test("keeps returning the Core errors after a tick or a stage start fails", () => {
-  const error = { code: "input.invalid", message: "broken", severity: "error" };
+  const error: CoreError = { code: "stageSession.fatal", message: "broken" };
   const failingTick: Pick<LoadedGame, "startStage"> = {
-    startStage: () => ({
-      ok: true,
-      value: { tick: () => ({ ok: false, errors: [error] }), serialize: () => assert.fail("unused") },
-    } as unknown as CoreResult<StageSession>),
+    startStage: () => ({ ok: true, value: createFakeSession(() => ({ ok: false, errors: [error] })), warnings: [] }),
   };
   const ticking = createShell(failingTick);
   ticking.shell.beginLoading();
@@ -233,7 +208,7 @@ test("keeps returning the Core errors after a tick or a stage start fails", () =
   assert.deepEqual(ticking.shell.advance(TICK_MS), { ok: false, errors: [error] });
   assert.deepEqual(ticking.shell.advance(TICK_MS), { ok: false, errors: [error] });
 
-  const failingStart = createShell({ startStage: () => ({ ok: false, errors: [error] } as unknown as CoreResult<StageSession>) });
+  const failingStart = createShell({ startStage: () => ({ ok: false, errors: [error] }) });
   failingStart.shell.beginLoading();
   failingStart.shell.finishLoading();
   press(failingStart.input, "Enter");

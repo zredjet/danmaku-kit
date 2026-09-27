@@ -1,27 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { GameFrame } from "@shooting-sample/shooting-core";
-
+import { createTestFrame } from "../../test-support/game-frames.ts";
 import { buildDebugHudLines } from "./debug-lines.ts";
 
-const frame = {
-  tick: 42,
-  state: {
-    tick: 42,
-    stageId: "stage.stage_01",
-    playerId: "player.default",
-    status: "playing",
-    player: { lives: 3, invincibleTicksRemaining: 0 },
-    score: 0,
-    entities: [
-      { id: 1, kind: "player", definitionId: "player.default", position: { x: 192, y: 400 } },
-      { id: 2, kind: "enemy", definitionId: "enemy.scout", position: { x: 192, y: 40 } },
-      { id: 3, kind: "enemyBullet", definitionId: "bullet.red_small", position: { x: 192, y: 60 } },
-    ],
-  },
-  events: [],
-} satisfies GameFrame;
+const frame = createTestFrame(42, {
+  entities: [
+    { id: 1, kind: "player", definitionId: "player.default", position: { x: 192, y: 400 } },
+    { id: 2, kind: "enemy", definitionId: "enemy.scout", position: { x: 192, y: 40 } },
+    { id: 3, kind: "enemyBullet", definitionId: "bullet.red_small", position: { x: 192, y: 60 } },
+  ],
+});
 
 const base = {
   versionLabel: "shooting-core 0.0.0 / content sample@content.1",
