@@ -61,6 +61,7 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 - `instrumentation/`（test hook 有効化 guard、stage session testing hook、headless debug checkpoint）は通常 runtime から到達してよい session の差し込み口で、import してよいのは `core.ts`、`session/`、`testing/` だけ。
 - `hash/` は DTO、encoder、digest だけを持ち、上位 layer を import しない。`hash/` を import してよいのは `state/hashable-projection.ts`、`instrumentation/`、`testing/` だけ。
 - `shared/`（guard、immutable、UTF-8 順序比較、field order helper）は最下層とし、`src/basic/` 内の他 module を import しない。
+- `extension/`（optional feature の module の型、`defineFeature()`、登録の解決）は `content/types.ts`、`result.ts`、`serialization/types.ts`、`shared/` だけを import し、`extension/` を import してよいのは `core.ts`、`api-types.ts`、`index.ts`、`session/`、`state/`、`serialization/restore/`、`instrumentation/`、`testing/` だけ。
 - `entities/*/snapshot.ts` を import してよいのは `serialization/types.ts`、`state/`、`hash/`、`entities/*/restore.ts` だけ。`entities/*/restore.ts` は `serialization/restore/` からだけ、`entities/restore-common.ts` はそれと `entities/*/restore.ts` からだけ、`serialization/restore-plain-data.ts` は restore 層と entities の restore module からだけ import する。layer rule の `*` は `/` を含まない1 segment に一致する。
 - `entities/<kind>/` の module は別 kind の directory を型 import も含めて import しない。
 - `index.ts` から実行時 import で到達する範囲に test / tooling 専用の `hash/` と `testing/` を含めない。`testing/` は非 test source から型 import も含めて import しない。state hash と headless debug dump の digest は test helper 側で計算する。
@@ -86,6 +87,21 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 - 角度は 0.25° 刻みの整数 step（`shared/angle-steps.ts`）で扱い、sine / cosine / 単位 vector / 狙いの向き（vector に最も近い step）は `simulation/deterministic-trig.ts` を使う。sine 表 `simulation/sine-table.ts` は `npm run generate-sine-table` が生成する正本で、手で編集しない。
 - 移動する entity の位置は、生成位置や segment 開始位置から `origin + velocity * t` のように毎 tick 求め直し、tick ごとの加算を積まない。restore はこの式で state が spawn から到達可能かを検証するため、式を変えるときは restore の検証も同じ式にそろえる。
 - pattern の命令列は load 時に `patterns/pattern-program.ts` で run を始められる cursor ごとの run へ正規化し、tick の runner（`pattern-runner.ts`）と restore の時刻表（`pattern-schedule.ts`）が同じ run を使う。runner の進め方を変えるときは、時刻表と 1 tick ずつ進めた結果を比べる test で一致を確かめる。DSL の命令を足すときは、load 時に run へ展開できる形にして runner state（cursor と `waitRemaining`）を増やさないことを優先し、1 回の発射の弾の並び（採番順）を restore の割り当て（`serialization/restore/pattern-fires.ts`）と tick の system で同じにする。difficulty で変わる命令は difficulty ごとの program に展開し（`content/content-index.ts` の `patternProgramsForDifficulty()`）、session と restore は state の difficulty の表を引く。
+
+### optional feature（`packages/shooting-core/src/features/`）
+
+- feature は `src/features/<feature>/`（feature id の kebab-case。`advancedScoring` は `advanced-scoring`）に置き、`index.ts` が `defineFeature()` で作った feature を export する。package の export map に `"./features/<feature>": "./src/features/<feature>/index.ts"` を足す（`tests/package-boundary.test.mjs` が directory と export の対応を検査する）。
+- basic は `src/features/` を import しない。feature は同じ feature の directory と basic の `extension/`、`shared/`、`result.ts`、`content/types.ts`、`serialization/types.ts` だけを型 import も含めて import し、feature 同士は import しない（`tests/module-graph.test.mjs` の `FEATURE_ALLOWED_BASIC_TARGETS`）。basic の module が要るときは、feature の hook の文脈（`FeatureStageContext`、`FeatureTickContext`、`FeatureRestoreContext`）に足す。
+- feature の state は JSON 互換の plain data にし、有効な feature は必ず 1 つの state を持つ（状態のない feature は `null`）。serialize（`serializeState()`）と hash（`hashState()`）は契約が異なるため、本文が同じでも別に持つ。`restoreState()` は payload の形と、spawn から `expectedTick` までに到達できる state であることを検証する。
+- tick の system は `spawn` と `scoring` の位置で canonical feature order に実行する。system order に新しい位置を足すときは design 7.1 と `FEATURE_TICK_SLOTS` を同時に更新する。
+- feature の entity は basic の entity union に足さず、feature の directory の model / snapshot / restore に分ける。
+
+feature を追加するとき:
+
+1. `src/features/<feature>/` と `index.ts`（`defineFeature()`）を作り、package の export map に足す。
+2. content の schema fragment、検証、tick の system、state の serialize / hash / restore を module の hook に実装し、無効な feature の gating（定義だけは warning、参照は error）と feature 間の依存を matrix test に固定する。
+3. feature を使う host（sample app、validate-content）が `createShootingCore({ features })` に渡すようにし、`SAMPLE_TITLE_PACKAGE_IMPORT_RULES` などの import rule に subpath を足す。
+4. state hash の byte 列が変わるので `SERIALIZED_STATE_HASH_VERSION`、hash golden、型契約、`docs/design.md` の feature の項を更新する。
 
 ### runtime entity kind（`packages/shooting-core/src/basic/entities/`）
 

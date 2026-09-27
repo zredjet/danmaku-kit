@@ -164,7 +164,7 @@ Sample app の module 構成（Phase 2A 完了時点）:
 
 依存方向は、`ui/`、`debug/`、`runtime/phaser/` を import してよいのは `src/main.ts` だけで、`tests/module-graph.test.mjs` の `SAMPLE_TITLE_LAYER_RULES` が検査する。package の import（Core は root export だけ、`phaser` は entry と `runtime/phaser/` だけ）は `SAMPLE_TITLE_PACKAGE_IMPORT_RULES` が検査する。
 
-Core package の module 構成（公開 surface は `src/basic/index.ts` の export だけで、value export は `createShootingCore` のみ）:
+Core package の module 構成（公開 surface は root の `src/basic/index.ts` の export と、optional feature ごとの `./features/<feature>`（`src/features/<feature>/index.ts`）だけで、root の value export は `createShootingCore` のみ）:
 
 ```text
 packages/shooting-core/src/
@@ -194,6 +194,8 @@ packages/shooting-core/src/
         snapshot.ts            public serialize DTO、hash DTO と canonical field order、serialize / hash projection
         restore.ts             restore で受け付ける key 一覧と検証
     simulation/                entity id、PRNG、stage timeline / player / shot / enemy bullet / collision system、system order
+    extension/
+      feature-module.ts        optional feature の module（FeatureModule）、defineFeature()、ShootingCoreFeature、登録の解決
     session/
       loaded-game.ts           startStage() / restore()
       start-stage-options.ts   StartStageOptions parse
@@ -216,15 +218,14 @@ packages/shooting-core/src/
     testing/                   test-only helper（hook 付き Core factory、headless debug dump、replay trace / divergence artifact、state hash comparison）
     test-support/              test file 共通 helper（package runtime source から除外）
     patterns/                  Phase 2A 以降: PatternProgram runner / commands
-  features/                    Phase 2B / 3 以降
+  features/                    Phase 2B-5 以降（pickup から）
     <feature>/
-      schemaFragment.ts
-      validation.ts
-      systems.ts
-      register.ts
+      index.ts                 package entry（`@shooting-sample/shooting-core/features/<feature>`）。defineFeature() で作った feature を export する
 ```
 
 依存方向は `core.ts` → `session/` → `serialization/restore/` / `state/` → 下位 module（`content/`、`simulation/`、`hash/` など）→ `shared/` とし、下位 module から上位 layer を import しない。`instrumentation/` は `core.ts`、`session/`、`testing/` だけが使う session の差し込み口で、通常 runtime から到達してよい。runtime entity は kind ごとに `entities/<kind>/` の model / snapshot / restore へ縦に分け、各 file はそれぞれの layer に属する。`entities/*/snapshot.ts` は `serialization/types.ts`、`state/`、`hash/`、kind 別 restore から、`entities/*/restore.ts` は `serialization/restore/` からだけ使い、kind directory 同士は import しない。非 test source について、`core.ts`、`session/`、`serialization/restore/`、`state/`、`instrumentation/`、`hash/`、`testing/`、`entities/*/snapshot.ts`、`entities/*/restore.ts` を import してよい module と、kind directory 同士が import しないこと、`shared/` が他 module を import しないことは型 import も含めて、runtime import cycle と `index.ts` から `hash/` / `testing/` へ実行時に到達しないことは実行時 import で、`tests/module-graph.test.mjs` が検査する。同じ test は rule の path が実在する module を指すことと、shooting-core / validate-content の非 test source が `*.test.ts` / `test-support/` を import しないこと、shooting-core の非 test source が同じ `src/` 配下の module だけを相対 path で import し、npm package、`node:`、triple-slash reference directive を型 import も含めて使わないことも検査する。state hash と headless debug dump の digest は test helper 側で計算する。
+
+`extension/` は optional feature が basic に差し込む口（Phase 2B-4）で、`content/types.ts`、`result.ts`、`serialization/types.ts`、`shared/` だけを import し、`core.ts`、`api-types.ts`、`index.ts`、`session/`、`state/`、`serialization/restore/`、`instrumentation/`、`testing/` から使う。basic は `src/features/` を import せず、feature は同じ feature の directory と basic の `extension/`、`shared/`、`result.ts`、`content/types.ts`、`serialization/types.ts` だけを型 import も含めて import し、feature 同士は import しない（`tests/module-graph.test.mjs`）。package の export map は root と、`src/features/` の directory ごとの `./features/<feature>` だけを持つ（`tests/package-boundary.test.mjs`）。
 
 ## 5. レイヤー責務
 
@@ -1690,7 +1691,7 @@ Runtime は `tick()` の戻り値に含まれる `GameFrame.events` を読んで
 
 `SerializedRuntimeEntityState` は現行 runtime が正本を持つ state だけを含める。Phase 2A-2 で PathRunner の segment index、segment start `p0`、segment 内経過 tick `t` を enemy の `pathRunnerState` として追加し、`stateHashVersion` を 2 に上げた（sine offset の phase などは、その state を持つ slice で同じく追加する）。現在座標、`pathId`、`patternId` だけから path movement を逆算して restore することは禁止する。restore は `pathRunnerState` の shape と segment 数に収まる範囲を検証したうえで、処理済み timeline の spawn 位置から spawn tick 〜 `expectedTick` の tick 数だけ path を進めた runner と位置を求め、restore した `pathRunnerState` と `position` が完全一致する spawn を選ぶ。一致する spawn がない enemy と、path を終えて cleanup 境界の外にいるはずの enemy は `state.invalidShape` として拒否する。
 
-`SerializedPatternRunnerState.runnerId` は `patternRunner.${string}` の namespace 付き ID とし、`patternRunner.` のような空 suffix は restore で拒否する。同一 snapshot 内で一意にし、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は top-level `enabledFeatures` と同じ canonical feature order で出力する。`runnerId` の比較に `localeCompare` や JavaScript の UTF-16 code unit order を使わない。canonical feature order は `["bomb", "graze", "affinity", "rank", "pickup", "advancedScoring"]` の順に固定し、実装はこの順序を `KNOWN_ENABLED_FEATURES` の正本として扱う。ただし package runtime の value export は `createShootingCore` に限定し、feature order は schema / type contract と test で固定する。restore は型、shape、top-level `enabledFeatures` の重複や canonical order 違反を `state.invalidShape`、loaded content との top-level feature 差分や unknown feature、feature state の extra / missing / wrong feature を `state.featureMismatch` として分類する。top-level `enabledFeatures` に含まれる feature の `enabledFeatureStates` 欠落可否は module ごとの serialized-state contract で宣言し、stateful feature は欠落を拒否する。
+`SerializedPatternRunnerState.runnerId` は `patternRunner.${string}` の namespace 付き ID とし、`patternRunner.` のような空 suffix は restore で拒否する。同一 snapshot 内で一意にし、`patternRunnerStates` は `runnerId` の UTF-8 byte lexicographic order 昇順、`enabledFeatureStates` は top-level `enabledFeatures` と同じ canonical feature order で出力する。`runnerId` の比較に `localeCompare` や JavaScript の UTF-16 code unit order を使わない。canonical feature order は `["bomb", "graze", "affinity", "rank", "pickup", "advancedScoring"]` の順に固定し、実装はこの順序を `KNOWN_ENABLED_FEATURES` の正本として扱う。ただし root package の value export は `createShootingCore` に限定し、feature order は schema / type contract と test で固定する。restore は型、shape、top-level `enabledFeatures` と `enabledFeatureStates` の重複や canonical order 違反を `state.invalidShape`、loaded content との top-level feature 差分や unknown feature、feature state の extra / missing / wrong feature と `stateVersion` の不一致を `state.featureMismatch` として分類する。Phase 2B-4 で、有効な feature は必ず 1 つの state を持つことにした（実行時の状態を持たない feature は `null` の payload）。
 
 `SerializedPatternRunnerState.payload` と `SerializedEnabledFeatureState.payload` は public な `SerializedJsonValue` だけを許可し、state hash では canonical encoding の対象にする。`number` は finite number のみ有効とし、`NaN` / `Infinity` は restore validation で `state.invalidShape` にする。hash では `-0` を `+0` に正規化し、finite number を IEEE-754 binary64 little-endian bytes として encode する。string は lone surrogate を含む場合に `state.invalidShape` として拒否し、payload の object key は UTF-8 byte sequence の lexicographic order で正規化する。module ごとの `stateVersion` は正の safe integer とし、未対応 version は module ごとの互換性 error で拒否する。Phase 1B-3 は型境界だけを固定し、basic core が実際に `patternRunnerStates: []` と `enabledFeatureStates: []` を出力する処理は Phase 1B-4 の serialize 実装で追加する。restore 時の top-level `enabledFeatures` と feature state の整合検証は Phase 1B-5 で扱う。
 
@@ -1755,6 +1756,14 @@ Feature module 導入後の `enabledFeatures` は optional module の境界で�
 - `advancedScoring` 無効: `defaultScoringRuleId` は未指定、`ScoringRule` と scoring fragment は禁止。`graze` / `pickup` score fragment は対応 feature も有効な場合だけ許可する。
 
 Optional module は論理分離だけでなく source / export 境界も分ける。Core minimum は `packages/shooting-core/src/basic/` と root export に置く。Bomb、Graze、Affinity、Rank、Pickup、advanced scoring は `packages/shooting-core/src/features/<feature>/` に置き、feature registration を通じて schema fragments、validation rules、systems、collision pairs、input actions を追加する。root package に型名を置く場合でも、feature 固有 field は discriminated extension として扱い、enabled feature なしでは参照できない。
+
+Feature registration（Phase 2B-4、`src/basic/extension/feature-module.ts`）:
+
+- feature は `src/features/<feature>/index.ts` を package の subpath export（`@shooting-sample/shooting-core/features/<feature>`）で公開し、`defineFeature()` で作った `ShootingCoreFeature` を export する。host は `createShootingCore({ coreVersion, features: [...] })` に渡す（文字列の引数は従来どおり `coreVersion`）。`ShootingCoreFeature` は中身を読めない型で、`defineFeature()` が作った値だけを受け付け、偽の値、同じ feature の重複、既知でない feature、不正な `stateVersion` や hook は TypeError にする。
+- `GameDefinition.enabledFeatures` は `features` に渡された feature だけを受け付け、渡されていない既知の feature は feature ごとに `feature.unsupported`（`targetId` 付き）にする。feature を 1 つも渡さない Core は、従来どおり `enabledFeatures: []` だけを受け付ける。
+- Core は有効な feature の module を canonical feature order で呼ぶ。`load()` は basic の検証に通った definition に `validateContent()` を当てて error と warning を足し、`startStage()` は `createInitialState()` で state を作り、tick は `spawn`（spawn bullets / player shots の後）と `scoring`（collision resolution と basic の scoring の後、cleanup の前）の位置で system を実行する。serialize は `serializeState()` を `SerializedEnabledFeatureState` の payload に、state hash は `hashState()` を feature state に入れ、restore は feature ごとに 1 つの state と `stateVersion` を確かめてから `restoreState()` で state を作る（spawn から到達できる state だけを受け付けるのは module の責務）。
+- feature の state は JSON 互換の plain data で、Core が committed state に feature ごとに持って freeze する。hook が plain data でない値を返せば、startStage と tick は `stageSession.fatal`、restore は `state.invalidShape` にする。system の error は tick の fatal になる。
+- Phase 2B-4 の時点で登録された feature はなく、state hash、replay、validate-content の golden は変わらない。content の schema fragment（`content.pickups` や `EnemyDefinition.drops`）と無効な feature の gating、feature が共有 allocator から採番する entity の restore（allocation envelope と restore の文脈）、tick の文脈（entity、event、score）は、pickup を足す Phase 2B-5 / 2B-6 で SPI に足す。
 
 `StageSession.tick()` は stage session が active でない場合、`gameOver` / `stageCleared` 後、または tick mismatch 時に `CoreResult` の error を返す。precondition violation を silent no-op にしない。`gameOver` / `stageCleared` 後の余分な tick と tick mismatch は caller precondition error であり、session を fatal にしない。budget invariant 破壊、不正 state、内部 system order 違反は fatal error とし、以後の `tick()` は同じ fatal reason を返す。tick 更新は commit 前の working state で実行し、成功時だけ committed state に swap するため、部分更新された state は公開しない。Phase 1B-4 で追加済みの `serialize()` は fatal 後に error を返す。Phase 1B-5A で追加済みの `restore()` は version mismatch、top-level content / feature mismatch、top-level shape error を `CoreError[]` として返し、失敗時に既存 handle へ副作用を残さない。runtime entity、pending event、PRNG、allocator、registry reference の deep validation は Phase 1B-5B、feature state の欠落・余剰・wrong feature は Phase 1B-5C の extension state validation で扱う。
 
@@ -1853,7 +1862,7 @@ hash algorithm は `xxHash64`、seed は safe integer に丸めず `0x53484f4f54
 - feature module 導入後は、`enabledFeatures` の matrix test を持つ。各 feature について、disabled で未使用定義だけがある場合は warning、disabled で参照された場合は error、enabled で valid reference の場合は pass、enabled で不正 reference の場合は error になることを検証する。
 - feature module 導入後は、feature 間依存の matrix test を持つ。`advancedScoring + graze`、`advancedScoring + pickup`、`rank + bomb`、`bomb + pickup refill` は依存 feature が揃う場合だけ pass し、片方だけ有効な参照は error にする。
 - settings migration は旧 `settingsVersion`、破損 JSON、未知 action、重複 binding の fixture を持ち、Runtime が default fallback または migration 済み settings を返すことを検証する。
-- package boundary test では root export 以外の runtime / type-only deep import を拒否し、public type contract は内部 runtime component や system result が漏れないことを検証する。
+- package boundary test では root export と feature ごとの `./features/<feature>` 以外の runtime / type-only deep import を拒否し、public type contract は内部 runtime component や system result、feature の module（`FeatureModule`、`defineFeature()`）が root に漏れないことを検証する。
 - public API 境界は getter、Proxy、prototype 継承 property、巨大 input、非 JSON 互換値を validation 前に拒否し、例外を漏らさないことを検証する。
 
 ### 21.3 DSL Semantic Test
