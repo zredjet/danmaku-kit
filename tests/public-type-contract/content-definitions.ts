@@ -8,12 +8,16 @@ import type {
   Difficulty,
   EnabledFeature,
   EnemyDefinition,
+  EnemyDropDefinition,
   EnemyId,
+  FeatureContentRegistry,
   GameDefinition,
   PathDefinition,
   PathId,
   PatternDefinition,
   PatternId,
+  PickupDefinition,
+  PickupId,
   PlayerDefinition,
   PlayerId,
   PlayerShotDefinition,
@@ -48,6 +52,31 @@ const stageAction: StageTimelineAction = {
 const stageStep: StageTimelineStep = { tick: 60, action: stageAction };
 const stageDefinition: StageDefinition = definition.content.stages[0]!;
 const enemyDefinition: EnemyDefinition = definition.content.enemies[0]!;
+// Phase 2B-5: pickup feature の content。`content.features.pickups` と enemy の `drops` は pickup feature が有効なときだけ使える。
+const pickupId: PickupId = "pickup.score_small";
+const pickupDefinition: PickupDefinition = {
+  id: pickupId,
+  version: 1,
+  asset: "pickup.score_small",
+  score: 100,
+  collectRadius: 10,
+  magnetRadius: 80,
+  velocity: { x: 0, y: 1.5 },
+};
+const enemyDrop: EnemyDropDefinition = { pickup: pickupId, count: 3, spread: 24 };
+const droppingEnemyDefinition: EnemyDefinition = { ...enemyDefinition, drops: [enemyDrop] };
+const featureContent: FeatureContentRegistry = { pickups: [pickupDefinition] };
+const pickupGameDefinition: GameDefinition = {
+  ...definition,
+  enabledFeatures: ["pickup"],
+  content: { ...definition.content, enemies: [droppingEnemyDefinition], features: featureContent },
+};
+// @ts-expect-error drops must reference a pickup id.
+const invalidEnemyDrop: EnemyDropDefinition = { pickup: "bullet.red_small", count: 1 };
+// @ts-expect-error pickups need a velocity.
+const invalidPickupWithoutVelocity: PickupDefinition = { id: pickupId, version: 1, asset: "pickup.score_small", score: 1, collectRadius: 4 };
+// @ts-expect-error feature content accepts only the collections of known features.
+const invalidFeatureContent: FeatureContentRegistry = { bombs: [] };
 const bulletDefinition: BulletDefinition = definition.content.bullets[0]!;
 const playerShotDefinition: PlayerShotDefinition = definition.content.playerShots[0]!;
 // @ts-expect-error player shot definitions require projectile runtime settings.
@@ -427,3 +456,7 @@ void invalidPathSineOffsetAxis;
 void invalidPathSegmentType;
 void invalidPathSegmentDuration;
 void contentRegistry;
+void pickupGameDefinition;
+void invalidEnemyDrop;
+void invalidPickupWithoutVelocity;
+void invalidFeatureContent;

@@ -144,6 +144,15 @@ export function validatePositiveIntegerAtMost(path: string, value: unknown, max:
   }
 }
 
+/** unknown value が 0 以上 max 以下の有限数であることを検証する。 */
+export function validateNonNegativeNumberAtMost(path: string, value: unknown, max: number, errors: CoreError[]): void {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must be a non-negative number` });
+  } else if (value > max) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must be less than or equal to ${max}` });
+  }
+}
+
 /** unknown value が 0 より大きい有限数であることを検証する。 */
 export function validatePositiveNumber(path: string, value: unknown, errors: CoreError[]): void {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {

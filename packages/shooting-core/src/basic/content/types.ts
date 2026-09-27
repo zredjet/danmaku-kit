@@ -31,6 +31,8 @@ export type PlayerShotId = `playerShot.${string}`;
 export type PatternId = `pattern.${string}`;
 /** path 定義の namespace 付き ID。 */
 export type PathId = `path.${string}`;
+/** pickup 定義の namespace 付き ID（pickup feature）。 */
+export type PickupId = `pickup.${string}`;
 
 /**
  * runtime adapter が解決できる asset key の一覧。
@@ -112,6 +114,36 @@ export type EnemyDefinition = {
   };
   hp: number;
   score: number;
+  /** 撃破したときに出す pickup。pickup feature が有効なときだけ置ける（design 20）。 */
+  drops?: readonly EnemyDropDefinition[];
+};
+
+/**
+ * enemy を撃破したときに出す pickup（pickup feature）。`count` 個を撃破した位置を中心に横へ `spread` px の幅で等間隔に並べる
+ * （`count` が 1 か `spread` を省略すれば撃破した位置に重ねる）。
+ */
+export type EnemyDropDefinition = {
+  pickup: PickupId;
+  count: number;
+  spread?: number;
+};
+
+/** 撃破した enemy が落とす回収 item の content 定義（pickup feature、design 9.9）。 */
+export type PickupDefinition = {
+  id: PickupId;
+  version: number;
+  asset: string;
+  /** 回収したときに足す score。 */
+  score: number;
+  /** 自機の中心とこの距離以内に入った pickup を回収する（px）。 */
+  collectRadius: number;
+  /** 自機の中心とこの距離以内に入った pickup を自機へ吸い寄せる（px）。省略すると吸い寄せない。 */
+  magnetRadius?: number;
+  /** 出てからの速度（px / tick）。 */
+  velocity: {
+    x: number;
+    y: number;
+  };
 };
 
 /** 敵弾の最小 content 定義。弾速や弾幕は pattern 側で拡張する。 */
@@ -317,6 +349,15 @@ export type ContentRegistry = {
   playerShots: readonly PlayerShotDefinition[];
   patterns: readonly PatternDefinition[];
   paths: readonly PathDefinition[];
+  /**
+   * optional feature が持つ content（design 20）。feature が有効でなければ読み込むだけで使わず、load は warning を返す。
+   */
+  features?: FeatureContentRegistry;
+};
+
+/** optional feature ごとの content の collection。 */
+export type FeatureContentRegistry = {
+  pickups?: readonly PickupDefinition[];
 };
 
 /**

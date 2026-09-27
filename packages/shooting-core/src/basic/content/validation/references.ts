@@ -1,11 +1,11 @@
 import type { CoreError } from "../../result.ts";
 import { MAX_IDENTIFIER_LENGTH, isNamespacedId, isSafeAssetKey } from "../identifier.ts";
-import type { BulletId, ContentRegistry, PatternStepDefinition } from "../types.ts";
+import type { BulletId, ContentRegistry, FeatureContentRegistry, PatternStepDefinition } from "../types.ts";
 
 /** namespace prefix と重複 ID を検証する。 */
 export function validateUniqueIds(
   namespace: string,
-  collection: keyof Omit<ContentRegistry, "version" | "assetKeys">,
+  collection: keyof Omit<ContentRegistry, "version" | "assetKeys" | "features"> | `features.${keyof FeatureContentRegistry}`,
   definitions: readonly { id: string }[],
   errors: CoreError[],
 ): void {
@@ -61,18 +61,24 @@ export function validateAssetReferences(registry: ContentRegistry, errors: CoreE
   ];
 
   for (const { asset, schemaPath, referrerId } of referenced) {
-    const context = { schemaPath, referrerId, targetId: asset } as const;
-    if (!isSafeAssetKey(asset)) {
-      errors.push({ code: "asset.invalidKey", message: `Invalid asset key reference: ${asset}`, ...context });
-      continue;
-    }
-    if (!assetKeys.has(asset)) {
-      errors.push({
-        code: "asset.notFound",
-        message: `Asset not found: ${asset}`,
-        ...context,
-      });
-    }
+    validateAssetReference(asset, assetKeys, { schemaPath, referrerId }, errors);
+  }
+}
+
+/** 1 つの asset key の参照が安全な形で、manifest に存在するか検証する。 */
+export function validateAssetReference(
+  asset: string,
+  assetKeys: ReadonlySet<string>,
+  context: Readonly<{ schemaPath: string; referrerId: string }>,
+  errors: CoreError[],
+): void {
+  const errorContext = { ...context, targetId: asset } as const;
+  if (!isSafeAssetKey(asset)) {
+    errors.push({ code: "asset.invalidKey", message: `Invalid asset key reference: ${asset}`, ...errorContext });
+    return;
+  }
+  if (!assetKeys.has(asset)) {
+    errors.push({ code: "asset.notFound", message: `Asset not found: ${asset}`, ...errorContext });
   }
 }
 

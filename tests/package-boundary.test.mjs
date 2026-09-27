@@ -34,6 +34,17 @@ test("exposes the root export and one entry per optional feature module director
   assert.deepEqual(featureDirectories.filter((name) => !FEATURE_DIRECTORIES.includes(name)), []);
 });
 
+test("imports each optional feature through its subpath export as the only value it exports", async () => {
+  for (const name of await listFeatureDirectories()) {
+    const feature = await import(`@shooting-sample/shooting-core/features/${name}`);
+    const exportName = `${name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())}Feature`;
+
+    assert.deepEqual(Object.keys(feature), [exportName], `features/${name} must export only ${exportName}`);
+    const { createShootingCore } = await import("@shooting-sample/shooting-core");
+    assert.doesNotThrow(() => createShootingCore({ features: [feature[exportName]] }));
+  }
+});
+
 test("rejects deep package imports outside the public export map", async () => {
   const forbiddenSubpaths = [
     "package.json",

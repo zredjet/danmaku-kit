@@ -57,7 +57,18 @@ const SHOOTING_CORE_LAYER_RULES = Object.freeze([
  */
 const SHOOTING_CORE_LEAF_LAYER_RULES = Object.freeze([
   { importer: "shared/", allowedTargets: [] },
-  { importer: "extension/", allowedTargets: ["content/types.ts", "result.ts", "serialization/types.ts", "shared/"] },
+  {
+    importer: "extension/",
+    allowedTargets: [
+      "content/types.ts",
+      "content/validation/fields.ts",
+      "content/validation/references.ts",
+      "content/validation/schema-path.ts",
+      "result.ts",
+      "serialization/types.ts",
+      "shared/",
+    ],
+  },
 ]);
 
 /**

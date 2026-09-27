@@ -20,6 +20,7 @@ const REFERENCE_ERROR_CODES = new Set<string>([
   "enemy.notFound",
   "path.notFound",
   "pattern.notFound",
+  "pickup.notFound",
   "player.defaultNotFound",
   "playerShot.notFound",
 ]);
@@ -127,6 +128,7 @@ function inferSchemaPath(code: string, message: string): string {
     case "feature.duplicate":
     case "feature.unknown":
     case "feature.unsupported": return "enabledFeatures";
+    case "pickup.notFound": return "enemy.drops[].pickup";
     case "player.defaultNotFound": return "defaultPlayerId";
     case "playerShot.notFound": return "player.shot.definition";
     case "bullet.notFound": return "pattern.fireOnSpawn.bullet";
