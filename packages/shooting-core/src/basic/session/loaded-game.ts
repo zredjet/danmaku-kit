@@ -1,12 +1,14 @@
 import type { LoadedGame, StageSession } from "../api-types.ts";
 import { patternProgramsForDifficulty } from "../content/content-index.ts";
 import type { LoadedContentIndex } from "../content/content-index.ts";
-import type { PlayerDefinition, StageDefinition } from "../content/types.ts";
-import type { AnyFeatureModule } from "../extension/feature-module.ts";
+import type { Difficulty, PlayerDefinition, StageDefinition } from "../content/types.ts";
+import { freezeFeatureState } from "../extension/feature-module.ts";
+import type { AnyFeatureModule, FeatureStageContext } from "../extension/feature-module.ts";
 import { deepFreezePlainData } from "../shared/immutable.ts";
 import { createActiveStageSessionTestingHooks } from "../instrumentation/stage-session-testing-hooks.ts";
 import type { StageSessionTestingHookOptions } from "../instrumentation/stage-session-testing-hooks.ts";
 import { coreError, okResult } from "../result.ts";
+import type { CoreResult } from "../result.ts";
 import {
   SERIALIZED_INPUT_FORMAT_VERSION,
   SERIALIZED_STATE_HASH_VERSION,
@@ -17,6 +19,7 @@ import { EntityAllocator } from "../simulation/entity.ts";
 import { XorShift32 } from "../simulation/prng.ts";
 import { createPlayerRuntimeEntity } from "../entities/player/model.ts";
 import { createCommittedStageState } from "../state/committed-state.ts";
+import type { CommittedFeatureState } from "../state/committed-state.ts";
 import { parseStartStageOptions } from "./start-stage-options.ts";
 import { createStageSession } from "./stage-session.ts";
 import type { StageSessionContext } from "./stage-session.ts";
@@ -77,23 +80,24 @@ export function createLoadedGame(
         return coreError("difficulty.notSupported", `Difficulty not supported: ${options.value.difficulty}`);
       }
 
-      const featureStageContext = Object.freeze({
-        definition: content.definition,
-        stage,
-        player,
-        difficulty: options.value.difficulty,
-      });
       const entityAllocator = new EntityAllocator();
       const playerEntity = createPlayerRuntimeEntity(entityAllocator, player);
       if (!playerEntity.ok) {
         return playerEntity;
+      }
+      const featureStates = createInitialFeatureStates(
+        features,
+        createFeatureStageContext(content, stage, player, options.value.difficulty),
+      );
+      if (!featureStates.ok) {
+        return featureStates;
       }
 
       // stageStarted は最初の GameFrame で renderer/debug が初期状態を同期するための event。
       const initialState = createCommittedStageState({
         activeEntities: [playerEntity.value],
         patternRunners: [],
-        featureStates: features.map((module) => ({ feature: module.feature, state: module.createInitialState(featureStageContext) })),
+        featureStates: featureStates.value,
         expectedTick: 0,
         nextEntityId: entityAllocator.snapshot(),
         pendingEvents: [{ type: "stageStarted", tick: 0, stageId: stage.id }],
@@ -146,11 +150,36 @@ function createStageSessionFromContent(
       stage,
       player,
       features,
-      featureStageContext: Object.freeze({ definition: content.definition, stage, player, difficulty }),
+      featureStageContext: createFeatureStageContext(content, stage, player, difficulty),
     },
     debugSeed: initial.debugSeed,
     initialState: initial.initialState,
     serializationMetadata: initial.serializationMetadata,
     testingHooks: createActiveStageSessionTestingHooks(testingHooks),
   });
+}
+
+function createFeatureStageContext(
+  content: LoadedContentIndex,
+  stage: StageDefinition,
+  player: PlayerDefinition,
+  difficulty: Difficulty,
+): FeatureStageContext {
+  return Object.freeze({ definition: content.definition, stage, player, difficulty });
+}
+
+/** 有効な feature の state の初期値を作る。module が plain data でない state を返せば fatal にする。 */
+function createInitialFeatureStates(
+  features: readonly AnyFeatureModule[],
+  context: FeatureStageContext,
+): CoreResult<readonly CommittedFeatureState[]> {
+  const states: CommittedFeatureState[] = [];
+  for (const module of features) {
+    const state = freezeFeatureState(module.createInitialState(context));
+    if (state === undefined) {
+      return coreError("stageSession.fatal", `Feature state must be JSON-compatible plain data: ${module.feature}`);
+    }
+    states.push(Object.freeze({ feature: module.feature, state }));
+  }
+  return okResult(Object.freeze(states));
 }

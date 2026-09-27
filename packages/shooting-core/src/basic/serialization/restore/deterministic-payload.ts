@@ -24,6 +24,7 @@ import {
 import type { RestoreJsonBudget } from "./restore-json.ts";
 import type { RestorePatternRunnerStateInput } from "./pattern-fires.ts";
 import { validateRestoreRuntimeEntities } from "./runtime-entities.ts";
+import { validateRestoreEnabledFeatureContract } from "./top-level-state.ts";
 import type { RestoreTopLevelState } from "./top-level-state.ts";
 
 const MAX_RESTORE_RUNTIME_ENTITIES_LENGTH = 1
@@ -378,6 +379,13 @@ function validateRestoreEnabledFeatureStates(
       stateVersion: state.value.stateVersion,
       payload: payload.value,
     }));
+  }
+  const order = validateRestoreEnabledFeatureContract(
+    validatedStates.map((state) => state.feature),
+    "state.enabledFeatureStates",
+  );
+  if (!order.ok) {
+    return order;
   }
 
   return okResult(Object.freeze(validatedStates));

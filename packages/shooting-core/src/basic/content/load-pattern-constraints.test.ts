@@ -226,7 +226,7 @@ test("returns no semantic warnings while the content has errors", () => {
         { id: "pattern.after_loop", version: 1, ...afterLoop },
       ],
     },
-  });
+  }, []);
   const brokenReference = validateGameDefinitionWithWarnings({
     ...definition,
     content: {
@@ -234,7 +234,7 @@ test("returns no semantic warnings while the content has errors", () => {
       patterns: [{ id: "pattern.none", version: 1, ...afterLoop }],
       stages: [{ ...stage, timeline: [{ ...stage.timeline[0]!, action: { ...stage.timeline[0]!.action, enemy: "enemy.missing" } }] }],
     },
-  });
+  }, []);
 
   assert.deepEqual(
     [overBudgetAndAfterLoop, brokenReference].map(({ errors, warnings }) => [errors.map((error) => error.code), warnings]),
@@ -243,7 +243,7 @@ test("returns no semantic warnings while the content has errors", () => {
   assert.deepEqual(validateGameDefinitionWithWarnings({
     ...definition,
     content: { ...definition.content, patterns: [{ id: "pattern.none", version: 1, ...afterLoop }] },
-  }).warnings.map((warning) => warning.code), ["pattern.unreachableStep"]);
+  }, []).warnings.map((warning) => warning.code), ["pattern.unreachableStep"]);
 });
 
 test("accepts repeat, radial and stream within their budgets", () => {

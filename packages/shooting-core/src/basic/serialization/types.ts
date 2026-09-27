@@ -112,13 +112,10 @@ export type SerializedEnabledFeatureState = Readonly<{
  * collision / event order の tie-breaker を保つ。`score` は fixed scoreOnKill の合計なので、
  * non-negative safe integer として検証する。
  *
- * `patternRunnerStates` と `enabledFeatureStates` はこの slice では空配列として
- * 生成するが、型は後続 module が serialized state を追加できる形にしておく。
- * Phase 1B-5 の basic core restore は、非空 extension state の shape と JSON payload を検証したうえで
- * module 非対応を `state.featureMismatch` として返す。feature module 導入後に非空 state を許可する場合は、
- * `patternRunnerStates` を `runnerId` の UTF-8 byte lexicographic order 昇順、
- * `enabledFeatureStates` を top-level `enabledFeatures` と同じ canonical feature order にし、
- * 重複、順序違反、module contract 不一致を restore validation で拒否する。
+ * `patternRunnerStates` は `steps` を持つ pattern の enemy ごとの runner を `runnerId` の UTF-8 byte lexicographic order 昇順に、
+ * `enabledFeatureStates` は有効な feature ごとに 1 つの state を top-level `enabledFeatures` と同じ canonical feature order に並べる
+ * （Phase 2B-4）。restore は feature state の重複と順序違反を `state.invalidShape`、余分、欠落、module のない feature、`stateVersion`
+ * の不一致を `state.featureMismatch` にし、payload は feature module が検証する。
  */
 export type SerializedDeterministicState = Readonly<{
   runtimeEntities: ReadonlyArray<SerializedRuntimeEntityState>;

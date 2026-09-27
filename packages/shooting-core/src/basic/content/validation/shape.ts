@@ -41,7 +41,7 @@ const KNOWN_FEATURE_SET = new Set<string>(KNOWN_ENABLED_FEATURES);
 export function validateDefinitionShape(
   definition: unknown,
   errors: CoreError[],
-  registeredFeatures: readonly EnabledFeature[] = [],
+  registeredFeatures: readonly EnabledFeature[],
 ): GameDefinition | null {
   const root = asRecord(definition);
   if (!root) {

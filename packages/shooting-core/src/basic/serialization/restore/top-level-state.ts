@@ -181,7 +181,7 @@ export function parseRestoreCompatibilityMetadata(
   if (!enabledFeatures.ok) {
     return enabledFeatures;
   }
-  const featureContract = validateRestoreEnabledFeatureContract(enabledFeatures.value);
+  const featureContract = validateRestoreEnabledFeatureContract(enabledFeatures.value, "enabledFeatures");
   if (!featureContract.ok) {
     return featureContract;
   }
@@ -230,13 +230,16 @@ function parseRestoreEnabledFeatures(value: unknown): CoreResult<readonly string
   return okResult(Object.freeze(clone));
 }
 
-/** enabledFeatures の canonical order / duplicate だけを shape contract として検査する。 */
-function validateRestoreEnabledFeatureContract(features: readonly string[]): CoreResult<null> {
+/**
+ * feature 名の並びの canonical order / duplicate だけを shape contract として検査する。未知の feature 名は順序を問わず、loaded content
+ * との照合で `state.featureMismatch` にする。`label` は error message の field 名（`enabledFeatures` と `state.enabledFeatureStates`）。
+ */
+export function validateRestoreEnabledFeatureContract(features: readonly string[], label: string): CoreResult<null> {
   const seen = new Set<string>();
   let previousKnownIndex = -1;
   for (const feature of features) {
     if (seen.has(feature)) {
-      return coreError("state.invalidShape", "enabledFeatures must use canonical order without duplicates");
+      return coreError("state.invalidShape", `${label} must use canonical order without duplicates`);
     }
     seen.add(feature);
     const knownIndex = (KNOWN_ENABLED_FEATURES as readonly string[]).indexOf(feature);
@@ -244,7 +247,7 @@ function validateRestoreEnabledFeatureContract(features: readonly string[]): Cor
       continue;
     }
     if (knownIndex <= previousKnownIndex) {
-      return coreError("state.invalidShape", "enabledFeatures must use canonical order without duplicates");
+      return coreError("state.invalidShape", `${label} must use canonical order without duplicates`);
     }
     previousKnownIndex = knownIndex;
   }

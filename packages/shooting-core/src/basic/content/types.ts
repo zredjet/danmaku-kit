@@ -10,9 +10,9 @@ export function isKnownDifficulty(value: unknown): value is Difficulty {
 }
 
 /**
- * optional module の feature 名。
+ * optional module の feature 名（canonical feature order）。
  *
- * basic core では型として名前だけ共有し、実行時は `enabledFeatures: []` のみ許可する。
+ * `enabledFeatures` は `createShootingCore()` に module が渡された feature だけを受け付ける（design 20）。
  */
 export const KNOWN_ENABLED_FEATURES = Object.freeze(["bomb", "graze", "affinity", "rank", "pickup", "advancedScoring"] as const);
 export type EnabledFeature = (typeof KNOWN_ENABLED_FEATURES)[number];

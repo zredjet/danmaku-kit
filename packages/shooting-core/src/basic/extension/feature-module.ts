@@ -2,6 +2,7 @@ import { KNOWN_ENABLED_FEATURES } from "../content/types.ts";
 import type { Difficulty, EnabledFeature, GameDefinition, PlayerDefinition, StageDefinition } from "../content/types.ts";
 import type { CoreError, CoreResult, CoreWarning } from "../result.ts";
 import type { SerializedJsonValue } from "../serialization/types.ts";
+import { deepFreezeClone, deepFreezePlainData } from "../shared/immutable.ts";
 
 /**
  * tick の中で feature の system を実行する位置（design 7.1）。
@@ -38,8 +39,9 @@ export type FeatureContentDiagnostics = Readonly<{
  * optional feature が basic core に差し込む処理（design 20）。
  *
  * Core は `enabledFeatures` にある feature の module を canonical feature order（`KNOWN_ENABLED_FEATURES`）で呼ぶ。feature の state は
- * JSON 互換の plain data とし、Core は committed state に feature ごとに 1 つ持って freeze する。serialize は
- * `SerializedEnabledFeatureState`、state hash は feature state として canonical encoding に入れる。
+ * JSON 互換の plain data とし（実行時の状態を持たない feature は `null`）、Core は committed state に有効な feature ごとに必ず 1 つ持って
+ * freeze する。hook が返した state が plain data でなければ、startStage と tick は `stageSession.fatal`、restore は
+ * `state.invalidShape` にする。serialize は `SerializedEnabledFeatureState`、state hash は feature state として canonical encoding に入れる。
  */
 export type FeatureModule<State extends SerializedJsonValue> = Readonly<{
   feature: EnabledFeature;
@@ -66,6 +68,9 @@ export type FeatureModule<State extends SerializedJsonValue> = Readonly<{
 export type AnyFeatureModule = FeatureModule<SerializedJsonValue>;
 
 const FEATURE_MODULE: unique symbol = Symbol("shooting-core.featureModule");
+const MODULE_FUNCTIONS = Object.freeze(["validateContent", "createInitialState", "serializeState", "hashState", "restoreState"] as const);
+/** `defineFeature()` が作った feature。symbol を取り出して作った偽の feature を受け付けないために使う。 */
+const definedFeatures = new WeakSet<object>();
 
 /**
  * `createShootingCore()` に渡す feature。feature の package entry が `defineFeature()` で作り、module の中身は Core だけが読む。
@@ -75,19 +80,39 @@ export type ShootingCoreFeature = Readonly<{
   readonly [FEATURE_MODULE]: AnyFeatureModule;
 }>;
 
-/** feature module を `createShootingCore()` に渡せる形にする。feature の package entry だけが使う。 */
+/**
+ * feature module を `createShootingCore()` に渡せる形にする。feature の package entry だけが使う。
+ *
+ * 既知でない feature、正の safe integer でない `stateVersion`、関数でない hook は feature の実装の誤りなので TypeError を投げる。
+ */
 export function defineFeature<State extends SerializedJsonValue>(module: FeatureModule<State>): ShootingCoreFeature {
-  return Object.freeze({
+  if (!KNOWN_ENABLED_FEATURES.includes(module.feature)) {
+    throw new TypeError(`Unknown optional feature module: ${String(module.feature)}`);
+  }
+  if (!Number.isSafeInteger(module.stateVersion) || module.stateVersion < 1) {
+    throw new TypeError(`Feature module stateVersion must be a positive safe integer: ${module.feature}`);
+  }
+  for (const name of MODULE_FUNCTIONS) {
+    if (typeof module[name] !== "function") {
+      throw new TypeError(`Feature module ${name} must be a function: ${module.feature}`);
+    }
+  }
+  const systems = Object.entries(module.systems ?? {});
+  if (systems.some(([slot, system]) => !(FEATURE_TICK_SLOTS as readonly string[]).includes(slot) || typeof system !== "function")) {
+    throw new TypeError(`Feature module systems must be functions keyed by ${FEATURE_TICK_SLOTS.join(" or ")}: ${module.feature}`);
+  }
+  const feature = Object.freeze({
     feature: module.feature,
-    [FEATURE_MODULE]: Object.freeze({ ...module, systems: Object.freeze({ ...module.systems }) }) as unknown as AnyFeatureModule,
+    [FEATURE_MODULE]: Object.freeze({ ...module, systems: Object.freeze(Object.fromEntries(systems)) }) as unknown as AnyFeatureModule,
   });
+  definedFeatures.add(feature);
+  return feature;
 }
 
 /**
  * `createShootingCore()` に渡された feature を canonical feature order の module にする。
  *
- * `defineFeature()` で作っていない値、既知でない feature、同じ feature の重複、正の safe integer でない `stateVersion` は host の
- * 組み立ての誤りなので TypeError を投げる。
+ * 配列でない値、`defineFeature()` で作っていない値、同じ feature の重複は host の組み立ての誤りなので TypeError を投げる。
  */
 export function resolveFeatureModules(features: unknown): readonly AnyFeatureModule[] {
   if (!Array.isArray(features)) {
@@ -95,20 +120,12 @@ export function resolveFeatureModules(features: unknown): readonly AnyFeatureMod
   }
   const modules = new Map<EnabledFeature, AnyFeatureModule>();
   for (const feature of features) {
-    const module = typeof feature === "object" && feature !== null && FEATURE_MODULE in feature
-      ? (feature as ShootingCoreFeature)[FEATURE_MODULE]
-      : null;
-    if (!module) {
+    if (typeof feature !== "object" || feature === null || !definedFeatures.has(feature)) {
       throw new TypeError("ShootingCoreOptions.features must contain features made by defineFeature()");
     }
-    if (!KNOWN_ENABLED_FEATURES.includes(module.feature)) {
-      throw new TypeError(`Unknown optional feature module: ${String(module.feature)}`);
-    }
+    const module = (feature as ShootingCoreFeature)[FEATURE_MODULE];
     if (modules.has(module.feature)) {
       throw new TypeError(`Duplicate optional feature module: ${module.feature}`);
-    }
-    if (!Number.isSafeInteger(module.stateVersion) || module.stateVersion < 1) {
-      throw new TypeError(`Feature module stateVersion must be a positive safe integer: ${module.feature}`);
     }
     modules.set(module.feature, module);
   }
@@ -116,6 +133,18 @@ export function resolveFeatureModules(features: unknown): readonly AnyFeatureMod
     const module = modules.get(feature);
     return module ? [module] : [];
   }));
+}
+
+/**
+ * feature module が返した state を JSON 互換の plain data として clone / freeze する。plain data でない値（非有限数、`undefined`、
+ * Map、cycle など）は undefined を返す。
+ */
+export function freezeFeatureState(value: unknown): SerializedJsonValue | undefined {
+  if (value === null) {
+    return null;
+  }
+  // deepFreezePlainData() は plain data かどうかの検査にだけ使い、committed state と同じ通常の object に clone する。
+  return deepFreezePlainData(value) === null ? undefined : deepFreezeClone(value as SerializedJsonValue);
 }
 
 /** 登録された module のうち、definition の `enabledFeatures` にある feature の module（canonical feature order）。 */

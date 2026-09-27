@@ -2,6 +2,7 @@ import type { EnabledFeature } from "../content/types.ts";
 import { defineFeature } from "../extension/feature-module.ts";
 import type {
   FeatureContentDiagnostics,
+  FeatureStageContext,
   FeatureSystem,
   FeatureTickSlot,
   ShootingCoreFeature,
@@ -14,11 +15,15 @@ import type { SerializedJsonValue } from "../serialization/types.ts";
 type CounterState = Readonly<{ spawns: number; scorings: number }>;
 
 export type CounterFeatureOptions = Readonly<{
-  /** system を呼んだ順の記録（`<feature>:<slot>:<tick>`）。 */
+  /** hook を呼んだ順の記録（system は `<feature>:<slot>:<tick>`、ほかは `<feature>:<hook>`）。 */
   calls?: string[];
+  /** hook に渡された stage の文脈（`<hook> <stage> <player> <difficulty>`）。 */
+  contexts?: string[];
   content?: FeatureContentDiagnostics;
   /** この tick の scoring system を失敗させる。 */
   failScoringAtTick?: number;
+  /** この tick の spawn system が JSON 互換でない state を返す。 */
+  returnNonPlainStateAtTick?: number;
 }>;
 
 /**
@@ -26,10 +31,17 @@ export type CounterFeatureOptions = Readonly<{
  * 持つ。restore は回数が `expectedTick` と一致する state だけを受け付ける（spawn から到達できる state）。
  */
 export function createCounterFeature(feature: EnabledFeature, options: CounterFeatureOptions = {}): ShootingCoreFeature {
+  const record = (hook: string, context: FeatureStageContext) => {
+    options.contexts?.push(`${hook} ${context.stage.id} ${context.player.id} ${context.difficulty}`);
+  };
   const count = (slot: FeatureTickSlot, field: keyof CounterState): FeatureSystem<CounterState> => (state, context) => {
     options.calls?.push(`${feature}:${slot}:${context.tick}`);
+    record(slot, context);
     if (slot === "scoring" && context.tick === options.failScoringAtTick) {
       return coreError("stageSession.fatal", `${feature} counter failed at tick ${context.tick}`);
+    }
+    if (slot === "spawn" && context.tick === options.returnNonPlainStateAtTick) {
+      return okResult({ ...state, spawns: Number.NaN });
     }
     return okResult<CounterState>({ ...state, [field]: state[field] + 1 });
   };
@@ -37,11 +49,16 @@ export function createCounterFeature(feature: EnabledFeature, options: CounterFe
     feature,
     stateVersion: 1,
     validateContent: () => options.content ?? { errors: [], warnings: [] },
-    createInitialState: () => ({ spawns: 0, scorings: 0 }),
+    createInitialState: (context) => {
+      record("createInitialState", context);
+      return { spawns: 0, scorings: 0 };
+    },
     systems: { spawn: count("spawn", "spawns"), scoring: count("scoring", "scorings") },
     serializeState: (state) => state,
-    hashState: (state) => state,
+    // hash には serialize と違う形で入れ、serialize と hash の projection の取り違えを test で見分けられるようにする。
+    hashState: (state) => [state.spawns, state.scorings],
     restoreState: (payload, context) => {
+      record(`restoreState@${context.expectedTick}`, context);
       if (!isCounterState(payload) || payload.spawns !== context.expectedTick || payload.scorings !== context.expectedTick) {
         return coreError("state.invalidShape", `${feature} counter state must count every tick before expectedTick`);
       }

@@ -154,7 +154,7 @@ test("warns about firing only when no difficulty fires and about branches no dif
       ...unusedPattern.content,
       patterns: [...unusedPattern.content.patterns, { id: "pattern.unused", version: 1, ...hardOnlyFire }],
     },
-  }).warnings, []);
+  }, []).warnings, []);
 });
 
 test("rejects missing bullets and invalid values inside difficulty branches with their nested schema paths", () => {

@@ -1,3 +1,4 @@
+import { freezeFeatureState } from "../../extension/feature-module.ts";
 import type { AnyFeatureModule, FeatureRestoreContext } from "../../extension/feature-module.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
@@ -7,8 +8,9 @@ import type { SerializedEnabledFeatureState } from "../types.ts";
 /**
  * 形を検証済みの `enabledFeatureStates` を、有効な feature の module で committed の feature state にする。
  *
- * 有効な feature ごとにちょうど 1 つの state が canonical feature order で並び、`stateVersion` が module と一致する必要がある
- * （違えば `state.featureMismatch`）。payload の形と spawn から到達できるかは module の `restoreState()` が検証する。
+ * 重複と canonical feature order の違反は `parseRestoreDeterministicPayload()` が `state.invalidShape` にしている。ここでは有効な feature
+ * ごとにちょうど 1 つの state があり（余分、欠落、module のない feature は `state.featureMismatch`）、`stateVersion` が module と一致する
+ * （違えば `state.featureMismatch`）ことを確かめる。payload の形と spawn から到達できるかは module の `restoreState()` が検証する。
  */
 export function restoreFeatureStates(
   states: readonly SerializedEnabledFeatureState[],
@@ -18,7 +20,7 @@ export function restoreFeatureStates(
   if (states.length !== features.length || states.some((state, index) => state.feature !== features[index]!.feature)) {
     return coreError(
       "state.featureMismatch",
-      "state.enabledFeatureStates must have one state for each enabled feature module in canonical feature order",
+      "state.enabledFeatureStates must have one state for each enabled feature module",
     );
   }
   const restored: CommittedFeatureState[] = [];
@@ -31,7 +33,11 @@ export function restoreFeatureStates(
     if (!value.ok) {
       return value;
     }
-    restored.push(Object.freeze({ feature: module.feature, state: value.value }));
+    const restoredState = freezeFeatureState(value.value);
+    if (restoredState === undefined) {
+      return coreError("state.invalidShape", `restored ${module.feature} feature state must be JSON-compatible plain data`);
+    }
+    restored.push(Object.freeze({ feature: module.feature, state: restoredState }));
   }
   return okResult(Object.freeze(restored));
 }

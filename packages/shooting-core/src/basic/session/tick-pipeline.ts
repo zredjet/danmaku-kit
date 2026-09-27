@@ -4,6 +4,7 @@ import type { PlayerDefinition, PlayerId, StageDefinition } from "../content/typ
 import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
 import { toReadonlyEntityState } from "../entities/runtime-entity.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
+import { freezeFeatureState } from "../extension/feature-module.ts";
 import type { AnyFeatureModule, FeatureStageContext, FeatureTickSlot } from "../extension/feature-module.ts";
 import type { InputFrame } from "../input/input-frame.ts";
 import { consumeWorkingMutationFailureForTesting } from "../instrumentation/stage-session-testing-hooks.ts";
@@ -287,7 +288,13 @@ function advanceFeatureSystems(
     if (!advanced.ok) {
       return fatalTickOutcome(advanced.errors);
     }
-    working.featureStates[index] = Object.freeze({ feature: module.feature, state: advanced.value });
+    const state = freezeFeatureState(advanced.value);
+    if (state === undefined) {
+      return fatalTickOutcome([
+        { code: "stageSession.fatal", message: `Feature state must be JSON-compatible plain data: ${module.feature}` },
+      ]);
+    }
+    working.featureStates[index] = Object.freeze({ feature: module.feature, state });
   }
   return null;
 }

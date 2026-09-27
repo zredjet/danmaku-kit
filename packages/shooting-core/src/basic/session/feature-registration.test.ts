@@ -49,6 +49,7 @@ test("accepts enabled features only when the core has their module", () => {
   ]);
   assert.equal(createShootingCore({ coreVersion: "1.2.3", features: [createCounterFeature("rank")] }).coreVersion, "1.2.3");
   assert.equal(createShootingCore("1.2.3").coreVersion, "1.2.3");
+  assert.equal(createShootingCore(null as unknown as string).coreVersion, "0.0.0");
 });
 
 test("runs no feature hook for registered features that the definition does not enable", () => {
@@ -78,7 +79,8 @@ test("returns the content errors and warnings of enabled feature modules", () =>
 
 test("runs feature systems at their tick slots in canonical feature order and serializes their states", () => {
   const calls: string[] = [];
-  const game = loadGame([createCounterFeature("rank", { calls }), createCounterFeature("bomb", { calls })], ["rank", "bomb"]);
+  const contexts: string[] = [];
+  const game = loadGame([createCounterFeature("rank", { calls, contexts }), createCounterFeature("bomb", { calls })], ["rank", "bomb"]);
 
   const initial = serializeAfterTicks(game, 0);
   calls.length = 0;
@@ -95,6 +97,11 @@ test("runs feature systems at their tick slots in canonical feature order and se
   ]);
   assert.deepEqual(serialized.state.enabledFeatureStates.map((state) => state.payload), [counterState(2), counterState(2)]);
   assert.equal(Object.isFrozen(serialized.state.enabledFeatureStates[0]!.payload), true);
+  assert.deepEqual([...new Set(contexts)], [
+    "createInitialState stage.stage_01 player.default normal",
+    "spawn stage.stage_01 player.default normal",
+    "scoring stage.stage_01 player.default normal",
+  ]);
 });
 
 test("puts feature states into the hashable state in canonical feature order", () => {
@@ -109,31 +116,42 @@ test("puts feature states into the hashable state in canonical feature order", (
   assertTickOk(session.tick(createEmptyInputFrame(0)), "tick 0");
   assertSerializeOk(session.serialize(), "serialize");
 
+  // hash には feature module の `hashState()`（counter feature は serialize と違う配列）を入れる。
   assert.deepEqual(hashableStates.map((state) => state.enabledFeatureStates), [[
-    { feature: "bomb", stateVersion: 1, payload: counterState(1) },
-    { feature: "rank", stateVersion: 1, payload: counterState(1) },
+    { feature: "bomb", stateVersion: 1, payload: [1, 1] },
+    { feature: "rank", stateVersion: 1, payload: [1, 1] },
   ]]);
 });
 
-test("restores feature states through their modules and continues identically", () => {
-  const game = loadGame([createCounterFeature("rank"), createCounterFeature("bomb")], ["bomb", "rank"]);
-  const snapshot = serializeAfterTicks(game, 3);
+test("restores feature states through their modules and continues identically to the source session", () => {
+  const hashableStates: HashableGameState[] = [];
+  const contexts: string[] = [];
+  const loaded = createShootingCoreWithTestingHooksForTest(
+    "0.0.0",
+    { recordHashableStateOnSerialize: (state) => hashableStates.push(state) },
+    [createCounterFeature("rank", { contexts }), createCounterFeature("bomb")],
+  ).load(definitionWith(["bomb", "rank"]));
+  assert.ok(loaded.ok);
+  const game = loaded.value;
+  const source = startStageFromLoadedGame(game);
+  for (let tick = 0; tick < 3; tick += 1) {
+    assertTickOk(source.tick(createEmptyInputFrame(tick)), `source tick ${tick}`);
+  }
+  const snapshot = assertSerializeOk(source.serialize(), "source serialize");
   const restored = game.restore(snapshot);
   assert.ok(restored.ok, JSON.stringify(restored.ok ? null : restored.errors));
-  const source = game.restore(snapshot);
-  assert.ok(source.ok);
 
   assert.deepEqual(assertSerializeOk(restored.value.serialize(), "restored serialize"), snapshot);
+  assert.deepEqual(hashableStates[1], hashableStates[0]);
+  assert.ok(contexts.includes("restoreState@3 stage.stage_01 player.default normal"));
   for (let tick = 3; tick < 6; tick += 1) {
     assert.deepEqual(
       assertTickOk(restored.value.tick(createEmptyInputFrame(tick)), `restored tick ${tick}`),
-      assertTickOk(source.value.tick(createEmptyInputFrame(tick)), `source tick ${tick}`),
+      assertTickOk(source.tick(createEmptyInputFrame(tick)), `source tick ${tick}`),
     );
   }
-  assert.deepEqual(assertSerializeOk(restored.value.serialize(), "restored final").state.enabledFeatureStates.map((state) => state.payload), [
-    counterState(6),
-    counterState(6),
-  ]);
+  assert.deepEqual(assertSerializeOk(restored.value.serialize(), "restored final"), assertSerializeOk(source.serialize(), "source final"));
+  assert.deepEqual(hashableStates[3], hashableStates[2]);
 });
 
 test("rejects feature states that do not match the enabled feature modules or their module rules", () => {
@@ -150,10 +168,16 @@ test("rejects feature states that do not match the enabled feature modules or th
 
   assert.deepEqual(errorOf(withFeatureStates([bomb])), [
     "state.featureMismatch",
-    "state.enabledFeatureStates must have one state for each enabled feature module in canonical feature order",
+    "state.enabledFeatureStates must have one state for each enabled feature module",
   ]);
-  assert.equal(errorOf(withFeatureStates([rank, bomb]))?.[0], "state.featureMismatch");
-  assert.equal(errorOf(withFeatureStates([bomb, rank, rank]))?.[0], "state.featureMismatch");
+  assert.deepEqual(errorOf(withFeatureStates([bomb, rank, { ...rank, feature: "pickup" }]))?.[0], "state.featureMismatch");
+  // 重複と canonical feature order の違反は、top-level の `enabledFeatures` と同じく shape error にする。
+  assert.deepEqual(errorOf(withFeatureStates([rank, bomb])), [
+    "state.invalidShape",
+    "state.enabledFeatureStates must use canonical order without duplicates",
+  ]);
+  assert.equal(errorOf(withFeatureStates([bomb, rank, rank]))?.[0], "state.invalidShape");
+  assert.equal(errorOf(withFeatureStates([bomb, { ...rank, feature: "lunatic" }]))?.[0], "state.featureMismatch");
   assert.deepEqual(errorOf(withFeatureStates([bomb, { ...rank, stateVersion: 2 }])), [
     "state.featureMismatch",
     "unsupported rank feature stateVersion: 2",
@@ -178,4 +202,13 @@ test("latches a failing feature system as a stage session fatal error", () => {
   assert.equal(!failed.ok && failed.errors[0]!.code, "stageSession.fatal");
   assert.match(!failed.ok ? failed.errors[0]!.message : "", /rank counter failed at tick 1/);
   assert.equal(!session.serialize().ok, true);
+});
+
+test("latches a feature state that is not JSON-compatible plain data as a stage session fatal error", () => {
+  const game = loadGame([createCounterFeature("rank", { returnNonPlainStateAtTick: 1 })], ["rank"]);
+  const session = startStageFromLoadedGame(game);
+
+  assertTickOk(session.tick(createEmptyInputFrame(0)), "tick 0");
+  const failed = session.tick(createEmptyInputFrame(1));
+  assert.match(!failed.ok ? failed.errors[0]!.message : "", /Feature state must be JSON-compatible plain data: rank/);
 });

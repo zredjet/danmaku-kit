@@ -18,7 +18,7 @@ import { deepFreezePlainData } from "./shared/immutable.ts";
  * runner だけで load / startStage / tick を検証できる。
  */
 export function createShootingCore(options: string | ShootingCoreOptions = {}): ShootingCore {
-  const resolved = typeof options === "string" ? { coreVersion: options } : options;
+  const resolved = typeof options === "string" ? { coreVersion: options } : options ?? {};
   return createShootingCoreInternal(resolved.coreVersion ?? "0.0.0", {}, resolveFeatureModules(resolved.features ?? []));
 }
 

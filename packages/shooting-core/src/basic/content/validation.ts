@@ -20,7 +20,7 @@ import { validateDefinitionShape } from "./validation/shape.ts";
  * `validateDefinitionShape()` が失敗した場合はそこで止める。warning は `validateGameDefinitionWithWarnings()` で受け取る。
  */
 export function validateGameDefinition(definition: unknown): CoreError[] {
-  return [...validateGameDefinitionWithWarnings(definition).errors];
+  return [...validateGameDefinitionWithWarnings(definition, []).errors];
 }
 
 /**
@@ -30,7 +30,7 @@ export function validateGameDefinition(definition: unknown): CoreError[] {
  */
 export function validateGameDefinitionWithWarnings(
   definition: unknown,
-  registeredFeatures: readonly EnabledFeature[] = [],
+  registeredFeatures: readonly EnabledFeature[],
 ): Readonly<{ errors: readonly CoreError[]; warnings: readonly CoreWarning[] }> {
   const errors: CoreError[] = [];
   const plainDefinition = deepFreezePlainData(definition);
