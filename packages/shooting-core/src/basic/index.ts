@@ -11,9 +11,11 @@ export type {
   ReadonlyGameState,
   ReadonlyPlayerState,
   ShootingCore,
+  ShootingCoreOptions,
   StageSession,
   StartStageOptions,
 } from "./api-types.ts";
+export type { ShootingCoreFeature } from "./extension/feature-module.ts";
 export type { ReadonlyEntityState } from "./entities/runtime-entity.ts";
 export type { ReplayMetadata } from "./replay/metadata.ts";
 export type {

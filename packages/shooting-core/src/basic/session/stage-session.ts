@@ -49,12 +49,12 @@ export function createStageSession(options: StageSessionContext): StageSession {
         return errorResult(fatalErrors);
       }
       const serializedState = createSerializeSourceState(committedState, options.testingHooks);
-      const serialized = serializeCommittedStageState(options.serializationMetadata, serializedState);
+      const serialized = serializeCommittedStageState(options.serializationMetadata, serializedState, options.content.features);
       if (!serialized.ok) {
         return latchFatalErrors(serialized.errors);
       }
       if (options.testingHooks.recordHashableStateOnSerialize) {
-        const hashableState = createHashableGameState(options.serializationMetadata, committedState);
+        const hashableState = createHashableGameState(options.serializationMetadata, committedState, options.content.features);
         if (!hashableState.ok) {
           return latchFatalErrors(hashableState.errors);
         }
@@ -110,6 +110,7 @@ export function createStageSession(options: StageSessionContext): StageSession {
       : createHeadlessDebugCheckpoint(
         options.serializationMetadata,
         committedState,
+        options.content.features,
         options.debugSeed,
         debugTickMetrics,
         options.testingHooks.failHeadlessDebugStateSerialization,

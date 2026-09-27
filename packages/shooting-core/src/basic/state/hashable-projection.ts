@@ -3,6 +3,7 @@ import { projectEnemyRuntimeEntityForHashableState } from "../entities/enemy/sna
 import { projectPlayerShotRuntimeEntityForHashableState } from "../entities/player-shot/snapshot.ts";
 import { projectPlayerRuntimeEntityForHashableState } from "../entities/player/snapshot.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
+import type { AnyFeatureModule } from "../extension/feature-module.ts";
 import type {
   HashableGameState,
   HashablePatternRunnerState,
@@ -22,13 +23,18 @@ import { assertNever } from "../shared/guards.ts";
 import { deepFreezeClone } from "../shared/immutable.ts";
 import { compareUtf8Lexicographic } from "../shared/utf8-order.ts";
 import { XorShift32 } from "../simulation/prng.ts";
-import { validateCommittedEntityInvariants, validateCommittedPendingEventInvariants } from "./committed-state.ts";
+import {
+  validateCommittedEntityInvariants,
+  validateCommittedFeatureStates,
+  validateCommittedPendingEventInvariants,
+} from "./committed-state.ts";
 import type { CommittedPendingEvent, CommittedStageState } from "./committed-state.ts";
 
 /** committed snapshot から state hash 用の正規化済み内部 DTO を生成する。 */
 export function createHashableGameState(
   metadata: StageSessionSerializationMetadata,
   committedState: CommittedStageState,
+  features: readonly AnyFeatureModule[],
 ): CoreResult<HashableGameState> {
   const prng = XorShift32.restore(committedState.prngState);
   if (!prng.ok) {
@@ -41,6 +47,10 @@ export function createHashableGameState(
   const pendingEvents = validateCommittedPendingEventInvariants(committedState, metadata.stageId);
   if (!pendingEvents.ok) {
     return pendingEvents;
+  }
+  const featureStates = validateCommittedFeatureStates(committedState, features);
+  if (!featureStates.ok) {
+    return featureStates;
   }
 
   return okResult(deepFreezeClone({
@@ -58,7 +68,11 @@ export function createHashableGameState(
     patternRunnerStates: committedState.patternRunners
       .map((runner) => projectPatternRunnerForHashableState(runner))
       .sort((left, right) => compareUtf8Lexicographic(left.runnerId, right.runnerId)),
-    enabledFeatureStates: [],
+    enabledFeatureStates: featureStates.value.map(({ module, state }) => ({
+      feature: module.feature,
+      stateVersion: module.stateVersion,
+      payload: module.hashState(state),
+    })),
   }));
 }
 

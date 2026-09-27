@@ -1,6 +1,7 @@
-import type { StageId } from "../content/types.ts";
+import type { EnabledFeature, StageId } from "../content/types.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import { EventLog } from "../events/game-event.ts";
+import type { AnyFeatureModule } from "../extension/feature-module.ts";
 import type { EnemyPatternRunner } from "../patterns/pattern-runner.ts";
 import { coreError, okResult } from "../result.ts";
 import type { CoreResult } from "../result.ts";
@@ -8,6 +9,7 @@ import { deepFreezeClone } from "../shared/immutable.ts";
 import { EntityAllocator } from "../simulation/entity.ts";
 import { XorShift32 } from "../simulation/prng.ts";
 import type { SerializedPrngState } from "../simulation/prng.ts";
+import type { SerializedJsonValue } from "../serialization/types.ts";
 import type { StageStatus } from "../simulation/stage-status.ts";
 import { freezeEntitiesInIdOrder } from "../simulation/system-order.ts";
 
@@ -18,11 +20,19 @@ export type CommittedPendingEvent = Readonly<{
   stageId: StageId;
 }>;
 
+/** 有効な feature の state。state の形は feature module が決める JSON 互換の plain data。 */
+export type CommittedFeatureState = Readonly<{
+  feature: EnabledFeature;
+  state: SerializedJsonValue;
+}>;
+
 export type CommittedStageState = Readonly<{
   expectedTick: number;
   activeEntities: readonly RuntimeEntityState[];
   /** active な enemy の pattern runner。enemy id の昇順に並ぶ。 */
   patternRunners: readonly EnemyPatternRunner[];
+  /** 有効な feature ごとに 1 つの state。session の feature module と同じ canonical feature order に並ぶ。 */
+  featureStates: readonly CommittedFeatureState[];
   nextEntityId: number;
   pendingEvents: readonly CommittedPendingEvent[];
   prngState: SerializedPrngState;
@@ -42,6 +52,7 @@ export type WorkingStageState = {
   expectedTick: number;
   activeEntities: RuntimeEntityState[];
   patternRunners: EnemyPatternRunner[];
+  featureStates: CommittedFeatureState[];
   entityAllocator: EntityAllocator;
   eventLog: EventLog;
   prng: XorShift32;
@@ -54,6 +65,7 @@ export function createCommittedStageState(state: {
   expectedTick: number;
   activeEntities: readonly RuntimeEntityState[];
   patternRunners: readonly EnemyPatternRunner[];
+  featureStates: readonly CommittedFeatureState[];
   nextEntityId: number;
   pendingEvents: readonly CommittedPendingEvent[];
   prngState: SerializedPrngState;
@@ -66,6 +78,7 @@ export function createCommittedStageState(state: {
     expectedTick: state.expectedTick,
     activeEntities: deepFreezeClone(orderedEntities),
     patternRunners: deepFreezeClone([...state.patternRunners].sort((left, right) => left.enemyId - right.enemyId)),
+    featureStates: deepFreezeClone(state.featureStates),
     nextEntityId: state.nextEntityId,
     pendingEvents: deepFreezeClone(state.pendingEvents),
     prngState: deepFreezeClone(state.prngState),
@@ -102,6 +115,7 @@ export function createWorkingStageState(committedState: UntrustedCommittedStageS
   return okResult({
     activeEntities: [...deepFreezeClone(committedState.activeEntities)],
     patternRunners: [...deepFreezeClone(committedState.patternRunners)],
+    featureStates: [...deepFreezeClone(committedState.featureStates)],
     entityAllocator: restoredAllocator.value,
     eventLog,
     expectedTick: committedState.expectedTick,
@@ -145,6 +159,20 @@ export function validateCommittedEntityInvariants(committedState: UntrustedCommi
   }
 
   return okResult(null);
+}
+
+/**
+ * committed snapshot の feature state が、session の feature module と同じ feature を同じ順に 1 つずつ持つことを検証する。
+ */
+export function validateCommittedFeatureStates(
+  committedState: UntrustedCommittedStageState,
+  features: readonly AnyFeatureModule[],
+): CoreResult<readonly Readonly<{ module: AnyFeatureModule; state: SerializedJsonValue }>[]> {
+  const states = committedState.featureStates;
+  if (states.length !== features.length || states.some((entry, index) => entry.feature !== features[index]!.feature)) {
+    return coreError("stageSession.fatal", "committed feature states must match the enabled feature modules");
+  }
+  return okResult(states.map((entry, index) => Object.freeze({ module: features[index]!, state: entry.state })));
 }
 
 /** committed snapshot に持ち越された pending event が tick と stage に整合することを検証する。 */

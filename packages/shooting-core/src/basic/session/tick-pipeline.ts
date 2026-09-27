@@ -4,6 +4,7 @@ import type { PlayerDefinition, PlayerId, StageDefinition } from "../content/typ
 import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
 import { toReadonlyEntityState } from "../entities/runtime-entity.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
+import type { AnyFeatureModule, FeatureStageContext, FeatureTickSlot } from "../extension/feature-module.ts";
 import type { InputFrame } from "../input/input-frame.ts";
 import { consumeWorkingMutationFailureForTesting } from "../instrumentation/stage-session-testing-hooks.ts";
 import type { ActiveStageSessionTestingHooks } from "../instrumentation/stage-session-testing-hooks.ts";
@@ -34,6 +35,10 @@ export type StageTickContent = Pick<
   patternProgramsById: ReadonlyMap<string, PatternProgram>;
   stage: StageDefinition;
   player: PlayerDefinition;
+  /** 有効な feature の module（canonical feature order）。committed state の `featureStates` と同じ順に並ぶ。 */
+  features: readonly AnyFeatureModule[];
+  /** feature の system に渡す stage の文脈。 */
+  featureStageContext: FeatureStageContext;
 }>;
 
 /**
@@ -162,6 +167,12 @@ export function runStageTick(
     working.eventLog.push(playerShotSpawn.value.event);
   }
 
+  // system order の spawnBulletsPlayerShots の最後。feature の spawn（pickup の生成など）を canonical feature order で進める。
+  const featureSpawn = advanceFeatureSystems(working, content, "spawn");
+  if (featureSpawn) {
+    return featureSpawn;
+  }
+
   const injectedFailure = consumeWorkingMutationFailureForTesting(instrumentation.testingHooks, working);
   if (injectedFailure) {
     return Object.freeze({ kind: "rejected", result: injectedFailure });
@@ -189,6 +200,11 @@ export function runStageTick(
   }
   const resolvedEntities = collision.entities;
   const resolvedScore = collision.score;
+  // system order の scoring。basic の scoring の後に、feature の scoring（pickup の回収など）を canonical feature order で進める。
+  const featureScoring = advanceFeatureSystems(working, content, "scoring");
+  if (featureScoring) {
+    return featureScoring;
+  }
   // system order の cleanupDestroyedEntities。撃破や cleanup でいなくなった enemy の runner を破棄する。
   const resolvedRunners = retainRunnersOfActiveEnemies(working.patternRunners, resolvedEntities);
 
@@ -232,6 +248,7 @@ export function runStageTick(
   const committedState = createCommittedStageState({
     activeEntities: orderedEntities,
     patternRunners: resolvedRunners,
+    featureStates: working.featureStates,
     expectedTick: working.expectedTick + 1,
     nextEntityId: working.entityAllocator.snapshot(),
     pendingEvents: [],
@@ -246,6 +263,33 @@ export function runStageTick(
     committedState,
     collisionCandidates: collision.collisionCandidates,
   });
+}
+
+/**
+ * `slot` に system を持つ feature の state を canonical feature order で進める。失敗した feature があれば fatal の outcome を、なければ
+ * null を返す。
+ */
+function advanceFeatureSystems(
+  working: WorkingStageState,
+  content: StageTickContent,
+  slot: FeatureTickSlot,
+): StageTickOutcome | null {
+  for (const [index, module] of content.features.entries()) {
+    const system = module.systems[slot];
+    if (!system) {
+      continue;
+    }
+    const current = working.featureStates[index];
+    if (current?.feature !== module.feature) {
+      return fatalTickOutcome([{ code: "stageSession.fatal", message: `Feature state not found: ${module.feature}` }]);
+    }
+    const advanced = system(current.state, { ...content.featureStageContext, tick: working.expectedTick });
+    if (!advanced.ok) {
+      return fatalTickOutcome(advanced.errors);
+    }
+    working.featureStates[index] = Object.freeze({ feature: module.feature, state: advanced.value });
+  }
+  return null;
 }
 
 /** content / invariant 破壊を stage session の fatal latch へ渡す outcome にする。 */

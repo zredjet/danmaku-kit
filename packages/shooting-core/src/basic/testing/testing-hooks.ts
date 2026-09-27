@@ -1,5 +1,6 @@
 import { createShootingCoreWithTestingHooksForInternalTest } from "../core.ts";
 import type { ShootingCore } from "../api-types.ts";
+import type { ShootingCoreFeature } from "../extension/feature-module.ts";
 import { registerHeadlessDebugStateSerializerForTest } from "./debug-state.ts";
 import { assertInternalTestHooksEnabled } from "../instrumentation/test-hooks-guard.ts";
 
@@ -17,10 +18,11 @@ type StageSessionTestingHooks = Omit<InternalStageSessionTestingHooks, "register
 export function createShootingCoreWithTestingHooksForTest(
   coreVersion: string,
   hooks: StageSessionTestingHooks,
+  features: readonly ShootingCoreFeature[] = [],
 ): ShootingCore {
   assertInternalTestHooksEnabled("create a hook-enabled shooting core");
   return createShootingCoreWithTestingHooksForInternalTest(coreVersion, {
     ...hooks,
     registerHeadlessDebugStateSerializer: registerHeadlessDebugStateSerializerForTest,
-  });
+  }, features);
 }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -22,16 +22,23 @@ test("imports shooting core through the workspace package export", async () => {
   assert.equal(typeof core.createShootingCore, "function");
 });
 
-test("exposes only the root package export", async () => {
+test("exposes the root export and one entry per optional feature module directory", async () => {
   const packageJson = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8"));
+  const featureDirectories = await listFeatureDirectories();
 
-  assert.deepEqual(Object.keys(packageJson.exports).sort(), ["."]);
+  // optional feature は `src/features/<feature>/index.ts` を `./features/<feature>` で公開し、app が `createShootingCore()` に渡す。
+  assert.deepEqual(packageJson.exports, Object.fromEntries([
+    [".", "./src/basic/index.ts"],
+    ...featureDirectories.map((name) => [`./features/${name}`, `./src/features/${name}/index.ts`]),
+  ]));
+  assert.deepEqual(featureDirectories.filter((name) => !FEATURE_DIRECTORIES.includes(name)), []);
 });
 
 test("rejects deep package imports outside the public export map", async () => {
   const forbiddenSubpaths = [
     "package.json",
     ...await listBasicSourceSubpaths(),
+    ...await listFeatureSourceSubpaths(),
   ];
 
   for (const subpath of forbiddenSubpaths) {
@@ -127,6 +134,32 @@ async function listBasicSourceSubpaths() {
   const sourceRoot = path.join(packageRoot, "src", "basic");
   const files = await collectTypeScriptFiles(sourceRoot);
   return files.map((file) => path.relative(packageRoot, file).split(path.sep).join("/")).sort();
+}
+
+/** feature id（design 20）ごとの `src/features/` の directory 名。 */
+const FEATURE_DIRECTORIES = Object.freeze(["bomb", "graze", "affinity", "rank", "pickup", "advanced-scoring"]);
+
+/** `src/features/` の directory 名。feature がまだなければ空。 */
+async function listFeatureDirectories() {
+  try {
+    const entries = await readdir(path.join(packageRoot, "src", "features"), { withFileTypes: true });
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+}
+
+/** feature の source の package 内 path（package の export 名でも、実 file の path でも公開しない）。 */
+async function listFeatureSourceSubpaths() {
+  const subpaths = [];
+  for (const name of await listFeatureDirectories()) {
+    const files = await collectTypeScriptFiles(path.join(packageRoot, "src", "features", name));
+    subpaths.push(...files.map((file) => path.relative(packageRoot, file).split(path.sep).join("/")));
+  }
+  return subpaths.sort();
 }
 
 test("runs the minimum gameplay flow through the workspace package export", async () => {

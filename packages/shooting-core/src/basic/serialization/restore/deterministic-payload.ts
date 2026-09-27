@@ -193,9 +193,6 @@ export function parseRestoreDeterministicPayload(
   if (!enabledFeatureStateContract.ok) {
     return enabledFeatureStateContract;
   }
-  if (enabledFeatureStates.value.length > 0) {
-    return coreError("state.featureMismatch", "state.enabledFeatureStates require enabled feature modules");
-  }
 
   return okResult(Object.freeze({
     activeEntities: runtimeEntitiesContract.value.activeEntities,

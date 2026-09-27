@@ -1,5 +1,6 @@
 import type { Difficulty, GameDefinition, PlayerId, StageId } from "./content/types.ts";
 import type { ReadonlyEntityState } from "./entities/runtime-entity.ts";
+import type { ShootingCoreFeature } from "./extension/feature-module.ts";
 import type { GameEvent } from "./events/game-event.ts";
 import type { InputFrame } from "./input/input-frame.ts";
 import type { CoreResult } from "./result.ts";
@@ -52,6 +53,17 @@ export type GameFrame = Readonly<{
   tick: number;
   state: ReadonlyGameState;
   events: ReadonlyArray<GameEvent>;
+}>;
+
+/** `createShootingCore()` の設定。 */
+export type ShootingCoreOptions = Readonly<{
+  /** `ShootingCore.coreVersion` と serialize する `coreVersion`。省略すると `"0.0.0"`。 */
+  coreVersion?: string;
+  /**
+   * 有効にできる optional feature。feature の package entry（`@shooting-sample/shooting-core/features/<feature>`）が公開する値を渡す。
+   * `GameDefinition.enabledFeatures` は、ここにある feature だけを受け付ける。
+   */
+  features?: readonly ShootingCoreFeature[];
 }>;
 
 /**

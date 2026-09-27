@@ -2,6 +2,7 @@ import type { LoadedGame, StageSession } from "../api-types.ts";
 import { patternProgramsForDifficulty } from "../content/content-index.ts";
 import type { LoadedContentIndex } from "../content/content-index.ts";
 import type { PlayerDefinition, StageDefinition } from "../content/types.ts";
+import type { AnyFeatureModule } from "../extension/feature-module.ts";
 import { deepFreezePlainData } from "../shared/immutable.ts";
 import { createActiveStageSessionTestingHooks } from "../instrumentation/stage-session-testing-hooks.ts";
 import type { StageSessionTestingHookOptions } from "../instrumentation/stage-session-testing-hooks.ts";
@@ -30,10 +31,11 @@ export function createLoadedGame(
   content: LoadedContentIndex,
   coreVersion: string,
   testingHooks: StageSessionTestingHookOptions,
+  features: readonly AnyFeatureModule[],
 ): LoadedGame {
   return Object.freeze({
     restore(rawState) {
-      const restoredState = restoreStageState(rawState, content, coreVersion);
+      const restoredState = restoreStageState(rawState, content, coreVersion, features);
       if (!restoredState.ok) {
         return restoredState;
       }
@@ -45,7 +47,7 @@ export function createLoadedGame(
         return coreError("state.contentMismatch", "serialized content metadata does not match the loaded content");
       }
 
-      return okResult(createStageSessionFromContent(content, stage, player, testingHooks, {
+      return okResult(createStageSessionFromContent(content, stage, player, testingHooks, features, {
         debugSeed: null,
         initialState: restoredState.value.committedState,
         serializationMetadata: restoredState.value.serializationMetadata,
@@ -75,6 +77,12 @@ export function createLoadedGame(
         return coreError("difficulty.notSupported", `Difficulty not supported: ${options.value.difficulty}`);
       }
 
+      const featureStageContext = Object.freeze({
+        definition: content.definition,
+        stage,
+        player,
+        difficulty: options.value.difficulty,
+      });
       const entityAllocator = new EntityAllocator();
       const playerEntity = createPlayerRuntimeEntity(entityAllocator, player);
       if (!playerEntity.ok) {
@@ -85,6 +93,7 @@ export function createLoadedGame(
       const initialState = createCommittedStageState({
         activeEntities: [playerEntity.value],
         patternRunners: [],
+        featureStates: features.map((module) => ({ feature: module.feature, state: module.createInitialState(featureStageContext) })),
         expectedTick: 0,
         nextEntityId: entityAllocator.snapshot(),
         pendingEvents: [{ type: "stageStarted", tick: 0, stageId: stage.id }],
@@ -93,7 +102,7 @@ export function createLoadedGame(
         timelineCursor: 0,
         stageStatus: "playing",
       });
-      return okResult(createStageSessionFromContent(content, stage, player, testingHooks, {
+      return okResult(createStageSessionFromContent(content, stage, player, testingHooks, features, {
         debugSeed: options.value.seed,
         initialState,
         serializationMetadata: {
@@ -122,18 +131,22 @@ function createStageSessionFromContent(
   stage: StageDefinition,
   player: PlayerDefinition,
   testingHooks: StageSessionTestingHookOptions,
+  features: readonly AnyFeatureModule[],
   initial: Pick<StageSessionContext, "debugSeed" | "initialState" | "serializationMetadata">,
 ): StageSession {
+  const difficulty = initial.serializationMetadata.difficulty;
   return createStageSession({
     content: {
       bulletsById: content.bulletsById,
       enemiesById: content.enemiesById,
       pathsById: content.pathsById,
       patternsById: content.patternsById,
-      patternProgramsById: patternProgramsForDifficulty(content, initial.serializationMetadata.difficulty),
+      patternProgramsById: patternProgramsForDifficulty(content, difficulty),
       playerShotsById: content.playerShotsById,
       stage,
       player,
+      features,
+      featureStageContext: Object.freeze({ definition: content.definition, stage, player, difficulty }),
     },
     debugSeed: initial.debugSeed,
     initialState: initial.initialState,

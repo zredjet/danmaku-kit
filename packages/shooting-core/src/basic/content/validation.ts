@@ -1,4 +1,5 @@
 import type { CoreError, CoreWarning } from "../result.ts";
+import type { EnabledFeature } from "./types.ts";
 import { deepFreezePlainData } from "../shared/immutable.ts";
 import {
   validateAssetReferences,
@@ -24,17 +25,19 @@ export function validateGameDefinition(definition: unknown): CoreError[] {
 
 /**
  * `validateGameDefinition()` の本体。error がなければ、動作はするが content 制作者へ知らせたい warning（pattern の意味の検証など）も
- * 返す。
+ * 返す。`registeredFeatures` は `createShootingCore()` に module が渡された feature で、`enabledFeatures` はこの中の feature だけを
+ * 受け付ける（feature の規則による検証は Core が module を呼んで行う）。
  */
 export function validateGameDefinitionWithWarnings(
   definition: unknown,
+  registeredFeatures: readonly EnabledFeature[] = [],
 ): Readonly<{ errors: readonly CoreError[]; warnings: readonly CoreWarning[] }> {
   const errors: CoreError[] = [];
   const plainDefinition = deepFreezePlainData(definition);
   if (!plainDefinition) {
     return { errors: [{ code: "definition.invalidShape", message: "GameDefinition must be JSON-compatible plain data" }], warnings: [] };
   }
-  const validated = validateDefinitionShape(plainDefinition, errors);
+  const validated = validateDefinitionShape(plainDefinition, errors, registeredFeatures);
   if (!validated) {
     return { errors, warnings: [] };
   }

@@ -1,6 +1,7 @@
 import type { StageSession } from "../api-types.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
 import type { GameEvent } from "../events/game-event.ts";
+import type { AnyFeatureModule } from "../extension/feature-module.ts";
 import type { HashableGameState } from "../hash/hashable-state.ts";
 import { errorResult, okResult } from "../result.ts";
 import type { CoreError, CoreResult, CoreWarning } from "../result.ts";
@@ -82,11 +83,12 @@ export type RegisterHeadlessDebugStateSerializer = (
 export function createHeadlessDebugCheckpoint(
   metadata: StageSessionSerializationMetadata,
   committedState: CommittedStageState,
+  features: readonly AnyFeatureModule[],
   seed: string | null,
   metrics: HeadlessDebugTickMetrics | null,
   forceHashFailure: boolean,
 ): CoreResult<HeadlessDebugCheckpoint> {
-  const hashableState = createHashableGameState(metadata, committedState);
+  const hashableState = createHashableGameState(metadata, committedState, features);
   if (!hashableState.ok) {
     return errorResult(hashableState.errors);
   }

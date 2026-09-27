@@ -222,6 +222,15 @@ import type { GameplayActionId as DeepGameplayActionId } from "@shooting-sample/
 // @ts-expect-error internal runtime entity module is not importable through a deep package subpath.
 import type { EnemyBulletRuntimeEntity as DeepEnemyBulletRuntimeEntity } from "@shooting-sample/shooting-core/src/basic/entities/enemy-bullet/model.ts";
 
+// @ts-expect-error feature modules define themselves through the internal extension layer, not the root export.
+import { defineFeature } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error the feature module interface is internal to the Core and its feature packages.
+import type { FeatureModule } from "@shooting-sample/shooting-core";
+
+// @ts-expect-error the internal extension layer is not importable through a deep package subpath.
+import { defineFeature as DeepDefineFeature } from "@shooting-sample/shooting-core/src/basic/extension/feature-module.ts";
+
 // @ts-expect-error internal system order contract is not part of the root public contract.
 import type { StageTickSystemStep } from "@shooting-sample/shooting-core";
 
@@ -328,3 +337,6 @@ void (undefined as unknown as ReplayDivergenceReport);
 void recordReplayTraceForTest;
 void compareReplayTracesForTest;
 void DeepCompareReplayTraces;
+void defineFeature;
+void (undefined as unknown as FeatureModule<null>);
+void DeepDefineFeature;

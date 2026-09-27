@@ -10,6 +10,8 @@ import type {
   LoadedGame,
   SerializedGameState,
   ShootingCore,
+  ShootingCoreFeature,
+  ShootingCoreOptions,
   StageSession,
   StartStageOptions,
 } from "@shooting-sample/shooting-core";
@@ -17,6 +19,15 @@ import { definition } from "./content-definitions.ts";
 import { serializedInitialGameState } from "./serialized-state.ts";
 
 const core: ShootingCore = createShootingCore("type-contract");
+// Phase 2B-4: optional feature は feature の package entry が公開する値を `features` に渡す。
+const noFeatures: readonly ShootingCoreFeature[] = [];
+const coreOptions: ShootingCoreOptions = { coreVersion: "type-contract", features: noFeatures };
+const coreWithOptions: ShootingCore = createShootingCore(coreOptions);
+const coreWithDefaults: ShootingCore = createShootingCore();
+// @ts-expect-error a feature is made by the feature package entry, not by a plain object with the feature name.
+const forgedFeature: ShootingCoreFeature = { feature: "pickup" };
+// @ts-expect-error features take the feature package entries, not feature names.
+createShootingCore({ features: ["pickup"] });
 
 const input: InputFrame = {
   tick: 0,
@@ -120,6 +131,9 @@ if (loaded.ok) {
   }
 }
 
+void coreWithOptions;
+void coreWithDefaults;
+void forgedFeature;
 void input;
 void loaded;
 void loadedAsResult;

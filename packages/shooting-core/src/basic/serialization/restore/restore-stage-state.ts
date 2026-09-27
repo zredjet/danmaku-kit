@@ -1,9 +1,10 @@
 import type { LoadedContentIndex } from "../../content/content-index.ts";
+import type { AnyFeatureModule } from "../../extension/feature-module.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
 import type { SerializedPrngState } from "../../simulation/prng.ts";
 import { createCommittedStageState } from "../../state/committed-state.ts";
-import type { CommittedStageState } from "../../state/committed-state.ts";
+import type { CommittedFeatureState, CommittedStageState } from "../../state/committed-state.ts";
 import { serializeCommittedStageState } from "../../state/serialize-projection.ts";
 import {
   SERIALIZED_INPUT_FORMAT_VERSION,
@@ -14,6 +15,7 @@ import type { StageSessionSerializationMetadata } from "../metadata.ts";
 import { cloneRestoreTopLevelPlainRecord } from "../restore-plain-data.ts";
 import type { SerializedGameState } from "../types.ts";
 import { parseRestoreDeterministicPayload, validateRestorePrngSnapshot } from "./deterministic-payload.ts";
+import { restoreFeatureStates } from "./feature-states.ts";
 import type { ValidatedRestoreDeterministicPayload } from "./deterministic-payload.ts";
 import {
   parseRestoreCompatibilityMetadata,
@@ -46,6 +48,7 @@ export function restoreStageState(
   rawState: unknown,
   content: LoadedContentIndex,
   coreVersion: string,
+  features: readonly AnyFeatureModule[],
 ): CoreResult<RestoredStageState> {
   const schemaMetadata = parseRestoreSchemaMetadata(rawState);
   if (!schemaMetadata.ok) {
@@ -110,12 +113,24 @@ export function restoreStageState(
   if (!payload.ok) {
     return payload;
   }
+  const featureStates = restoreFeatureStates(payload.value.enabledFeatureStates, features, Object.freeze({
+    definition: content.definition,
+    stage: content.stagesById.get(state.value.stageId)!,
+    player: content.playersById.get(state.value.playerId)!,
+    difficulty: state.value.difficulty,
+    expectedTick: state.value.expectedTick,
+  }));
+  if (!featureStates.ok) {
+    return featureStates;
+  }
   const serializationMetadata = createRestoreSerializationMetadata(fullMetadata, compatibilityMetadata.value, content);
   const restoredState = createRestoreCommittedState(
     state.value,
     payload.value,
+    featureStates.value,
     prng.value,
     serializationMetadata,
+    features,
   );
   if (!restoredState.ok) {
     return restoredState;
@@ -151,14 +166,16 @@ function createRestoreSerializationMetadata(
 function createRestoreCommittedState(
   state: RestoreTopLevelState,
   payload: ValidatedRestoreDeterministicPayload,
+  featureStates: readonly CommittedFeatureState[],
   prngState: SerializedPrngState,
   metadata: StageSessionSerializationMetadata,
+  features: readonly AnyFeatureModule[],
 ): CoreResult<Readonly<{
   committedState: CommittedStageState;
   serializedSnapshot: SerializedGameState;
 }>> {
-  const committedState = toRestoreCommittedStageState(state, payload, prngState);
-  const committedSnapshot = serializeCommittedStageState(metadata, committedState);
+  const committedState = toRestoreCommittedStageState(state, payload, featureStates, prngState);
+  const committedSnapshot = serializeCommittedStageState(metadata, committedState, features);
   if (!committedSnapshot.ok) {
     return coreError("state.invalidShape", "SerializedGameState deterministic payload cannot be committed");
   }
@@ -173,11 +190,13 @@ function createRestoreCommittedState(
 function toRestoreCommittedStageState(
   state: RestoreTopLevelState,
   payload: ValidatedRestoreDeterministicPayload,
+  featureStates: readonly CommittedFeatureState[],
   prngState: SerializedPrngState,
 ): CommittedStageState {
   return createCommittedStageState({
     activeEntities: payload.activeEntities,
     patternRunners: payload.patternRunners,
+    featureStates,
     expectedTick: state.expectedTick,
     nextEntityId: state.nextEntityId,
     pendingEvents: payload.pendingEvents,

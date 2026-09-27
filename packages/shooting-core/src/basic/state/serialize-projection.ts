@@ -3,6 +3,7 @@ import { projectEnemyRuntimeEntityForSerializedState } from "../entities/enemy/s
 import { projectPlayerShotRuntimeEntityForSerializedState } from "../entities/player-shot/snapshot.ts";
 import { projectPlayerRuntimeEntityForSerializedState } from "../entities/player/snapshot.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
+import type { AnyFeatureModule } from "../extension/feature-module.ts";
 import {
   PATTERN_RUNNER_STATE_VERSION,
   patternRunnerIdOfEnemy,
@@ -23,13 +24,18 @@ import { assertNever } from "../shared/guards.ts";
 import { deepFreezeClone } from "../shared/immutable.ts";
 import { compareUtf8Lexicographic } from "../shared/utf8-order.ts";
 import { XorShift32 } from "../simulation/prng.ts";
-import { validateCommittedEntityInvariants, validateCommittedPendingEventInvariants } from "./committed-state.ts";
+import {
+  validateCommittedEntityInvariants,
+  validateCommittedFeatureStates,
+  validateCommittedPendingEventInvariants,
+} from "./committed-state.ts";
 import type { CommittedPendingEvent, UntrustedCommittedStageState } from "./committed-state.ts";
 
 /** committed snapshot と session metadata から public serialize DTO を生成する。 */
 export function serializeCommittedStageState(
   metadata: StageSessionSerializationMetadata,
   committedState: UntrustedCommittedStageState,
+  features: readonly AnyFeatureModule[],
 ): CoreResult<SerializedGameState> {
   const prng = XorShift32.restore(committedState.prngState);
   if (!prng.ok) {
@@ -43,6 +49,10 @@ export function serializeCommittedStageState(
   if (!pendingEvents.ok) {
     return pendingEvents;
   }
+  const featureStates = validateCommittedFeatureStates(committedState, features);
+  if (!featureStates.ok) {
+    return featureStates;
+  }
 
   const deterministicRuntimeEntities = committedState.activeEntities.map((entity) => projectRuntimeEntityForSerializedState(entity));
   const deterministicPendingEvents = pendingEvents.value.map((event) => projectPendingEventForSerializedState(event));
@@ -55,7 +65,11 @@ export function serializeCommittedStageState(
     patternRunnerStates: committedState.patternRunners
       .map((runner) => projectPatternRunnerForSerializedState(runner))
       .sort((left, right) => compareUtf8Lexicographic(left.runnerId, right.runnerId)),
-    enabledFeatureStates: [],
+    enabledFeatureStates: featureStates.value.map(({ module, state }) => ({
+      feature: module.feature,
+      stateVersion: module.stateVersion,
+      payload: module.serializeState(state),
+    })),
   };
 
   return okResult(deepFreezeClone({

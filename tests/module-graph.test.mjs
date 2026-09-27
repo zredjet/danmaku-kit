@@ -35,6 +35,19 @@ const SHOOTING_CORE_LAYER_RULES = Object.freeze([
   { target: "instrumentation/", allowedImporters: ["core.ts", "session/", "testing/"] },
   { target: "hash/", allowedImporters: ["state/hashable-projection.ts", "instrumentation/", "testing/"] },
   { target: "testing/", allowedImporters: [] },
+  {
+    target: "extension/",
+    allowedImporters: [
+      "core.ts",
+      "api-types.ts",
+      "index.ts",
+      "session/",
+      "state/",
+      "serialization/restore/",
+      "instrumentation/",
+      "testing/",
+    ],
+  },
 ]);
 
 /**
@@ -44,6 +57,21 @@ const SHOOTING_CORE_LAYER_RULES = Object.freeze([
  */
 const SHOOTING_CORE_LEAF_LAYER_RULES = Object.freeze([
   { importer: "shared/", allowedTargets: [] },
+  { importer: "extension/", allowedTargets: ["content/types.ts", "result.ts", "serialization/types.ts", "shared/"] },
+]);
+
+/**
+ * optional feature（`src/features/<feature>/`）が import してよい basic の module。path は `src/` からの相対。
+ *
+ * feature は同じ feature の directory とこの module だけを import する（型 import も含む）。basic は features を import せず、feature
+ * 同士も import しない。
+ */
+const FEATURE_ALLOWED_BASIC_TARGETS = Object.freeze([
+  "basic/extension/",
+  "basic/shared/",
+  "basic/result.ts",
+  "basic/content/types.ts",
+  "basic/serialization/types.ts",
 ]);
 
 /** root export から runtime import で到達させない test / tooling 専用 module。state hash と debug dump は test 側で計算する。 */
@@ -301,6 +329,32 @@ test("keeps shooting-core modules inside their dependency layers", async () => {
   assert.deepEqual(violations, [], "shooting-core imports cross a dependency layer rule");
 });
 
+test("finds feature imports that cross the feature boundary", () => {
+  const edges = [
+    ["basic/core.ts", "basic/extension/feature-module.ts"],
+    ["basic/core.ts", "features/pickup/index.ts"],
+    ["features/pickup/index.ts", "features/pickup/model.ts"],
+    ["features/pickup/index.ts", "basic/extension/feature-module.ts"],
+    ["features/pickup/model.ts", "basic/content/types.ts"],
+    ["features/pickup/model.ts", "basic/session/tick-pipeline.ts"],
+    ["features/pickup/model.ts", "features/bomb/index.ts"],
+    ["features/bomb/index.ts", "basic/shared/guards.ts"],
+  ];
+
+  assert.deepEqual(findFeatureLayerViolations(edges), [
+    "basic/core.ts -> features/pickup/index.ts",
+    "features/pickup/model.ts -> basic/session/tick-pipeline.ts",
+    "features/pickup/model.ts -> features/bomb/index.ts",
+  ]);
+});
+
+test("keeps basic free of feature imports and features on the extension layer", async () => {
+  const graph = await collectImportGraph(shootingCoreSourceRoot, { includeTypeOnly: true });
+  const edges = [...graph].flatMap(([file, targets]) => targets.map((target) => [toCoreSourcePath(file), toCoreSourcePath(target)]));
+
+  assert.deepEqual(findFeatureLayerViolations(edges), [], "shooting-core imports cross the feature boundary");
+});
+
 test("keeps entity kind directories independent of each other", async () => {
   const graph = await collectImportGraph(shootingCoreBasicRoot, { includeTypeOnly: true });
   const violations = [];
@@ -330,6 +384,7 @@ test("points shooting-core dependency rules at existing modules", async () => {
     ...SHOOTING_CORE_LAYER_RULES.flatMap((rule) => [rule.target, ...rule.allowedImporters]),
     ...SHOOTING_CORE_LEAF_LAYER_RULES.flatMap((rule) => [rule.importer, ...rule.allowedTargets]),
     ...SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES,
+    ...FEATURE_ALLOWED_BASIC_TARGETS.map((target) => target.slice("basic/".length)),
   ];
   const stale = [...new Set(rulePaths)]
     .filter((rulePath) => !modulePaths.some((modulePath) => matchesModulePath(modulePath, rulePath)));
@@ -346,6 +401,35 @@ test("keeps test-only diagnostics out of the shooting-core runtime import graph"
 
   assert.deepEqual(leaked, [], "root export loads test-only modules at runtime");
 });
+
+/**
+ * `src/` からの相対 path の import の組から、basic が features を、feature が別の feature か `FEATURE_ALLOWED_BASIC_TARGETS` の外の
+ * basic を import する組を `importer -> target` で返す。
+ */
+function findFeatureLayerViolations(edges) {
+  const violations = [];
+  for (const [importer, target] of edges) {
+    const importerFeature = /^features\/([^/]+)\//.exec(importer)?.[1] ?? null;
+    const targetFeature = /^features\/([^/]+)\//.exec(target)?.[1] ?? null;
+    if (importerFeature === null) {
+      if (importer.startsWith("basic/") && targetFeature !== null) {
+        violations.push(`${importer} -> ${target}`);
+      }
+      continue;
+    }
+    if (targetFeature === importerFeature) {
+      continue;
+    }
+    if (targetFeature !== null || !FEATURE_ALLOWED_BASIC_TARGETS.some((allowed) => matchesModulePath(target, allowed))) {
+      violations.push(`${importer} -> ${target}`);
+    }
+  }
+  return violations;
+}
+
+function toCoreSourcePath(file) {
+  return path.relative(shootingCoreSourceRoot, file).split(path.sep).join("/");
+}
 
 /** `entities/<kind>/` 配下の module なら kind directory 名を、それ以外なら null を返す。 */
 function entityKindDirectory(modulePath) {

@@ -9,7 +9,7 @@ import {
   MAX_STAGE_TIMELINE_STEPS,
 } from "../runtime-budgets.ts";
 import { KNOWN_ENABLED_FEATURES } from "../types.ts";
-import type { GameDefinition } from "../types.ts";
+import type { EnabledFeature, GameDefinition } from "../types.ts";
 import {
   validateAllowedKeys,
   validateAssetKeyArray,
@@ -38,7 +38,11 @@ const KNOWN_FEATURE_SET = new Set<string>(KNOWN_ENABLED_FEATURES);
  * TypeScript の型は JSON/YAML 読み込み後には効かないため、ここで object / array /
  * primitive を明示的に確認する。
  */
-export function validateDefinitionShape(definition: unknown, errors: CoreError[]): GameDefinition | null {
+export function validateDefinitionShape(
+  definition: unknown,
+  errors: CoreError[],
+  registeredFeatures: readonly EnabledFeature[] = [],
+): GameDefinition | null {
   const root = asRecord(definition);
   if (!root) {
     errors.push({ code: "definition.invalidShape", message: "GameDefinition must be an object" });
@@ -85,12 +89,16 @@ export function validateDefinitionShape(definition: unknown, errors: CoreError[]
         });
       }
     }
-    if (root.enabledFeatures.some((feature) => typeof feature === "string" && KNOWN_FEATURE_SET.has(feature))) {
-      errors.push({
-        code: "feature.unsupported",
-        message: "Basic core does not support optional features yet",
-        schemaPath: "enabledFeatures",
-      });
+    // 既知の feature でも、`createShootingCore()` に module が渡されていなければ動かせない。
+    for (const feature of seenFeatures) {
+      if (KNOWN_FEATURE_SET.has(feature) && !registeredFeatures.includes(feature as EnabledFeature)) {
+        errors.push({
+          code: "feature.unsupported",
+          message: `Optional feature is not registered with the core: ${feature}`,
+          schemaPath: "enabledFeatures",
+          targetId: feature,
+        });
+      }
     }
   }
 
