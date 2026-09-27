@@ -172,6 +172,17 @@ export type PatternDefinition = {
 
 /** pattern の 1 命令。1 step は `wait`、`fire`、`loop`、`repeat` のどれか 1 つの key だけを持つ。 */
 export type PatternStepDefinition =
+  | PatternRepeatStepDefinition
+  | {
+    /**
+     * 同じ tick のうちに戻る top-level の step index。戻った先から loop までの間に `wait` を含む必要がある。`repeat` の `steps` の中には
+     * 置けない。
+     */
+    loop: number;
+  };
+
+/** `repeat` の `steps` に置ける命令（`loop` 以外）。 */
+export type PatternRepeatStepDefinition =
   | {
     /** 次の命令を実行するまで待つ tick 数。 */
     wait: number;
@@ -180,24 +191,15 @@ export type PatternStepDefinition =
     fire: PatternFireDefinition;
   }
   | {
-    /**
-     * 同じ tick のうちに戻る top-level の step index。戻った先から loop までの間に `wait` を含む必要がある。`repeat` の `steps` の中には
-     * 置けない。
-     */
-    loop: number;
-  }
-  | {
     repeat: PatternRepeatDefinition;
   };
 
 /**
  * `steps` を `count` 回続けて実行する命令。load 時に展開して PatternProgram の run に正規化するため、runner の状態は増えない。
- *
- * `steps` には `wait`、`fire`、`repeat` を置ける（`loop` は置けない）。
  */
 export type PatternRepeatDefinition = {
   count: number;
-  steps: readonly PatternStepDefinition[];
+  steps: readonly PatternRepeatStepDefinition[];
 };
 
 /**
@@ -214,20 +216,27 @@ export type PatternFireDefinition = {
   origin?: "self";
   /** 敵弾の速さ（px / tick）。`stream` では最初の弾の速さ。 */
   speed: number;
-  fan?: {
-    count: number;
-    spreadDeg: number;
-  };
-  radial?: {
-    /** 1 周を等分する弾数。360° を `count` で割った角度が 0.25° の倍数になる数だけを受け付ける。 */
-    count: number;
-  };
   stream?: {
     count: number;
-    /** 次の弾へ足す速さ（px / tick）。負なら遅くなる。すべての弾の速さが正で上限以下になる必要がある。 */
+    /** 次の弾へ足す速さ（px / tick）。負なら遅くなる。`count` が 2 以上なら 0 以外で、すべての弾の速さが正で上限以下になる必要がある。 */
     speedStep: number;
   };
 } & (
+  | {
+    fan?: {
+      count: number;
+      spreadDeg: number;
+    };
+    radial?: never;
+  }
+  | {
+    radial: {
+      /** 1 周を等分する弾数。360° を `count` で割った角度が 0.25° の倍数になる数だけを受け付ける。 */
+      count: number;
+    };
+    fan?: never;
+  }
+) & (
   | {
     aim: "player";
     angleDeg?: never;

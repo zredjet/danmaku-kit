@@ -39,14 +39,14 @@ test("normalizes fire directions and spreads fan bullets evenly around the base 
     { fire: { bullet: "bullet.red_small", angleDeg: 0, speed: 1, fan: { count: 2, spreadDeg: 0 } } },
   ]);
 
-  assert.deepEqual(program.runs[0]!.fires, [
+  assert.deepEqual(program.runs.get(0)!.fires, [
     aimedThreeWay,
     { bullet: "bullet.red_small", direction: { kind: "angle", angleSteps: 360 }, bullets: bulletsAt(3, [0]) },
     { bullet: "bullet.red_small", direction: { kind: "angle", angleSteps: -180 }, bullets: bulletsAt(1, [-3, -1, 1, 3]) },
     { bullet: "bullet.red_small", direction: { kind: "angle", angleSteps: 0 }, bullets: bulletsAt(1, [0, 0]) },
   ]);
-  assert.equal(program.runs[0]!.bulletCount, 10);
-  assert.equal(Object.is(program.runs[0]!.fires[3]!.bullets[0]!.offsetSteps, -0), false);
+  assert.equal(program.runs.get(0)!.bulletCount, 10);
+  assert.equal(Object.is(program.runs.get(0)!.fires[3]!.bullets[0]!.offsetSteps, -0), false);
 });
 
 test("resolves each cursor's run up to the next wait or the end", () => {
@@ -58,14 +58,14 @@ test("resolves each cursor's run up to the next wait or the end", () => {
   ]);
 
   assert.equal(program.length, 4);
-  assert.deepEqual(program.runs, [
-    { fires: [], bulletCount: 0, executedCommands: 1, executedSteps: [0], next: { cursor: 1, waitTicks: 20 } },
-    { fires: [aimedThreeWay], bulletCount: 3, executedCommands: 2, executedSteps: [1, 2], next: { cursor: 3, waitTicks: 50 } },
-    { fires: [], bulletCount: 0, executedCommands: 1, executedSteps: [2], next: { cursor: 3, waitTicks: 50 } },
-    { fires: [aimedThreeWay], bulletCount: 3, executedCommands: 3, executedSteps: [1, 2, 3], next: { cursor: 3, waitTicks: 50 } },
-    { fires: [], bulletCount: 0, executedCommands: 0, executedSteps: [], next: null },
+  // run を始められるのは cursor 0、wait の直後（1 と 3）、末尾（4）だけ。
+  assert.deepEqual([...program.runs], [
+    [0, { fires: [], bulletCount: 0, executedCommands: 1, executedSteps: [0], next: { cursor: 1, waitTicks: 20 } }],
+    [1, { fires: [aimedThreeWay], bulletCount: 3, executedCommands: 2, executedSteps: [1, 2], next: { cursor: 3, waitTicks: 50 } }],
+    [3, { fires: [aimedThreeWay], bulletCount: 3, executedCommands: 3, executedSteps: [1, 2, 3], next: { cursor: 3, waitTicks: 50 } }],
+    [4, { fires: [], bulletCount: 0, executedCommands: 0, executedSteps: [], next: null }],
   ]);
-  assert.equal(Object.isFrozen(program.runs[1]!.fires), true);
+  assert.equal(Object.isFrozen(program.runs.get(1)!.fires), true);
 });
 
 test("follows nested loops back through their waits and runs off the end without a loop", () => {
@@ -79,18 +79,14 @@ test("follows nested loops back through their waits and runs off the end without
   ]);
   const ending = compile([{ fire }, { fire }]);
 
-  assert.deepEqual(program.runs.map((run) => [run.fires.length, run.executedCommands, run.next]), [
-    [1, 2, { cursor: 2, waitTicks: 2 }],
-    [0, 1, { cursor: 2, waitTicks: 2 }],
-    [1, 3, { cursor: 2, waitTicks: 2 }],
-    [0, 2, { cursor: 2, waitTicks: 2 }],
-    [1, 1, null],
-    [0, 0, null],
+  assert.deepEqual([...program.runs].map(([cursor, run]) => [cursor, run.fires.length, run.executedCommands, run.next]), [
+    [0, 1, 2, { cursor: 2, waitTicks: 2 }],
+    [2, 1, 3, { cursor: 2, waitTicks: 2 }],
+    [5, 0, 0, null],
   ]);
-  assert.deepEqual(ending.runs.map((run) => [run.bulletCount, run.executedCommands, run.next]), [
-    [2, 2, null],
-    [1, 1, null],
-    [0, 0, null],
+  assert.deepEqual([...ending.runs].map(([cursor, run]) => [cursor, run.bulletCount, run.executedCommands, run.next]), [
+    [0, 2, 2, null],
+    [2, 0, 0, null],
   ]);
 });
 
@@ -105,15 +101,13 @@ test("expands repeat into consecutive commands and points loops at the start of 
 
   // wait, fire, wait, fire, wait, wait, loop の 7 命令に展開し、loop は repeat の最初の命令（cursor 1）へ戻る。
   assert.deepEqual([program.stepCount, program.length], [4, 7]);
-  assert.deepEqual(program.runs.map((run) => [run.bulletCount, run.executedSteps, run.next]), [
-    [0, [0], { cursor: 1, waitTicks: 3 }],
-    [1, [1], { cursor: 3, waitTicks: 5 }],
-    [0, [1], { cursor: 3, waitTicks: 5 }],
-    [1, [1], { cursor: 5, waitTicks: 5 }],
-    [0, [1], { cursor: 5, waitTicks: 5 }],
-    [0, [2], { cursor: 6, waitTicks: 10 }],
-    [1, [1, 3], { cursor: 3, waitTicks: 5 }],
-    [0, [], null],
+  assert.deepEqual([...program.runs].map(([cursor, run]) => [cursor, run.bulletCount, run.executedSteps, run.next]), [
+    [0, 0, [0], { cursor: 1, waitTicks: 3 }],
+    [1, 1, [1], { cursor: 3, waitTicks: 5 }],
+    [3, 1, [1], { cursor: 5, waitTicks: 5 }],
+    [5, 0, [2], { cursor: 6, waitTicks: 10 }],
+    [6, 1, [1, 3], { cursor: 3, waitTicks: 5 }],
+    [7, 0, [], null],
   ]);
 });
 
@@ -123,7 +117,7 @@ test("spreads radial bullets around the circle from the base direction and stack
     { fire: { bullet: "bullet.red_small", aim: "player", fan: { count: 2, spreadDeg: 10 }, stream: { count: 3, speedStep: -0.5 }, speed: 3 } },
   ]);
 
-  assert.deepEqual(program.runs[0]!.fires.map((fire) => fire.bullets), [
+  assert.deepEqual(program.runs.get(0)!.fires.map((fire) => fire.bullets), [
     bulletsAt(2, [0, 360, 720, 1080]),
     [
       { offsetSteps: -20, speed: 3 },
@@ -134,5 +128,5 @@ test("spreads radial bullets around the circle from the base direction and stack
       { offsetSteps: 20, speed: 2 },
     ],
   ]);
-  assert.equal(program.runs[0]!.bulletCount, 10);
+  assert.equal(program.runs.get(0)!.bulletCount, 10);
 });

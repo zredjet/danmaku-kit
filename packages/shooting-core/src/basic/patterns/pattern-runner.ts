@@ -54,9 +54,9 @@ export function advancePatternRunner(program: PatternProgram, state: PatternRunn
       run: null,
     });
   }
-  const run = program.runs[state.cursor];
+  const run = program.runs.get(state.cursor);
   if (!run) {
-    throw new RangeError("pattern runner cursor must be within the program");
+    throw new RangeError("pattern runner cursor must be a run start of the program");
   }
   return Object.freeze({ state: patternRunnerStateAfterRun(program, run), run });
 }

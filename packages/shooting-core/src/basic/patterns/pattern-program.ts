@@ -1,5 +1,5 @@
 import type { BulletId, PatternDefinition, PatternFireDefinition, PatternId, PatternStepDefinition } from "../content/types.ts";
-import { angleStepsFromDegrees } from "../shared/angle-steps.ts";
+import { ANGLE_STEPS_PER_TURN, angleStepsFromDegrees } from "../shared/angle-steps.ts";
 
 /** 発射の向き。`aimAtPlayer` は発射する tick の自機の位置から、`angle` は固定の角度 step から決める。 */
 export type PatternFireDirection =
@@ -45,8 +45,11 @@ export type PatternProgram = Readonly<{
   stepCount: number;
   /** 展開した後の命令数。 */
   length: number;
-  /** cursor 0〜`length` の run。cursor が `length` の run は何もしない。 */
-  runs: readonly PatternRun[];
+  /**
+   * run を始められる cursor（0、各 `wait` の直後、`length`）ごとの run。runner の cursor はいつもこのどれかで、cursor が `length` の run は
+   * 何もしない。`wait` のない区間の途中の cursor は持たないため、表の大きさは命令数に比例する。
+   */
+  runs: ReadonlyMap<number, PatternRun>;
 }>;
 
 /** 展開した命令。`sourceStep` は元の top-level step の index で、`loop` の `target` は展開した後の命令の位置。 */
@@ -54,8 +57,6 @@ type NormalizedPatternCommand =
   | Readonly<{ kind: "wait"; ticks: number; sourceStep: number }>
   | Readonly<{ kind: "fire"; command: PatternFireCommand; sourceStep: number }>
   | Readonly<{ kind: "loop"; target: number; sourceStep: number }>;
-
-const ANGLE_STEPS_PER_TURN = 1_440;
 
 /** 検証済みの pattern から PatternProgram を作る。`steps` を持たない pattern は null を返す。 */
 export function compilePatternProgram(pattern: PatternDefinition): PatternProgram | null {
@@ -72,12 +73,14 @@ export function compilePatternProgram(pattern: PatternDefinition): PatternProgra
   const commands = expanded.map((command) => command.kind === "loop"
     ? Object.freeze({ ...command, target: startOfStep[command.target]! })
     : command);
-  const runs = Array.from({ length: commands.length + 1 }, (_, cursor) => resolvePatternRun(commands, cursor));
+  const runStarts = [0, ...commands.flatMap((command, index) => command.kind === "wait" ? [index + 1] : []), commands.length];
+  const runs = new Map([...new Set(runStarts)].sort((left, right) => left - right)
+    .map((cursor) => [cursor, resolvePatternRun(commands, cursor)] as const));
   return Object.freeze({
     patternId: pattern.id,
     stepCount: pattern.steps.length,
     length: commands.length,
-    runs: Object.freeze(runs),
+    runs,
   });
 }
 

@@ -1,7 +1,7 @@
 import { patternStreamSpeeds } from "../../patterns/pattern-program.ts";
 import type { CoreError } from "../../result.ts";
 import { asRecord } from "../../shared/guards.ts";
-import { angleStepsFromDegrees } from "../../shared/angle-steps.ts";
+import { ANGLE_STEPS_PER_TURN, angleStepsFromDegrees } from "../../shared/angle-steps.ts";
 import {
   MAX_ENEMY_BULLET_SPEED_PER_AXIS,
   MAX_PATTERN_ANGLE_DEGREES,
@@ -30,7 +30,6 @@ import { addSchemaContext } from "./schema-path.ts";
 
 const TOP_LEVEL_STEP_KINDS = Object.freeze(["wait", "fire", "loop", "repeat"] as const);
 const REPEAT_BODY_STEP_KINDS = Object.freeze(["wait", "fire", "repeat"] as const);
-const ANGLE_STEPS_PER_TURN = 1_440;
 
 /** PatternDefinition の shape validation。 */
 export function validatePatternShape(pattern: Record<string, unknown>, errors: CoreError[]): void {
@@ -276,6 +275,10 @@ function validatePatternStreamShape(path: string, value: unknown, speed: unknown
   validatePositiveIntegerAtMost(`${path}.count`, stream.count, MAX_PATTERN_STREAM_COUNT, errors);
   validateFiniteNumber(`${path}.speedStep`, stream.speedStep, errors);
   if (errors.length > errorStart || typeof speed !== "number" || !Number.isFinite(speed)) {
+    return;
+  }
+  if (stream.count !== 1 && stream.speedStep === 0) {
+    errors.push({ code: "definition.invalidShape", message: `${path}.speedStep must not be 0 when stream.count is more than 1` });
     return;
   }
   const speeds = patternStreamSpeeds(speed, stream.count as number, stream.speedStep as number);

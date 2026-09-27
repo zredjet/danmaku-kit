@@ -364,3 +364,26 @@ test("resolves bullet references inside repeat bodies with their nested schema p
     [["bullet.notFound", "content.patterns[0].steps[0].repeat.steps[0].repeat.steps[0].fire.bullet", "bullet.missing"]],
   );
 });
+
+test("rejects a pattern whose single tick runs more commands than the pattern command budget", () => {
+  const fires = (count: number) => Array.from({ length: count }, () => fanFire(1));
+  // repeat を展開すると 1 run が 2,001 命令（2,000 発と wait）になり、弾数は上限内でも命令数の上限を超える。
+  const overBudget = loadWithPattern({ steps: [{ repeat: { count: 250, steps: fires(8) } }, { wait: 1 }] });
+  const atBudget = loadWithPattern({ steps: [{ repeat: { count: 249, steps: fires(8) } }, ...fires(7), { wait: 1 }] });
+
+  assert.deepEqual(errorsOf(overBudget), [[
+    "definition.invalidConstraint",
+    "content.patterns[0].steps",
+    "pattern.steps execute 2001 commands in one tick, over the pattern command budget 2000",
+  ]]);
+  assert.equal(atBudget.ok, true);
+});
+
+test("rejects a stream that stacks identical bullets with a zero speed step", () => {
+  assert.deepEqual(errorsOf(loadWithPattern({ steps: [{ fire: { ...aimedFire, stream: { count: 3, speedStep: 0 } } }] })), [[
+    "definition.invalidShape",
+    "content.patterns[0].steps[0].fire.stream.speedStep",
+    "pattern.steps[].fire.stream.speedStep must not be 0 when stream.count is more than 1",
+  ]]);
+  assert.equal(loadWithPattern({ steps: [{ fire: { ...aimedFire, stream: { count: 1, speedStep: 0 } } }] }).ok, true);
+});

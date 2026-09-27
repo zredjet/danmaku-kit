@@ -25,8 +25,8 @@ export type RestoreSpawnBudget = Readonly<{
   enemyBulletCandidates: RestoreEnemyBulletCandidate[];
   /** `steps` を持つ pattern で spawn した step の発射 source。spawn index の昇順。 */
   patternFireSources: readonly RestorePatternFireSource[];
-  /** 消費済みの pattern 発射弾（spawn index、経過 tick、命令順、fan 順）。 */
-  consumedPatternBullets: Set<string>;
+  /** spawn index と経過 tick ごとに、最後に割り当てた pattern 発射弾の位置（命令順、弾の順を通した番号）。 */
+  lastPatternBulletPositions: Map<string, number>;
 }>;
 
 type RestoreEnemySpawnCandidate = Readonly<{
@@ -127,7 +127,7 @@ export function createRestoreSpawnBudget(
     enemySpawnCandidates,
     enemyBulletCandidates,
     patternFireSources: Object.freeze(patternFireSources),
-    consumedPatternBullets: new Set<string>(),
+    lastPatternBulletPositions: new Map<string, number>(),
   }));
 }
 
@@ -240,7 +240,7 @@ function takePatternBullet(
   bullet: EnemyBulletRuntimeEntity,
   expectedTick: number,
 ): RestoreMatchedSpawn | null {
-  const match = takeRestorePatternBullet(budget.patternFireSources, budget.consumedPatternBullets, bullet, expectedTick);
+  const match = takeRestorePatternBullet(budget.patternFireSources, budget.lastPatternBulletPositions, bullet, expectedTick);
   return match ? Object.freeze({ id: bullet.id, tick: match.fireTick, allocationOrder: match.allocationOrder }) : null;
 }
 

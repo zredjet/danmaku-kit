@@ -22,7 +22,7 @@ export type PatternStaticBudget = Readonly<{
 /** program を spawn から実行する run だけを見て、静的な予算と到達しない step を求める。 */
 export function analyzePatternProgram(program: PatternProgram): PatternStaticBudget {
   const schedule = createPatternSchedule(program);
-  const runs = schedule.runs.map((scheduled) => ({ scheduled, run: program.runs[scheduled.cursor]! }));
+  const runs = schedule.runs.map((scheduled) => ({ scheduled, run: program.runs.get(scheduled.cursor)! }));
   const reached = new Set(runs.flatMap(({ run }) => run.executedSteps));
   const firstFire = runs.find(({ run }) => run.bulletCount > 0);
   return Object.freeze({

@@ -86,15 +86,17 @@ export function countRestorePatternBullets(source: RestorePatternFireSource): nu
 }
 
 /**
- * active enemyBullet が、処理済み spawn の pattern がその生成 tick に撃った弾のどれかと一致すれば、その弾を消費して生成 tick と
+ * active enemyBullet が、処理済み spawn の pattern がその生成 tick に撃った弾のどれかと一致すれば、その弾を割り当てて生成 tick と
  * 採番順を返す。
  *
- * 生成 tick は `expectedTick - ageTicks`、生成位置はその tick の移動前の enemy 位置（spawn 位置から path を進めた位置）で、fan の
- * 何発目かまで一致する弾を 1 度だけ消費する。同じ tick の採番は fireOnSpawn の後、enemy の spawn 順、命令順、fan 順になる。
+ * 生成 tick は `expectedTick - ageTicks`、生成位置はその tick の移動前の enemy 位置（spawn 位置から path を進めた位置）。同じ tick の
+ * 採番は fireOnSpawn の後、enemy の spawn 順、命令順、命令の中の弾の順（向き、速さの順）になる。敵弾は entity id の昇順に来るので、
+ * 同じ enemy と生成 tick の弾は、前に割り当てた弾より後ろの位置のうち一致する最初の位置へ割り当てる（`lastMatchedPositions`）。
+ * 自機狙いの弾は向きを確かめられないため、途中の弾が消えていても速さだけで早い位置を取り違えないように、この順序で決める。
  */
 export function takeRestorePatternBullet(
   sources: readonly RestorePatternFireSource[],
-  consumedBullets: Set<string>,
+  lastMatchedPositions: Map<string, number>,
   bullet: EnemyBulletRuntimeEntity,
   expectedTick: number,
 ): RestorePatternBulletMatch | null {
@@ -112,16 +114,16 @@ export function takeRestorePatternBullet(
     if (!isSameRestorePosition(origin, bullet.spawnPosition)) {
       continue;
     }
+    const groupKey = `${source.spawnIndex}:${elapsedTicks}`;
+    const lastMatched = lastMatchedPositions.get(groupKey) ?? -1;
+    let position = -1;
     for (const [fireIndex, fire] of run.fires.entries()) {
-      if (fire.bullet !== bullet.definitionId) {
-        continue;
-      }
       for (const [bulletIndex, planned] of fire.bullets.entries()) {
-        const key = `${source.spawnIndex}:${elapsedTicks}:${fireIndex}:${bulletIndex}`;
-        if (consumedBullets.has(key) || !isPatternBulletVelocity(fire, planned, bullet.velocity)) {
+        position += 1;
+        if (position <= lastMatched || fire.bullet !== bullet.definitionId || !isPatternBulletVelocity(fire, planned, bullet.velocity)) {
           continue;
         }
-        consumedBullets.add(key);
+        lastMatchedPositions.set(groupKey, position);
         return Object.freeze({
           fireTick,
           allocationOrder: Object.freeze([1, source.spawnIndex, fireIndex, bulletIndex]),

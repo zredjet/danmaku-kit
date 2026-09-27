@@ -1,7 +1,7 @@
 import { analyzePatternProgram } from "../../patterns/pattern-budget.ts";
 import { compilePatternProgram } from "../../patterns/pattern-program.ts";
 import type { CoreError, CoreWarning } from "../../result.ts";
-import { MAX_ACTIVE_ENEMY_BULLETS } from "../runtime-budgets.ts";
+import { MAX_ACTIVE_ENEMY_BULLETS, MAX_PATTERN_COMMANDS_PER_TICK } from "../runtime-budgets.ts";
 import type { PatternDefinition } from "../types.ts";
 
 export type PatternSemanticDiagnostics = Readonly<{
@@ -12,8 +12,8 @@ export type PatternSemanticDiagnostics = Readonly<{
 /**
  * shape と参照の検証に通った pattern の意味を検証する（design 21.3）。
  *
- * `steps` を PatternProgram にして spawn から実行する run を見る。1 run の弾数が敵弾の active 上限を超える pattern は、撃った tick に
- * 必ず fatal になるので error にする。一度も撃たない pattern と、spawn からどの run でも実行されない step（`loop` より後ろなど）は
+ * `steps` を PatternProgram にして spawn から実行する run を見る。1 run の弾数が敵弾の active 上限を超える pattern と、1 run の命令数が
+ * 1 tick の命令数の上限を超える pattern（`repeat` を展開すると起き得る）は、その run の tick に必ず fatal になるので error にする。一度も撃たない pattern と、spawn からどの run でも実行されない step（`loop` より後ろなど）は
  * 動作はするが書き間違いの可能性が高いので warning にする。
  */
 export function validatePatternSemantics(patterns: readonly PatternDefinition[]): PatternSemanticDiagnostics {
@@ -30,6 +30,14 @@ export function validatePatternSemantics(patterns: readonly PatternDefinition[])
       errors.push({
         code: "definition.invalidConstraint",
         message: `pattern.steps fire ${budget.maxBulletsPerRun} bullets in one tick, over the active enemy bullet budget ${MAX_ACTIVE_ENEMY_BULLETS}`,
+        schemaPath: stepsPath,
+        referrerId: pattern.id,
+      });
+    }
+    if (budget.maxCommandsPerRun > MAX_PATTERN_COMMANDS_PER_TICK) {
+      errors.push({
+        code: "definition.invalidConstraint",
+        message: `pattern.steps execute ${budget.maxCommandsPerRun} commands in one tick, over the pattern command budget ${MAX_PATTERN_COMMANDS_PER_TICK}`,
         schemaPath: stepsPath,
         referrerId: pattern.id,
       });

@@ -461,3 +461,40 @@ export function createExtendedPatternDefinition(): GameDefinition {
     },
   };
 }
+
+/**
+ * 画面の右上の敵が自機狙いの fan 2 方向 × stream 2 発（速さ 8 と 1）を撃つ definition。
+ *
+ * 最初の方向の速い弾が先に playfield の外へ出て消えるため、restore が残った弾を速さだけで早い位置へ割り当てると採番順が合わなくなる
+ * （Phase 2B-2 の review で見つけた不具合の再現）。
+ */
+export function createAimedStreamCleanupDefinition(): GameDefinition {
+  const definition = createMinimumDefinition();
+  return {
+    ...definition,
+    content: {
+      ...definition.content,
+      stages: [{ ...definition.content.stages[0]!, timeline: [spawnScoutAt(0, "pattern.aimed_stream", { x: 374, y: 10 })] }],
+      patterns: [
+        ...definition.content.patterns,
+        {
+          id: "pattern.aimed_stream",
+          version: 1,
+          steps: [
+            {
+              fire: {
+                bullet: "bullet.red_small",
+                aim: "player",
+                fan: { count: 2, spreadDeg: 90 },
+                stream: { count: 2, speedStep: -7 },
+                speed: 8,
+              },
+            },
+            { wait: 30 },
+            { loop: 0 },
+          ],
+        },
+      ],
+    },
+  };
+}

@@ -40,7 +40,7 @@ export function createPatternSchedule(program: PatternProgram): PatternSchedule 
     }
     runIndexByCursor.set(cursor, runs.length);
     runs.push(Object.freeze({ elapsedTicks, cursor, bulletsBefore: bullets }));
-    const run = program.runs[cursor]!;
+    const run = requireRun(program, cursor);
     bullets += run.bulletCount;
     if (!run.next) {
       return freezeSchedule(program, runs, null);
@@ -53,13 +53,13 @@ export function createPatternSchedule(program: PatternProgram): PatternSchedule 
 /** 経過 tick `elapsedTicks` に実行する run を返す。その tick に run がなければ null。 */
 export function patternRunAt(schedule: PatternSchedule, elapsedTicks: number): PatternRun | null {
   const located = locateLatestRun(schedule, elapsedTicks);
-  return located.elapsedTicks === elapsedTicks ? schedule.program.runs[located.cursor]! : null;
+  return located.elapsedTicks === elapsedTicks ? requireRun(schedule.program, located.cursor) : null;
 }
 
 /** 経過 tick 0〜`elapsedTicks` の run が撃つ弾数の合計を返す。 */
 export function countPatternBulletsThrough(schedule: PatternSchedule, elapsedTicks: number): number {
   const located = locateLatestRun(schedule, elapsedTicks);
-  return located.bulletsBefore + schedule.program.runs[located.cursor]!.bulletCount;
+  return located.bulletsBefore + requireRun(schedule.program, located.cursor).bulletCount;
 }
 
 /** spawn tick から `advancedTicks` tick 進めた runner state を返す。`advancePatternRunner()` を同じ回数呼んだ結果と一致する。 */
@@ -68,7 +68,7 @@ export function patternRunnerStateAt(schedule: PatternSchedule, advancedTicks: n
     return INITIAL_PATTERN_RUNNER_STATE;
   }
   const located = locateLatestRun(schedule, advancedTicks - 1);
-  const state = patternRunnerStateAfterRun(schedule.program, schedule.program.runs[located.cursor]!);
+  const state = patternRunnerStateAfterRun(schedule.program, requireRun(schedule.program, located.cursor));
   if (state.waitRemaining === 0) {
     return state;
   }
@@ -127,4 +127,13 @@ function freezeSchedule(
     runs: Object.freeze([...runs]),
     cycle: cycle ? Object.freeze(cycle) : null,
   });
+}
+
+/** 時刻表がたどる cursor はいつも run の始まりなので、表にない cursor は PatternProgram の不整合として throw する。 */
+function requireRun(program: PatternProgram, cursor: number): PatternRun {
+  const run = program.runs.get(cursor);
+  if (!run) {
+    throw new RangeError("pattern schedule cursor must be a run start of the program");
+  }
+  return run;
 }

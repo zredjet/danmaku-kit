@@ -10,6 +10,7 @@ import {
   createEnemyPatternDefinition,
   createExitingPatternEnemyDefinition,
   createExtendedPatternDefinition,
+  createAimedStreamCleanupDefinition,
 } from "../../test-support/definitions.ts";
 import { tableVelocity } from "../../test-support/geometry.ts";
 import { createMoveInputFrame, createShotInputFrame } from "../../test-support/input-frames.ts";
@@ -118,6 +119,19 @@ test("restores pattern runners and aimed or fixed-angle pattern bullets at any t
 
 test("restores radial, stream and repeated pattern bullets and runners at any tick and continues identically", () => {
   assertRestoresAndContinues(loadGameFromDefinition(createExtendedPatternDefinition()), wanderingInputs(24), [1, 2, 3, 4, 5, 6, 8, 12, 13, 15, 20]);
+});
+
+test("restores aimed fan and stream bullets in allocation order after an earlier bullet of the same fire is gone", () => {
+  const game = loadGameFromDefinition(createAimedStreamCleanupDefinition());
+  const inputs = wanderingInputs(40);
+  const source = startStageFromLoadedGame(game);
+  const bulletCounts = inputs.map((input) => assertTickOk(source.tick(input), `tick ${input.tick}`).state.entities
+    .filter((entity) => entity.kind === "enemyBullet").length);
+
+  // 最初に撃った 4 発のうち、最初の方向の速い弾が他より先に消える tick を含めて restore する。
+  assert.equal(bulletCounts[0], 4);
+  assert.ok(bulletCounts.slice(1, 30).some((count) => count > 0 && count < 4));
+  assertRestoresAndContinues(game, inputs, [1, 4, 8, 12, 16, 20, 24, 28, 31, 35]);
 });
 
 test("restores the bullets of enemies that were destroyed or left the playfield", () => {

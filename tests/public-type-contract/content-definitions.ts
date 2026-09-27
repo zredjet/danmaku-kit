@@ -232,6 +232,22 @@ const invalidPatternRepeatCount: PatternDefinition = {
     { repeat: { count: "3", steps: [{ wait: 1 }] } },
   ],
 };
+const invalidPatternLoopInsideRepeat: PatternDefinition = {
+  id: "pattern.invalid",
+  version: 1,
+  steps: [
+    // @ts-expect-error loop returns to a top-level step and cannot be placed inside repeat.
+    { repeat: { count: 2, steps: [{ wait: 1 }, { loop: 0 }] } },
+  ],
+};
+const invalidPatternFanAndRadial: PatternDefinition = {
+  id: "pattern.invalid",
+  version: 1,
+  steps: [
+    // @ts-expect-error fire spreads bullets with either fan or radial, not both.
+    { fire: { bullet: "bullet.red_small", aim: "player", speed: 2, fan: { count: 3, spreadDeg: 24 }, radial: { count: 8 } } },
+  ],
+};
 const invalidPatternStream: PatternDefinition = {
   id: "pattern.invalid",
   version: 1,
@@ -362,6 +378,8 @@ void stepsPatternDefinition;
 void repeatRadialStreamPatternDefinition;
 void invalidPatternRepeatCount;
 void invalidPatternStream;
+void invalidPatternLoopInsideRepeat;
+void invalidPatternFanAndRadial;
 void invalidPatternFireWithAimAndAngle;
 void invalidPatternFireWithoutDirection;
 void invalidPatternFireOrigin;
