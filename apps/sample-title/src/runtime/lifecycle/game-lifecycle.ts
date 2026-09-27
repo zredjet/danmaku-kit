@@ -60,13 +60,15 @@ const PAUSABLE_STATES: readonly GameLifecycleState[] = Object.freeze(["playing",
  * - `stageStarting` 中の focus lost / visibility change は状態を保ったまま開始演出の timer を止める。
  * - `loading`、`title`、`stageCleared`、`gameOver`、`result`、`paused` 中の focus lost / visibility change は状態を変えない。
  * - focus lost / visibility change と `paused` の出入りでは、どの状態でも accumulator と入力を捨てる。
+ * - loading を終えて `title` へ進むとき、`stageStarting` へ進むとき、`title` へ戻るときも入力を捨て、前の画面で押した key を次の画面へ
+ *   持ち越さない。
  */
 export function transitionLifecycle(current: GameLifecycle, event: LifecycleEvent): LifecycleTransition {
   switch (event.type) {
     case "loadingStarted":
       return current.state === "booting" ? moveTo("loading") : stay(current);
     case "loadingFinished":
-      return current.state === "loading" ? moveTo("title") : stay(current);
+      return current.state === "loading" ? moveTo("title", { discardInput: true }) : stay(current);
     case "startRequested":
       return current.state === "title" ? moveTo("stageStarting", { discardInput: true }) : stay(current);
     case "stageStartFinished":

@@ -41,6 +41,18 @@ test("walks from booting through a stage and back to the title", () => {
   ]);
 });
 
+test("discards input when moving to the title or into a stage", () => {
+  assert.deepEqual(
+    [
+      transitionLifecycle(at("loading"), { type: "loadingFinished" }),
+      transitionLifecycle(at("title"), { type: "startRequested" }),
+      transitionLifecycle(at("gameOver"), { type: "returnToTitle" }),
+      transitionLifecycle(at("stageStarting"), { type: "stageStartFinished" }),
+    ].map((transition) => [transition.lifecycle.state, transition.discardInput]),
+    [["title", true], ["stageStarting", true], ["title", true], ["playing", false]],
+  );
+});
+
 test("pauses playing with pausedFrom and resumes only on pause, discarding input both ways", () => {
   const paused = transitionLifecycle(at("playing"), { type: "pauseToggled" });
   const stillPaused = transitionLifecycle(paused.lifecycle, { type: "focusLost" });

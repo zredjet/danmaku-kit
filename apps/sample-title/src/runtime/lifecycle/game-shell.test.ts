@@ -111,6 +111,20 @@ test("loads into the title and ignores UI actions pressed while loading", () => 
   assert.deepEqual(seeds, []);
 });
 
+test("does not carry a confirm pressed during loading into the title when loading never advanced the shell", () => {
+  const { loadedGame, seeds } = createScriptedGame();
+  const { shell, input } = createShell(loadedGame);
+
+  // stage scene は view pool を作り終えるまで shell を進めないため、loading 中の押下はラッチされたまま finishLoading() に届く。
+  shell.beginLoading();
+  press(input, "Enter");
+  shell.finishLoading();
+  const title = expectOk(shell.advance(TICK_MS));
+
+  assert.equal(title.lifecycle.state, "title");
+  assert.deepEqual(seeds, []);
+});
+
 test("starts a stage from the title, shows the start timer, then runs ticks", () => {
   const { shell, input, seeds } = createShellAtTitle();
 

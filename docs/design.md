@@ -326,7 +326,7 @@ Phase 2A-9 の sample app の実装:
 - `src/runtime/lifecycle/game-lifecycle.ts` の `transitionLifecycle()` が上の遷移を純粋関数として持ち、入力と accumulator を捨てる合図と開始演出 timer を止める合図を返す。Phaser に依存しない `GameShell`（`game-shell.ts`）が UI action、focus lost / visibility change、Core の最終 frame を lifecycle の出来事に変え、合図を入力 adapter、stage loop、timer に実行させる。`result` と `replayPlayback` は型だけを置き、Phase 2A では遷移しない。
 - boot scene が asset の読み込みで `loading` を始め、stage scene が view pool を作り終えたら `title` へ進む。`title` の `confirm`（Enter / Space）で `stageStarting` へ進んで stage session を作り、seed を決める（`?seed=` があれば毎回その seed、なければ開始ごとに乱数）。開始演出（READY）は render frame の経過時間で 1,000 ms 続き、その間は tick を実行しない。
 - `playing` 中の `pause`（P / Esc）と focus lost / visibility change で `paused` へ進み、`pause` で `playing` へ戻る。Core が `stageCleared` / `gameOver` の frame を返した render frame で同じ名前の state へ進み、`confirm` で `title` へ戻る（Phase 2A は `result` 画面を置かない）。
-- `loading` 中に押した UI action は捨てる。`stageStarting` へ進むとき、`paused` の出入り、`title` へ戻るときに入力ラッチと accumulator を捨てるため、開始前から押している key は一度離すまで効かない。
+- loading を終えて `title` へ進むとき、`stageStarting` へ進むとき、`paused` の出入り、`title` へ戻るときに入力ラッチと accumulator を捨てる。loading 中（stage scene が view pool を作っている間は shell を進めない）に押した UI action は title へ持ち越さず、開始前から押している key は一度離すまで効かない。
 
 ## 7. 更新ループ
 
