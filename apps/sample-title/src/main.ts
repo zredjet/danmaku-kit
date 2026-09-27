@@ -4,21 +4,26 @@ import gameDefinition, { assetManifest } from "virtual:sample-title/game-definit
 import { PHASE_2A_AUDIO_STATUS } from "./runtime/audio/audio-status.ts";
 import { KeyboardInputAdapter } from "./runtime/input/keyboard-input.ts";
 import { GameShell } from "./runtime/lifecycle/game-shell.ts";
+import { applyRenderScale } from "./runtime/phaser/render-scale.ts";
 import { startSampleTitleGame } from "./runtime/phaser/sample-title-game.ts";
 import { collectCollisionRadii } from "./runtime/view/collision-radii.ts";
 import { collectDefinitionAssets } from "./runtime/view/definition-assets.ts";
 import { planViewPoolCapacities } from "./runtime/view/view-pool-plan.ts";
+import { svgRasterScaleFor } from "./runtime/view/viewport-layout.ts";
 import { HudOverlay } from "./ui/hud-overlay.ts";
+import { fitStageToViewport } from "./ui/viewport-fit.ts";
 
 const parent = document.getElementById("game");
 if (!parent) {
   throw new Error("index.html must contain the #game element");
 }
-// canvas と DOM overlay の HUD を同じ箱に重ねる。
+// canvas と DOM overlay の HUD を同じ transform root に重ね、root ごと viewport へ収める。
 const stageRoot = document.createElement("div");
 stageRoot.className = "stage-root";
 parent.append(stageRoot);
 const hud = new HudOverlay(stageRoot);
+const viewport = fitStageToViewport({ container: parent, stageRoot });
+const initialLayout = viewport.layout();
 
 const core = createShootingCore();
 const loaded = core.load(gameDefinition);
@@ -42,13 +47,15 @@ const shell = new GameShell({
   input: new KeyboardInputAdapter(),
 });
 
-startSampleTitleGame({
+const game = startSampleTitleGame({
   parent: stageRoot,
+  renderScale: initialLayout.renderScale,
   boot: {
     assetManifest,
     baseUrl: import.meta.env.BASE_URL,
     definitionAssets: collectDefinitionAssets(gameDefinition),
     viewPoolPlan: planViewPoolCapacities(gameDefinition, stage.id, gameDefinition.defaultPlayerId),
+    svgRasterScale: svgRasterScaleFor(initialLayout.renderScale),
     shell,
     hud,
   },
@@ -60,6 +67,7 @@ startSampleTitleGame({
     audioStatus: PHASE_2A_AUDIO_STATUS,
   },
 });
+viewport.onLayoutChange((layout) => applyRenderScale(game, layout.renderScale));
 
 /** `?seed=` があれば毎回その seed で stage を始める。seed は debug HUD に出し、同じ入力の再現に使う。 */
 function readRequestedSeed(): string | null {

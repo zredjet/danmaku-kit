@@ -1,29 +1,33 @@
 import { AUTO, Game, Scale } from "phaser";
 
-import { PLAYFIELD_HEIGHT, PLAYFIELD_WIDTH } from "../view/playfield.ts";
 import { BootScene, type BootSceneOptions } from "./boot-scene.ts";
+import { renderSizeOf } from "./render-scale.ts";
 import { StageScene, type StageSceneOptions } from "./stage-scene.ts";
 
 export type SampleTitleGameOptions = Readonly<{
   parent: HTMLElement;
+  /** canvas を描く解像度の倍率（`ViewportLayout.renderScale`）。後から `applyRenderScale()` で変えられる。 */
+  renderScale: number;
   boot: BootSceneOptions;
   stage: StageSceneOptions;
 }>;
 
 /**
- * 内部解像度の canvas で loading（boot scene）を始め、asset を読み込めたら stage scene へ進む。`parent` には canvas と DOM overlay の
- * HUD を重ねる箱を渡す。
+ * loading（boot scene）を始め、asset を読み込めたら stage scene へ進む。`parent` には canvas と DOM overlay の HUD を重ねる transform
+ * root を渡す。
  *
- * keyboard 入力は scene が window から受けるため、Phaser の keyboard plugin は無効にする。integer scale と letterbox は
- * Phase 2A-10 で扱う。
+ * canvas は内部解像度の `renderScale` 倍の画素で描き、CSS の大きさは内部解像度のままにする（index.html）。表示の倍率と letterbox は
+ * transform root が持つため、Phaser の scale manager は拡大縮小しない。keyboard 入力は scene が window から受けるため、Phaser の
+ * keyboard plugin は無効にする。
  */
 export function startSampleTitleGame(options: SampleTitleGameOptions): Game {
-  const { parent, boot, stage } = options;
+  const { parent, renderScale, boot, stage } = options;
+  const { width, height } = renderSizeOf(renderScale);
   return new Game({
     type: AUTO,
     parent,
-    width: PLAYFIELD_WIDTH,
-    height: PLAYFIELD_HEIGHT,
+    width,
+    height,
     backgroundColor: "#0b0d1a",
     scale: { mode: Scale.NONE },
     input: { keyboard: false },

@@ -26,6 +26,8 @@ export type EntityViewsOptions = Readonly<{
   collisionRadii: ReadonlyMap<string, number>;
   /** definition id から読み込み済み texture の key を引く表。 */
   textures: ReadonlyMap<string, string>;
+  /** texture の key から、texture の画素数と内部解像度で描く大きさの比を引く表。載っていない texture は 1。 */
+  textureScales: ReadonlyMap<string, number>;
   capacities: Readonly<Record<EntityKind, number>>;
 }>;
 
@@ -98,7 +100,13 @@ export class EntityViews {
       if (!image) {
         return { type: "viewPoolExhausted", kind: entity.kind, capacity: pool.capacity, entityId: entity.id };
       }
-      image.setTexture(this.#textureOf(entity)).setPosition(entity.position.x, entity.position.y).setVisible(true).setActive(true);
+      const texture = this.#textureOf(entity);
+      image
+        .setTexture(texture)
+        .setScale(1 / (this.#options.textureScales.get(texture) ?? 1))
+        .setPosition(entity.position.x, entity.position.y)
+        .setVisible(true)
+        .setActive(true);
       this.#views.set(entity.id, { kind: entity.kind, image });
     }
     for (const entity of diff.updated) {

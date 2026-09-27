@@ -2,11 +2,17 @@ import type { RuntimeEvent } from "../runtime-event.ts";
 import { resolveAssetUrl } from "./asset-manifest.ts";
 import type { AssetManifest, AssetManifestEntry } from "./asset-manifest.ts";
 
-/** loading で読み込む画像 1 つ。`format` は Phaser の loader の選び分けに使う。 */
+/**
+ * loading で読み込む画像 1 つ。`format` は Phaser の loader の選び分けに使う。
+ *
+ * `rasterScale` は texture の画素数と、内部解像度で描く大きさの比。SVG は canvas を描く解像度に合わせて拡大して rasterize し、
+ * 描画では `1 / rasterScale` 倍して内部解像度の大きさに戻す。ビットマップ画像は元の画素のまま（1）。
+ */
 export type AssetLoadRequest = Readonly<{
   key: string;
   url: string;
   format: "svg" | "image";
+  rasterScale: number;
 }>;
 
 /** 読み込み計画。`notLoaded` は Phase 2A の loader が読まない asset と理由で、読み込み失敗と同じ規則で扱う。 */
@@ -23,18 +29,20 @@ export type AssetLoadOutcome =
 /**
  * manifest から loading で読み込む asset を決める。
  *
- * Phase 2A の loader は sprite を画像として読む。audio は Phase 2A の対象外なので読まずに省略として扱い、atlas など未対応の type は
- * 読み込みに失敗した asset と同じ規則（required なら開始を止め、fallback があれば使う）に回す。
+ * Phase 2A の loader は sprite を画像として読み、SVG は `svgRasterScale` 倍で rasterize する。audio は Phase 2A の対象外なので読まずに
+ * 省略として扱い、atlas など未対応の type は読み込みに失敗した asset と同じ規則（required なら開始を止め、fallback があれば使う）に回す。
  */
-export function planAssetLoads(manifest: AssetManifest, baseUrl: string): AssetLoadPlan {
+export function planAssetLoads(manifest: AssetManifest, baseUrl: string, svgRasterScale = 1): AssetLoadPlan {
   const requests: AssetLoadRequest[] = [];
   const notLoaded = new Map<string, string>();
   for (const [key, entry] of sortedEntries(manifest)) {
     if (entry.type === "sprite") {
+      const svg = entry.path.toLowerCase().endsWith(".svg");
       requests.push(Object.freeze({
         key,
         url: resolveAssetUrl(baseUrl, entry.path),
-        format: entry.path.toLowerCase().endsWith(".svg") ? "svg" : "image",
+        format: svg ? "svg" : "image",
+        rasterScale: svg ? svgRasterScale : 1,
       }));
     } else if (entry.type === "audio") {
       notLoaded.set(key, "audio is muted in Phase 2A");

@@ -13,15 +13,26 @@
       }
 
       #game {
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        position: relative;
         height: 100%;
       }
 
-      /* canvas と DOM overlay の HUD を同じ大きさの箱に重ねる。scale と letterbox は Phase 2A-10 で扱う。 */
+      /*
+       * canvas と DOM overlay の HUD を内部解像度の大きさの transform root に重ねる。letterbox の位置と表示の倍率は
+       * src/ui/viewport-fit.ts が transform で当てる（design 12）。
+       */
       .stage-root {
-        position: relative;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 384px;
+        height: 448px;
+        transform-origin: 0 0;
+      }
+
+      /* canvas は内部解像度の render scale 倍の画素で描き、CSS では内部解像度の大きさに収める。 */
+      .stage-root > canvas {
+        display: block;
         width: 384px;
         height: 448px;
       }

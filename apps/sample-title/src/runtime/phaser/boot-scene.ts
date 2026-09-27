@@ -17,6 +17,8 @@ export type BootSceneOptions = Readonly<{
   /** definition id から content の asset key を引く表。 */
   definitionAssets: ReadonlyMap<string, string>;
   viewPoolPlan: ViewPoolPlan;
+  /** SVG の sprite を rasterize する倍率（`svgRasterScaleFor()`）。 */
+  svgRasterScale: number;
   shell: Pick<GameShell, "beginLoading">;
   hud: HudPort;
 }>;
@@ -25,6 +27,8 @@ export type BootSceneOptions = Readonly<{
 export type StageSceneData = Readonly<{
   /** definition id から、読み込み済みの texture の key を引く表。fallback を使った asset は fallback の key になる。 */
   textures: ReadonlyMap<string, string>;
+  /** 読み込み済みの texture の key から、texture の画素数と内部解像度で描く大きさの比を引く表。 */
+  textureScales: ReadonlyMap<string, number>;
   viewPoolCapacities: Extract<ViewPoolPlan, { ok: true }>["capacities"];
   /** fallback や省略のように、stage は始められるが debug HUD に出す asset の出来事。 */
   assetEvents: readonly RuntimeEvent[];
@@ -49,7 +53,7 @@ export class BootScene extends Scene {
   }
 
   preload(): void {
-    const plan = planAssetLoads(this.#options.assetManifest, this.#options.baseUrl);
+    const plan = planAssetLoads(this.#options.assetManifest, this.#options.baseUrl, this.#options.svgRasterScale);
     this.#requests = plan.requests;
     for (const [key, reason] of plan.notLoaded) {
       this.#failures.set(key, reason);
@@ -65,7 +69,7 @@ export class BootScene extends Scene {
     });
     for (const request of plan.requests) {
       if (request.format === "svg") {
-        this.load.svg(request.key, request.url);
+        this.load.svg(request.key, request.url, { scale: request.rasterScale });
       } else {
         this.load.image(request.key, request.url);
       }
@@ -100,6 +104,7 @@ export class BootScene extends Scene {
     }
     const data: StageSceneData = {
       textures: textures.textures,
+      textureScales: new Map(this.#requests.map((request) => [request.key, request.rasterScale])),
       viewPoolCapacities: plan.capacities,
       assetEvents: outcome.events,
     };

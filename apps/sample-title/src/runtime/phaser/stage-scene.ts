@@ -9,6 +9,7 @@ import { isPlayerVisibleWhileInvincible } from "../view/invincibility-blink.ts";
 import type { StageSceneData } from "./boot-scene.ts";
 import { EntityViews } from "./entity-views.ts";
 import { HitSparkViews } from "./hit-spark-views.ts";
+import { fitCameraToPlayfield } from "./render-scale.ts";
 
 export type StageSceneOptions = Readonly<{
   shell: GameShell;
@@ -57,10 +58,12 @@ export class StageScene extends Scene {
     if (!data) {
       throw new Error("stage scene must be started by the boot scene");
     }
+    fitCameraToPlayfield(this);
     this.#assetNotes = data.assetEvents.filter((event) => event.type === "assetFallbackUsed").map(describeRuntimeEvent);
     this.#views = new EntityViews(this, {
       collisionRadii: this.#options.collisionRadii,
       textures: data.textures,
+      textureScales: data.textureScales,
       capacities: data.viewPoolCapacities,
     });
     this.#sparkViews = new HitSparkViews(this, HIT_SPARK_BUDGET.maxActive);

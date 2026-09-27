@@ -24,17 +24,17 @@ test("joins base-relative paths to the base URL", () => {
   assert.equal(resolveAssetUrl("/shooting", "assets/a.png"), "/shooting/assets/a.png");
 });
 
-test("loads sprites as images, leaves audio muted and other types unsupported", () => {
+test("loads sprites as images with SVGs rasterized at the given scale, leaves audio muted and other types unsupported", () => {
   const plan = planAssetLoads(manifest({
     "player.default": sprite("assets/sprites/player.svg"),
     "enemy.scout": sprite("assets/sprites/enemy.PNG"),
     "bgm.stage01": { type: "audio", path: "assets/audio/stage01.ogg", required: false, usage: "audio" },
     "atlas.effects": { type: "atlas", path: "assets/atlas/effects.json", required: false, usage: "decorative" },
-  }), "/base/");
+  }), "/base/", 3);
 
   assert.deepEqual(plan.requests, [
-    { key: "enemy.scout", url: "/base/assets/sprites/enemy.PNG", format: "image" },
-    { key: "player.default", url: "/base/assets/sprites/player.svg", format: "svg" },
+    { key: "enemy.scout", url: "/base/assets/sprites/enemy.PNG", format: "image", rasterScale: 1 },
+    { key: "player.default", url: "/base/assets/sprites/player.svg", format: "svg", rasterScale: 3 },
   ]);
   assert.deepEqual([...plan.notLoaded], [
     ["atlas.effects", "asset type atlas is not supported yet"],
