@@ -8,7 +8,8 @@
 現在の状況: Phase 2B（Authoring / content expansion）まで完了した。ブラウザで sample stage 1 を clear まで遊べ、content を YAML で書いて
 validate-content の診断と docs（[examples](docs/content-authoring/examples/README.md)、[error guide](docs/content-authoring/error-guide.md)、
 [sample content spec](docs/sample-content-spec.md)）で直し、dev server の Preview で単体再生して確かめられる。完了の判定は
-[docs/implementation-plan.md](docs/implementation-plan.md) の「Phase 2A 完了判定」と「Phase 2B 完了判定」にある。
+[docs/implementation-plan.md](docs/implementation-plan.md) の「Phase 2A 完了判定」と「Phase 2B 完了判定」にある（Phase 2B は、CI での実行と Linux の
+screenshot baseline を remote ができてから確かめる条件付きの完了）。
 
 現在の方針:
 
@@ -55,7 +56,7 @@ URL に `?seed=<文字列>` を付けると、毎回その seed で stage を始
 
 dev server（と test build）では `?preview` を付けると Preview を開き、stage、enemy（path と pattern を選ぶ）、pattern、path を単体再生する。`?preview=pattern:pattern.gunship_barrage` のように対象を URL で選べる（`stage:<id>`、`enemy:<enemy>,<path>,<pattern>`、`pattern:<id>`、`path:<id>`）。右上の panel で対象、seed、difficulty を選び、R で始め直し、P で pause、pause 中に N で 1 tick 進める。dev-only の cheat として、被弾しても stage が終わらない invincible と、stage の途中の spawn から始める jump も選べる（URL の `invincible=1`、`jump=<tick>`）。paused（URL の `paused=1`）を選ぶと、開始演出の後に tick 0 で止まり、N で 1 tick ずつ進められる。
 
-browser smoke / regression test は Playwright で、`npm test` / `npm run check` とは別に実行する。`vite build --mode test` の bundle を `vite preview`（port 4173）で配って Chromium で試す。Chromium がない環境では先に `npx playwright install chromium` を実行する。screenshot の baseline は platform ごとに `apps/sample-title/e2e/__screenshots__/` に置く。CI（GitHub Actions）も browser test を実行し、Linux の baseline は手動の Browser baselines workflow で作って commit する（commit するまでは CI が baseline のない screenshot を skip して warning を出す）。
+browser smoke / regression test は Playwright で、`npm test` / `npm run check` とは別に実行する。`vite build --mode test` の bundle を `vite preview`（port 4173）で配って Chromium で試す。Chromium がない環境では先に `npx playwright install chromium` を実行する。screenshot の baseline は platform ごとに `apps/sample-title/e2e/__screenshots__/` に置く。GitHub Actions の設定（`.github/workflows/`）には browser test の job と、Linux の baseline を作る手動の Browser baselines workflow を置いた。この repository にはまだ remote がなく、CI は一度も実行していない。Linux の baseline を commit するまでは、CI は baseline のない screenshot を skip して warning を出す。
 
 ```sh
 npm run test:browser
@@ -69,5 +70,5 @@ npm run test:browser
 | `npm run validate-content -- --game-definition <file> --content-root <dir> --format human` | 任意の content を検証する。content の最小の例は `docs/content-authoring/examples/`、診断の code ごとの説明は `docs/content-authoring/error-guide.md` にある |
 | `UPDATE_SAMPLE_TITLE_GOLDENS=1 npm test` | sample stage 1 の headless replay golden を作り直す（差分を確かめてから commit する） |
 | `npm run update-validate-content-goldens` | validate-content の CLI golden を作り直す |
-| `npm run test:browser -- --update-snapshots` | browser smoke test の screenshot baseline を作り直す（baseline は platform ごと） |
+| `npm run test:browser -- --update-snapshots` | browser test（smoke と Preview の regression）の screenshot baseline を作り直す（baseline は platform ごと） |
 | `npm run generate-sine-table` | Core の決定的な sine 表を生成し直す |

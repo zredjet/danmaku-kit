@@ -115,7 +115,7 @@ apps/
       players/
       patterns/
       paths/
-      bombs/          # Phase 2B 以降（optional feature の content）
+      bombs/          # Phase 3 以降（optional feature の content）
       scoring/
       rank/
       pickups/
@@ -129,15 +129,18 @@ apps/
       runtime/
         assets/
         audio/
+        content/
         debug/
         hud/
         input/
         lifecycle/
         loop/
+        preview/
         view/
         phaser/
       ui/
       debug/
+      preview/
       sample-content/
       test-support/
     package.json
@@ -146,23 +149,24 @@ docs/
 
 実装初期は単一リポジトリ内で進めるが、Core は `packages/shooting-core` として切り出せる境界を維持する。Sample title は `apps/sample-title` に置き、Core から title 固有の asset、UI、シナリオ、テーマを参照しない。
 
-Sample app の module 構成（Phase 2A 完了時点）:
+Sample app の module 構成（Phase 2B 完了時点）:
 
 | Path | 内容 |
 | --- | --- |
 | `config/game-definition.yaml`、`content/` | game definition と種類別の content YAML、asset manifest。validator が受け付けるのは `stages`、`enemies`、`bullets`、`player-shots`、`players`、`patterns`、`paths`、`assets` と、optional feature の `pickups`（Phase 2B-5、`content.features.pickups`）で、ほかは optional feature を入れる slice で足す |
 | `public/assets/` | manifest が参照する仮素材の SVG |
-| `vite/` | content を validate-content の Node API で検証して virtual module にする Vite plugin と、production build に debug hook が入らないことの test（Node で実行） |
+| `vite/` | content を validate-content の Node API で検証して virtual module にし、dev server では変更を検証して HMR の custom event で送る Vite plugin と、production build に debug hook と Preview が入らないことの test（`dev-only-build.test.ts`、Node で実行） |
 | `src/main.ts` | entry。Core の load、`GameShell`、DOM overlay、viewport、Phaser、debug hook を組み立てる。`import.meta` と virtual module を読むのはここだけ |
-| `src/runtime/` | Phaser と DOM に依存しない runtime（loop、input、lifecycle と `GameShell`、view の計画と pool、asset の読み込み判断、HUD の内容、dump と再生記録の組み立て、audio status）。node:test で検査する |
+| `src/runtime/` | Phaser と DOM に依存しない runtime（loop、input、lifecycle と `GameShell`、view の計画と pool、asset の読み込み判断、HUD の内容、dump と再生記録の組み立て、audio status、content の hot reload の判断（`content/`）、Preview の definition の合成、選択、cheat、overlay の文字（`preview/`））。node:test で検査する |
 | `src/runtime/phaser/` | Phaser の scene、entity view、演出、render scale。`phaser` を import してよいのはここと entry だけ |
 | `src/ui/` | DOM overlay の HUD と viewport への配置 |
 | `src/debug/` | dev / test build だけが置く `window.__SHOOTING_DEBUG_STATE__` と `window.__SHOOTING_DEBUG_REPLAY__` |
-| `src/sample-content/` | sample content の参照・撃破・headless replay golden の test |
+| `src/preview/` | dev / test build だけが作る Preview の DOM の panel と playfield の overlay |
+| `src/sample-content/` | sample content の参照・撃破・headless replay golden の test と、`docs/sample-content-spec.md` との照合 |
 | `src/test-support/` | 複数の test が使う helper（sample の load、fake session と frame、headless replay） |
-| `e2e/` | Playwright の browser smoke test |
+| `e2e/` | Playwright の browser test（smoke、viewport、replay、content の hot reload、Preview の操作と cheat、Preview の決定的な画面の regression） |
 
-依存方向は、`ui/`、`debug/`、`runtime/phaser/` を import してよいのは `src/main.ts` だけで、`tests/module-graph.test.mjs` の `SAMPLE_TITLE_LAYER_RULES` が検査する。package の import（Core は root export と、entry だけが optional feature の subpath export、`phaser` は entry と `runtime/phaser/` だけ）は `SAMPLE_TITLE_PACKAGE_IMPORT_RULES` が検査する。
+依存方向は、`ui/`、`debug/`、`preview/`、`runtime/phaser/` を import してよいのは `src/main.ts` だけで、`tests/module-graph.test.mjs` の `SAMPLE_TITLE_LAYER_RULES` が検査する。package の import（Core は root export と、entry だけが optional feature の subpath export、`phaser` は entry と `runtime/phaser/` だけ）は `SAMPLE_TITLE_PACKAGE_IMPORT_RULES` が検査する。
 
 Core package の module 構成（公開 surface は root の `src/basic/index.ts` の export と、optional feature ごとの `./features/<feature>`（`src/features/<feature>/index.ts`）だけで、root の value export は `createShootingCore` のみ）:
 
@@ -623,7 +627,7 @@ behavior:
   loop: true
 ```
 
-上の例は authoring schema 案である。Phase 2A の Core と validate-content が受け付ける enemy は `id`、`version`、`asset`、`collision.radius`、`hp`、`score` だけで、移動と弾幕は enemy に持たせず、stage timeline の `spawnEnemy` が spawn ごとに `path`（`content/paths/`）と `pattern`（`content/patterns/`）を組み合わせる。同じ enemy を wave ごとに別の動きと弾幕で出せる形で、enemy が既定の movement / behavior を持つ形は Phase 2B 以降で検討する。
+上の例は authoring schema 案である。Phase 2A の Core と validate-content が受け付ける enemy は `id`、`version`、`asset`、`collision.radius`、`hp`、`score` だけで、移動と弾幕は enemy に持たせず、stage timeline の `spawnEnemy` が spawn ごとに `path`（`content/paths/`）と `pattern`（`content/patterns/`）を組み合わせる。同じ enemy を wave ごとに別の動きと弾幕で出せる形で、enemy が既定の movement / behavior を持つ形は Phase 2B では足さず、boss の phase と合わせて Phase 3 以降で検討する（`docs/implementation-plan.md` の Later）。
 
 Boss は Enemy の拡張として扱う。`boss: true`、phase、HP bar、時間制限、無敵区間を `EnemyDefinition` に追加できる。
 
@@ -1250,7 +1254,7 @@ Debug HUD（browser）は以下を表示する。
 - seed
 - content version
 - dropped tick
-- kind 別の entity 数（player、enemy、enemy bullet、player shot）
+- kind 別の entity 数（player、enemy、enemy bullet、player shot、pickup（Phase 2B-7））
 - simulation events / tick
 - render events / tick
 - object pool 使用量
@@ -1349,6 +1353,7 @@ content-root/
   player-shots/*.yaml
   patterns/*.yaml
   paths/*.yaml
+  pickups/*.yaml      # optional feature（pickup）の collection。content.features.pickups になる
 ```
 
 各 collection file は 1 file 1 definition とする。collection directory が存在しない場合は空配列として扱う。存在する collection directory 内の entry は `.yaml` regular file だけを許可し、未知の content-root entry、nested directory、`.yml`、symbolic link は schema error にする。file path と asset key は locale 非依存の UTF-8 byte order へ並べ、filesystem の列挙順に依存させない。
@@ -2159,14 +2164,14 @@ Phase 2A-10 の sample app の実装（`src/runtime/debug/browser-debug-state.ts
 
 Phase 2A-11 の sample title（`apps/sample-title/`）の実装:
 
-- `content/stages/stage_01.yaml` は 6 wave（縦にまっすぐ降りる drone、左右の上から降りて斜めに横切る drone、横から波打って横切る scout、降りて揺れる scout、V 字の drone、扇、狙い弾、16 方向の輪（radial、Phase 2B-13）を順に撃つ gunship と護衛の scout）で 26 体を出す約 37 秒の stage とする。敵は drone（HP 5、50 点）、scout（HP 10、100 点）、gunship（HP 200、2,000 点）で、自機 shot は 1 発 5 damage。どの path も最後に enemy を playfield の cleanup 余白（64 px）より外へ運ぶため、timeline を終えて全滅か退場で stage が clear になる。
+- `content/stages/stage_01.yaml` は 6 wave（縦にまっすぐ降りる drone、左右の上から降りて斜めに横切る drone、横から波打って横切る scout、降りて揺れる scout、V 字の drone、扇、狙い弾、輪（radial。normal は 16 方向、hard は 24 方向、Phase 2B-13 / 2B-14）を順に撃つ gunship と護衛の scout）で 26 体を出す約 37 秒の stage とする。敵は drone（HP 5、50 点）、scout（HP 10、100 点）、gunship（HP 200、2,000 点）で、自機 shot は 1 発 5 damage。どの path も最後に enemy を playfield の cleanup 余白（64 px）より外へ運ぶため、timeline を終えて全滅か退場で stage が clear になる。
 - schema test（`src/sample-content/content-references.test.ts`）は、sample content が diagnostic なしで検証に通ること、全 definition と asset が stage 1 と既定の自機から参照されていること、stage の enemy / path / pattern、pattern の bullet、enemy の asset、自機の shot の参照を 1 つずつ壊すと参照元の file に対応する code（`enemy.notFound` など）が出ることを確かめる。
 - 敵撃破の unit test（`src/sample-content/stage-01.test.ts`）は、sample の scout と drone を自機の正面に置いた stage で、serialize した HP の減少、`entityDestroyed`（defeated）、`scoreChanged` と score の加算を確かめる。
 - headless replay golden（`src/sample-content/stage-01-replay.test.ts`）は、80 tick ごとに左右へ往復しながら撃ち続ける input script で stage 1 を固定 seed で再生し、checkpoint（score、残機、kind 別 entity 数、自機座標、serialize した state の SHA-256）、撃破と score、被弾、最初の 3-way の角度を golden と比べる。Core の state hash は test 用の内部 helper でだけ求まるため、app は公開の `serialize()` の JSON を hash する。同じ seed で同じ run になることも確かめる。golden は `UPDATE_SAMPLE_TITLE_GOLDENS=1` で作り直す。
 - 3-way の golden（弾数、角度、seed 再現性）は Core の `session/enemy-pattern-tick.test.ts` にもあり、sample の golden は sample content の 3-way（30° に 3 発で隣との差 15°）と、gunship の最初の radial の輪（16 発で 22.5° 間隔）を確かめる。
 - stage 1 の仕様は `docs/sample-content-spec.md`（Phase 2B-13）に置く。末尾の機械で読める block（自機、shot、弾、敵、pickup、pattern の steps、wave、撃たない敵と自機で clear する tick、golden の主要な値）は `src/sample-content/sample-content-spec.test.ts` が content と golden に照らして確かめる。
 
-Phase 2B では `docs/content-authoring/examples/` を `validate-content` に通し、docs 例と schema の drift を検出する（`tests/content-authoring-examples.test.ts`。診断が 1 つもないこと、Core の公開型から網羅させた collection、definition の field、Pattern DSL の命令と修飾を例が見せていること、入力のない自機で各 stage と difficulty が clear すること、README の索引と file が一致することを確かめる）。Preview scene は Browser test で stage/enemy/pattern/path 選択、pause、step 1 tick、seed 変更、difficulty 切替、overlay 表示を確認する。
+Phase 2B では `docs/content-authoring/examples/` を `validate-content` に通し、docs 例と schema の drift を検出する（`tests/content-authoring-examples.test.ts`。診断が 1 つもないこと、Core の公開型から網羅させた collection、definition の field、Pattern DSL の命令と修飾を例が見せていること、入力のない自機で各 stage と difficulty が clear すること、README の索引と file が一致することを確かめる）。Preview scene は Browser test で stage/enemy/pattern/path 選択、pause、step 1 tick、seed 変更、difficulty 切替、overlay 表示（entity id、spawn 位置の印、panel の tick と cursor）を確認する（`e2e/preview.spec.ts`、`e2e/preview-regression.spec.ts`）。
 
 ## 22. 開発フェーズ
 
@@ -2316,7 +2321,7 @@ MVP では対象外だが、再利用基盤として以下を追跡する。
 | docs 分割 | Phase 1 完了時点で `docs/core-api.md`、`docs/content-authoring.md`、`docs/runtime-adapter.md` の目次を作る。正本は分割後の各文書へ移し、`docs/design.md` は概要とリンク集に縮退させる |
 | asset 権利管理 | manifest schema に `license`、`author`、`source` の予約 field を持たせる |
 | cheat/debug command | Phase 2B-10 で Preview の dev-only 操作として invincible と stage jump を足した（合成する definition で表し、Core に API は足さない）。本編 runtime の command と boss phase jump は Phase 3 以降 |
-| sample content 品質 | Phase 2B の成果物として sample content spec を作る |
+| sample content 品質 | Phase 2B-13 で `docs/sample-content-spec.md` を作り、機械で読める部分を test で content と golden に照らす |
 
 ## 26. 次に作るもの
 

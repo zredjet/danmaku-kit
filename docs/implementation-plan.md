@@ -203,7 +203,8 @@ Status legend:
 | `docs/design.md` 9.9 / 20 Pickup feature | feature module の基盤（Done: 2B-4）、PickupDefinition と drops（Done: 2B-5）、pickup の simulation と state（Done: 2B-6）、sample app の pickup（Done: 2B-7） | Done | `packages/shooting-core/src/features/`, `tools/validate-content/`, `apps/sample-title/` | feature の gating matrix、pickup の golden、serialize / hash / restore、module graph の feature rule | `npm run check`, `npm run test:browser` |
 | `docs/design.md` 19 Authoring workflow | content hot reload（Done: 2B-8）、Preview scene（Done: 2B-9）、dev-only cheat（Done: 2B-10） | Done | `apps/sample-title/vite/`, `apps/sample-title/src/` | 変更の分類と restart の判断、definition の合成を node:test、production build に入らないことを build して検査 | `npm run check`, `npm run test:browser` |
 | `docs/design.md` 19 / 21.6 / 25 Authoring docs | minimal YAML examples（Done: 2B-11）、error guide（Done: 2B-12）、sample content spec（Done: 2B-13） | Done | `docs/content-authoring/`, `docs/sample-content-spec.md` | example の validate-content、code の一覧と guide の一致、spec と content / golden の一致 | `npm run check` |
-| `docs/design.md` 21.5 Browser regression | Preview の決定的な画面の screenshot diff、CI の browser test job | Done（Linux の baseline は未作成） | `apps/sample-title/e2e/`, `.github/workflows/` | Linux / macOS の baseline、CI での `npm run test:browser` | `npm run test:browser` |
+| `docs/design.md` 21.5 Browser regression | Preview の決定的な画面の screenshot diff、CI の browser test job | Done（手元で pass。CI は未実行、Linux の baseline は未作成） | `apps/sample-title/e2e/`, `.github/workflows/` | Linux / macOS の baseline、CI での `npm run test:browser` | `npm run test:browser` |
+| `docs/design.md` 22 / 23 Phase 2B 完了 | design 22 の Phase 2B の 9 項目、design 23 と 21.6 の Phase 2B の項目の判定 | Done（CI と Linux の baseline を除く条件付き） | `docs/implementation-plan.md` の「Phase 2B 完了判定」 | 各項目に対応する test | `npm run check`, `npm run test:browser` |
 
 ## 次の作業順
 
@@ -357,7 +358,7 @@ Done:
    - Done: test-only の `findFirstStateHashDivergence()` は tick/hash 列の最初の hash・tick・列長の不一致を返す。同一 seed / input の Core session は tick ごとの hash 列が一致し、shot input の差分は tick 0 の divergence として検出する
    - Done: canonical byte sequence または digest 表記を変え得る変更は `stateHashVersion` を更新する。field order、fixedStruct name、type tag、length / endian、UTF-8 key sort、`-0` 正規化、number encoding、algorithm、seed、hex 表記を対象にし、golden で byte / digest 不変を確認できる内部リファクタだけを例外にする
    - Done: fixedStruct name は `HASHABLE_FIXED_STRUCT_NAME_BY_DTO` で `hashableGameState`、`prngState`、`vector2`、`playerMovement`、`playerRuntimeEntity`、`enemyRuntimeEntity`、`enemyBulletRuntimeEntity`、`playerShotRuntimeEntity`、`pendingEvent`、`patternRunnerState`、`enabledFeatureState` に固定する。field order または struct name を変更するときは `stateHashVersion` を更新する
-   - Queued: replay playback 実装は hash 比較を metadata 検証済みの同一 `contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、canonical `enabledFeatures` 文脈内に限定する。raw `ReplayMetadata` の feature 列は canonical 性を型だけでは保証しないため、未知値、重複、順序違反を拒否した検証済み値だけを比較へ渡す。Phase 1B-7 の metadata-only DTO はこの比較を実行・検証せず、debug artifact 単体では metadata を併記する
+   - Later（Phase 2B の外）: replay playback 実装は hash 比較を metadata 検証済みの同一 `contentVersion`、`inputFormatVersion`、`stageId`、`difficulty`、`playerId`、canonical `enabledFeatures` 文脈内に限定する。raw `ReplayMetadata` の feature 列は canonical 性を型だけでは保証しないため、未知値、重複、順序違反を拒否した検証済み値だけを比較へ渡す。Phase 1B-7 の metadata-only DTO はこの比較を実行・検証せず、debug artifact 単体では metadata を併記する
    - Done: canonical encoding の対象を `HashableGameState` の単一 DTO に限定する。runtime entity DTO には entity id と component values を一度だけ含め、`entity ids` / `component values` / `runtime entities` を別投影として重ねて encode しない。`ReadonlyGameState` / render-facing `visible` snapshot は hash DTO に含めず encode しない
    - Done: runtime entity の deterministic field projection は `StageSession.serialize()` と state hash で public DTO 型を共有しない。public serialize DTO と `HashableGameState` はそれぞれ runtime state / committed pending event から明示コピーし、hash schema の変更が public snapshot へ漏れないようにする
    - Done: runtime entities は entity id 昇順、pattern runner states は `runnerId` の UTF-8 byte lexicographic order 昇順、enabled feature states は canonical feature order で encode する
@@ -404,7 +405,7 @@ Done:
    - Done: test-only の `recordReplayTraceForTest()` で hook-enabled session の初期 checkpoint と各 tick 後の checkpoint（parse 後 input、`HashableGameState`、state hash、summary dump、順序付き frame event、または error）を記録し、`compareReplayTracesForTest()` で expected / actual の `ok | missing | error` side を checkpoint 順に比較する。state hash が同じ event-only 差分、side 別 input 差分、早期終了、tick 失敗も first divergence として検出する
    - Done: 比較前に raw `ReplayMetadata` を SemVer `coreVersion`、namespace、canonical `enabledFeatures` などで検証し、`coreVersion` の同一 major 不一致は warning、他の version / stage / difficulty / player / feature / seed の不一致は `incompatible` として report を作らない
    - Done: 初期 checkpoint を `frameTick: null` / `checkpointTick: 0`、tick 後を `checkpointTick === frameTick + 1` として trace 構造を検証し、report の field-level diff（input / entity / component / event / PRNG）、schema 順 JSON formatter、`artifacts/replay-divergence/<replayId>-tick-<checkpointTick>.json` の artifact path を実装する
-   - Queued: browser runtime dump は`apps/sample-title`がpublic `GameFrame`とruntime adapter stateから作る別schemaとしてPhase 2Aへ分離し、Core内部hash/metricsやdeep importへ依存させない
+   - Done（2A-10）: browser runtime dump は`apps/sample-title`がpublic `GameFrame`とruntime adapter stateから作る別schemaとしてPhase 2Aへ分離し、Core内部hash/metricsやdeep importへ依存させない
 
 ## Phase 1C-R タスク分割（module 分割リファクタリング）
 
@@ -747,9 +748,9 @@ Phase 2B では、content 制作者が YAML を書き、validate-content の意�
 - pickup は最初の optional feature module として `packages/shooting-core/src/features/pickup/` に置き、先に feature registration（namespace、content の schema fragment と validation、system の差し込み位置、collision pair、serialized state の contract）の仕組みを作る（design 20）。basic core は features を import せず、feature は package の subpath export で公開して app が Core を作るときに渡す形を第一案とし、2B-4 で決めて型契約と package boundary test に固定する
 - pickup の entity は basic の entity union に足さず、feature の 3 file（model / snapshot / restore）に分け、serialize は `enabledFeatureStates` の pickup payload、state hash は feature state として含める（AGENTS.md の kind 追加手順 4）。公開 frame は basic の `entities` を変えずに feature 用の読み取り口を足す（形は 2B-6 で決める）
 - enemy の drops は Phase 2B では乱数を使わず、決まった個数と配置で出す。pickup score は PickupDefinition の固定値とし、`ScoringRule` と scoring rule の example は `advancedScoring` feature と一緒に Phase 2B の外にする（design 19 の「Phase 2B で pickup と scoring rule を追加する」は 2B-11 で pickup だけに直す）
-- Preview scene、content hot reload、dev-only の cheat は dev server だけに置き（Preview は browser test のため test build でも開ける）、production build に入れない（debug hook と同じく build して検査する）。Preview は app が合成した `GameDefinition`（選んだ enemy、pattern、path を 1 つだけ出す stage など）で Core を動かし、Core に preview 専用の API を足さない。overlay の pattern cursor と PRNG state は公開の `serialize()` から読み、collision candidate 数は Core 内部の diagnostics なので出さない（design 19 を 2B-9 で直す）
+- content hot reload は dev server だけに、Preview scene と dev-only の cheat は dev server と test build（browser test のため）に置き、production build に入れない（debug hook と同じく build して検査する）。Preview は app が合成した `GameDefinition`（選んだ enemy、pattern、path を 1 つだけ出す stage など）で Core を動かし、Core に preview 専用の API を足さない。overlay の pattern cursor と PRNG state は公開の `serialize()` から読み、collision candidate 数は Core 内部の diagnostics なので出さない（design 19 を 2B-9 で直す）
 - sample content spec（`docs/sample-content-spec.md`）を sample stage の仕様の正本とし、wave、敵、弾、pickup、golden の主要な値を test が content と golden に照らして確かめる
-- browser test の CI job と Linux の screenshot baseline は 2B-14 で足す
+- browser test の CI job と Linux の screenshot baseline は 2B-14 で足す（2B-14 で、remote がなく Linux の環境もないため、Linux の baseline は CI を実行できるようになってから作ることにし、Phase 2B の外へ移した）
 
 共通ルール:
 
@@ -832,10 +833,14 @@ Later（Phase 2B の外）:
 - Core の bullet / shot / event builder の object pool（design 14。負荷が見えた段階で導入する）
 - enemy の view pool を path から求めた寿命で見積もる（2A-8）、起動後に render scale が上がったときの SVG texture の作り直し（2A-10）
 - design 25 の docs 分割
+- enemy が既定の movement / behavior を持つ形（design 9.5）。boss の phase と合わせて検討する
+- replay playback（Phase 1B-6 の hash 比較の文脈の限定を含む）
 
 ## Phase 2B 完了判定
 
-判定時点（Phase 2B-15）: `npm run check` は 670 test pass、sample content と `docs/content-authoring/examples/` の `validate-content` は diagnostic 0 件、`npm run test:browser` は 20 test pass（Playwright 1.63.0 の Chromium、macOS）。
+判定: Phase 2B は、Linux の screenshot baseline と CI での実行を除いて完了した（条件付きの完了）。手元（macOS）で確かめられる成果物と test はすべて揃い、下の表のとおり pass する。CI の browser job と Linux の baseline は、remote に push して CI を実行できるようになってから確かめる（残す課題）。
+
+判定時点（Phase 2B-15）: `npm run check` は 670 test pass、sample content と `docs/content-authoring/examples/` の `validate-content` は diagnostic 0 件、`npm run test:browser` は 21 test pass（Playwright 1.63.0 の Chromium、macOS）。
 
 design 22 の Phase 2B:
 
@@ -844,12 +849,12 @@ design 22 の Phase 2B:
 | Pickup definition | 満たす | Core `features/pickup/content.test.ts`（`content.features.pickups` と enemy の `drops` の検証と索引）、`features/pickup/gating.test.ts`（無効な feature の定義は warning、field は error）、`basic/extension/feature-module.test.ts`、`basic/session/feature-registration.test.ts`、validate-content の `pickups/` の読み込み、`tests/content-authoring-examples.test.ts` | sample content の `content/pickups/score_small.yaml` と drone の `drops` |
 | Pickup collision / pickup score | 満たす | Core `features/pickup/systems.test.ts`・`simulation.test.ts`（落下、吸い寄せ、回収、score、上限、stage clear の保留）、`features/pickup/restore.test.ts`（serialize / hash / restore と到達できない state の拒否）、app `sample-content/stage-01-replay.test.ts`（36 個落ちて 32 個回収、320 点）、`e2e/replay.spec.ts`（pickup を含む entity 数の一致）、`e2e/preview-regression.spec.ts`（撃ち落とした drone の pickup の画面） | Preview の stage jump と invincible で wave 1 の drone を撃ち、pickup が落ちて吸い寄せられることを screenshot で確かめた |
 | Pattern DSL | 満たす（範囲は load 時に展開できる `repeat`、`radial`、`stream`、difficulty の `if`） | Core `basic/patterns/pattern-program.test.ts`・`pattern-runner.test.ts`（展開と runner、時刻表との一致）、`basic/session/enemy-pattern-tick.test.ts`（golden）、`basic/serialization/restore/restore-enemy-pattern.test.ts`、`basic/content/load-pattern-branches.test.ts`（difficulty ごとの program）、app `sample-content/stage-01-replay.test.ts`（radial の輪 16 発、hard は 24 発） | Preview で gunship の扇、狙い弾、radial の輪を確かめた |
-| DSL semantic validation | 満たす | Core `basic/patterns/pattern-budget.test.ts`、`basic/content/load-pattern-constraints.test.ts`（1 tick の弾数の予算、命令数、`pattern.neverFires`、`pattern.unreachableStep`、`pattern.unusedBranch`）、validate-content の CLI golden（`pattern-difficulty-warning` など） | — |
+| DSL semantic validation | 満たす（範囲は 1 tick の弾数の予算、展開した命令数、撃たない pattern、到達しない step、使われない `if` の枝。design 21.3 の `parallel`、`accel`、`interval`、`duration` の検査は、その命令を足すときに加える） | Core `basic/patterns/pattern-budget.test.ts`、`basic/content/load-pattern-constraints.test.ts`（予算、命令数、`pattern.neverFires`、`pattern.unreachableStep`）、`basic/content/load-pattern-branches.test.ts`（difficulty ごとの予算、`pattern.unusedBranch`）、validate-content の CLI golden（`pattern-difficulty-warning` など） | — |
 | sample content spec | 満たす | `docs/sample-content-spec.md` と `apps/sample-title/src/sample-content/sample-content-spec.test.ts`（content の値、pattern の steps、wave、撃たない run の clear、golden の値） | — |
 | minimal YAML examples | 満たす | `docs/content-authoring/examples/` と `tests/content-authoring-examples.test.ts`（診断 0 件、公開型から網羅させた field と DSL、各 stage と difficulty の clear、README の索引） | — |
 | content authoring error guide | 満たす | `docs/content-authoring/error-guide.md` と `tests/error-guide.test.mjs`（`CoreErrorCode`、Core の warning、`VALIDATE_CONTENT_DIAGNOSTIC_CODES` と見出しの一致、重要度、schema path） | — |
-| Preview scene | 満たす | app `runtime/preview/*.test.ts`（合成、選択、cheat、overlay の文字）、`runtime/lifecycle/game-shell.test.ts`（restart、1 tick 送り、start paused）、`e2e/preview.spec.ts`（選択、pause、step、restart、seed、cheat）、`e2e/preview-regression.spec.ts`（difficulty、start paused）、`vite/dev-only-build.test.ts`（production build に入らない）。design 19 の content hot reload は `runtime/content/hot-reload.test.ts`・`vite/content-plugin.test.ts`・`e2e/hot-reload.spec.ts` | test build の Preview を開き、stage、enemy、pattern の対象、overlay、cheat の画面を screenshot で確かめた |
-| Browser regression test | 満たす（Linux の baseline は未作成） | `e2e/preview-regression.spec.ts`（start paused から 1 tick ずつ進めた弾幕、scout、pickup の画面を dump と darwin の screenshot で確かめる）、CI の browser job（`.github/workflows/ci.yml`） | CI の job と `browser-baselines.yml` は remote がないため実行していない |
+| Preview scene | 満たす | app `runtime/preview/*.test.ts`（合成、選択、cheat、overlay の文字）、`runtime/lifecycle/game-shell.test.ts`（restart、1 tick 送り、start paused）、`e2e/preview.spec.ts`（stage、enemy、pattern、path の選択、spawn の印と entity id、pause、step、restart、seed、cheat）、`e2e/preview-regression.spec.ts`（difficulty、start paused）、`vite/dev-only-build.test.ts`（production build に入らない）。design 19 の content hot reload は `runtime/content/hot-reload.test.ts`・`vite/content-plugin.test.ts`・`e2e/hot-reload.spec.ts` | test build の Preview を開き、stage、enemy、pattern の対象、overlay、cheat の画面を screenshot で確かめた |
+| Browser regression test | 手元では満たす（CI は未実行、Linux の baseline は未作成） | `e2e/preview-regression.spec.ts`（start paused から 1 tick ずつ進めた弾幕、scout、pickup の画面を dump と darwin の screenshot で確かめる）、CI の browser job（`.github/workflows/ci.yml`） | CI の job と `browser-baselines.yml` は remote がないため実行していない |
 
 design 23 の Phase 2B の項目（`content/pickups/*.yaml`、`content/patterns/*.yaml` の radial 弾幕、`docs/sample-content-spec.md`、content authoring examples）は、上の Pickup definition、Pattern DSL、sample content spec、minimal YAML examples の行のとおり満たす。design 21.6 の Phase 2B の検査（examples を validate-content に通して drift を検出する、Preview の選択、pause、step、seed、difficulty、overlay の browser test）も上の test が確かめる。
 
@@ -857,4 +862,5 @@ design 23 の Phase 2B の項目（`content/pickups/*.yaml`、`content/patterns/
 
 - Linux の screenshot baseline: この repository には remote がなく、手元は macOS で Docker もないため作っていない。remote に push して `browser-baselines.yml` を実行し、artifact の `*-linux.png` を確かめて commit してから、`ci.yml` の `ALLOW_MISSING_BROWSER_BASELINES` を外す。それまでの CI は Linux の screenshot を比べない（dump と replay の検査は走る）。CI の job 自体も一度も実行していない。
 - scoring rule の example は `advancedScoring` を足すときに加える（design 19）。boss phase jump は boss を足すときに検討する（2B-10）。
+- 手動確認の記録: 上の表の「確認」は、test build の Preview を Playwright の screenshot で見て確かめたもので、再現できる記録は e2e の test と baseline の画像にある。
 - 「Later（Phase 2B の外）」の項目。
