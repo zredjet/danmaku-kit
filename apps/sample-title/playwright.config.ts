@@ -9,8 +9,9 @@ const PORT = 4173;
  * 古い bundle や別の app を試さないよう、実行のたびに build して server を起こし、port が塞がっていれば `--strictPort` で失敗させる。
  * screenshot diff は補助で、font の描画が OS で違うため baseline は platform ごとに commit する。baseline のない platform では、手元の
  * 最初の実行が失敗して baseline を書き出すので、中身を確かめてから commit する（`npm run test:browser -- --update-snapshots` でも
- * 作れる）。CI では baseline のない screenshot を比べずに skip し（`e2e/support.ts` の `expectScreenshot()`）、Linux の baseline は
- * `.github/workflows/browser-baselines.yml` を手動で実行して artifact から commit する。
+ * 作れる）。Linux の baseline は `.github/workflows/browser-baselines.yml` を手動で実行して artifact から commit する。commit するまで
+ * の CI は `ALLOW_MISSING_BROWSER_BASELINES=1` で baseline のない screenshot を比べずに skip し（`e2e/support.ts` の
+ * `expectScreenshot()`）、warning を出す。
  */
 export default defineConfig({
   testDir: "./e2e",

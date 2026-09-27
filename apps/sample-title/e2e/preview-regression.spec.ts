@@ -8,6 +8,9 @@ import { expectScreenshot, readDump, readReplay, waitForLifecycle } from "./supp
 // 画面を screenshot の baseline と比べる。判定の正本は dump の値で、screenshot は補助にする。
 test.use({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
 
+/** playfield の screenshot で許す差の画素数。1 つの sprite（pickup でも 100 画素ほど）が消えれば超える。 */
+const PLAYFIELD_MAX_DIFF_PIXELS = 16;
+
 /** Preview を開き、開始演出の後に tick を進めずに pause するまで待つ。 */
 async function openPaused(page: Page, query: string): Promise<void> {
   await page.goto(`/?${query}&seed=regression&paused=1`);
@@ -15,11 +18,15 @@ async function openPaused(page: Page, query: string): Promise<void> {
   expect((await readDump(page)).tick).toBe(0);
 }
 
-/** pause 中に N を押して、次に実行する tick が `tick` になるまで 1 tick ずつ進める。 */
+/**
+ * pause 中に N を押して、次に実行する tick が `tick` になるまで 1 tick ずつ進める。1 tick ごとに render frame を待ち、view を tick
+ * ごとに同期させる（hit spark のように、直前に描いた位置に出る演出が、1 frame にまとめて進めた tick の数で変わらないようにする）。
+ */
 async function stepTo(page: Page, tick: number): Promise<void> {
   const from = (await readDump(page)).tick;
   for (let step = from; step < tick; step += 1) {
     await page.keyboard.press("n");
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   }
   await expect.poll(async () => (await readDump(page)).tick).toBe(tick);
 }
@@ -28,6 +35,8 @@ async function stepTo(page: Page, tick: number): Promise<void> {
 async function expectPlayfield(page: Page, name: string): Promise<void> {
   await expectScreenshot(page.locator(".stage-root"), name, {
     stylePath: fileURLToPath(new URL("./playfield-screenshot.css", import.meta.url)),
+    // 画面は tick ごとに決まるので、config の 2%（entity がすべて消えても通る）ではなく、画素の差をほぼ許さない。
+    maxDiffPixels: PLAYFIELD_MAX_DIFF_PIXELS,
   });
 }
 
@@ -75,4 +84,19 @@ test("switches the difficulty of the previewed pattern and restarts it paused", 
   await stepTo(page, 200);
   expect((await readDump(page)).entityCounts.enemyBullet).toBe(7 + 3 + 24);
   expect(new URL(page.url()).searchParams.get("difficulty")).toBe("hard");
+});
+
+test("starts paused from the panel and keeps it in the URL across a reload", async ({ page }) => {
+  await page.goto("/?preview=stage:stage.stage_01&seed=regression");
+  await waitForLifecycle(page, "playing");
+
+  await page.locator(".preview-start-paused").check();
+  await waitForLifecycle(page, "paused");
+  expect((await readDump(page)).tick).toBe(0);
+  expect(new URL(page.url()).searchParams.get("paused")).toBe("1");
+
+  await page.reload();
+  await waitForLifecycle(page, "paused");
+  expect((await readDump(page)).tick).toBe(0);
+  await expect(page.locator(".preview-start-paused")).toBeChecked();
 });

@@ -395,6 +395,12 @@ test("pauses a stage that starts paused before its first tick and steps it from 
   assert.deepEqual([started.lifecycle.state, started.ticks, started.frame], ["paused", 0, null]);
   shell.stepPausedTick();
   assert.equal(shell.latestFrame?.tick, 0);
+
+  // Preview の restart でも、開始演出の後にもう一度 tick 0 の前で止まる。
+  shell.startOrRestart({ loadedGame: createScriptedGame().loadedGame, stage: { stageId: "stage.preview", difficulty: "normal" } });
+  const restarted = expectOk(shell.advance(START_MS + TICK_MS * 10));
+  assert.deepEqual([restarted.lifecycle.state, restarted.ticks, restarted.frame], ["paused", 0, null]);
+
   shell.togglePause();
   shell.setPauseOnStageStart(false);
   assert.equal(expectOk(shell.advance(TICK_MS)).lifecycle.state, "playing");

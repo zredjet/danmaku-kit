@@ -80,17 +80,18 @@ export async function playerCenterRgb(page: Page): Promise<[number, number, numb
 }
 
 /**
- * screenshot を platform ごとの baseline と比べる（補助の検査、design 21.5）。CI で今の platform の baseline がまだなければ、比べずに
- * skip して baseline を作る workflow（`.github/workflows/browser-baselines.yml`）を案内する。その workflow（`UPDATE_BROWSER_BASELINES=1`）
- * と手元では Playwright の既定どおり、baseline がなければ書き出して失敗する（中身を確かめてから commit する）。
+ * screenshot を platform ごとの baseline と比べる（補助の検査、design 21.5）。`ALLOW_MISSING_BROWSER_BASELINES=1`（Linux の baseline
+ * を commit するまでの CI）では、今の platform の baseline がまだない screenshot を比べずに skip する（CI は baseline のない
+ * screenshot を warning で知らせ、`.github/workflows/browser-baselines.yml` で作る）。それ以外は Playwright の既定どおり、baseline が
+ * なければ書き出して失敗する（中身を確かめてから commit する）。
  */
 export async function expectScreenshot(
   target: Page | Locator,
   name: string,
   options: PageAssertionsToHaveScreenshotOptions = {},
 ): Promise<void> {
-  const baseline = test.info().snapshotPath(name);
-  if (process.env.CI && process.env.UPDATE_BROWSER_BASELINES !== "1" && !existsSync(baseline)) {
+  const baseline = test.info().snapshotPath(name, { kind: "screenshot" });
+  if (process.env.ALLOW_MISSING_BROWSER_BASELINES === "1" && !existsSync(baseline)) {
     test.info().annotations.push({ type: "missing baseline", description: `${baseline}: run the browser-baselines workflow` });
     test.skip(true, `no ${process.platform} baseline for ${name}`);
     return;

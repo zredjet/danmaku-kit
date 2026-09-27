@@ -1,13 +1,18 @@
 name: Browser baselines
 
-# Linux の screenshot baseline を作る（手動で実行する）。CI の browser job と同じ環境で `--update-snapshots` を付けて browser test を
-# 走らせ、`apps/sample-title/e2e/__screenshots__` を artifact にする。中身を確かめてから `*-linux.png` を commit する。
+# Linux の screenshot baseline を作る（手動で実行する。workflow_dispatch は default branch にある workflow だけを実行できる）。CI の
+# browser job と同じ runner で、baseline のない screenshot だけを書き出して（`--update-snapshots=missing`。既にある baseline は
+# 上書きせずに比べる）、`*-linux.png` を artifact にする。artifact は `apps/sample-title/e2e/__screenshots__` からの相対 path なので、
+# 同じ directory に展開し、中身を確かめてから commit し、ci.yml の ALLOW_MISSING_BROWSER_BASELINES を外す。
 on:
   workflow_dispatch:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,14 +29,13 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Update screenshot baselines
-        run: npm run test:browser -- --update-snapshots
-        env:
-          UPDATE_BROWSER_BASELINES: "1"
+      - name: Write missing screenshot baselines
+        run: npm run test:browser -- --update-snapshots=missing
 
-      - name: Upload screenshot baselines
+      - name: Upload Linux screenshot baselines
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: browser-baselines-linux
-          path: apps/sample-title/e2e/__screenshots__
+          path: apps/sample-title/e2e/__screenshots__/**/*-linux.png
           retention-days: 7

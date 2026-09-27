@@ -36,8 +36,9 @@ const DEFAULT_SPAWN_POSITION = Object.freeze({ x: PLAYFIELD_WIDTH / 2, y: -16 })
  *
  * - stage はそのまま（`stageId` だけを返す）。
  * - enemy、pattern、path は、それだけを tick `PREVIEW_SPAWN_TICK` に 1 体出す stage（`PREVIEW_STAGE_ID`）を足す。stage で最初に
- *   使われている spawn の enemy と位置を借りる（enemy は選んだ path の spawn の位置を優先する）。pattern は止めた enemy に撃たせ（`PREVIEW_HOLD_PATH_ID`）、path は撃たない enemy
- *   （`PREVIEW_SILENT_PATTERN_ID`）で動かす。足す stage、path、pattern の id は content の id と重ならないようにする。
+ *   使われている spawn の enemy と位置を借りる（enemy は選んだ path の spawn の位置を優先する）。pattern は止めた enemy に撃たせ
+ *   （`PREVIEW_HOLD_PATH_ID`）、path は撃たない enemy（`PREVIEW_SILENT_PATTERN_ID`）で動かす。足す stage、path、pattern の id は
+ *   content の id と重ならないようにする。
  * - 足す stage は `difficulty` だけを持つ。Core は stage が持つ difficulty ごとに pattern の予算を検査するので、他の difficulty の
  *   使われない枝が予算を超える pattern も、選んだ difficulty では再生できる。
  */

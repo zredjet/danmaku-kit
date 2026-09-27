@@ -33,8 +33,9 @@ type Checkpoint = Readonly<{
 /** 敵弾の生成位置が同じ 1 回の発射（fan か radial）。 */
 type FanShot = Readonly<{ tick: number; count: number; angleDeg: readonly number[] }>;
 
-/** gunship の radial の輪の弾数。 */
+/** gunship の radial の輪の弾数（normal と hard）。 */
 const RADIAL_COUNT = 16;
+const HARD_RADIAL_COUNT = 24;
 
 type ReplaySummary = Readonly<{
   seed: string;
@@ -143,6 +144,19 @@ test("replays sample stage 1 to the golden clear with defeats, score, a 3-way an
   assert.ok(summary.firstRadial !== null);
   const ring = [...summary.firstRadial.angleDeg].map((angle) => (angle + 360) % 360).sort((a, b) => a - b);
   assert.deepEqual(new Set(ring.map((angle, index) => ((ring[(index + 1) % ring.length]! - angle + 360) % 360))), new Set([22.5]));
+});
+
+test("fires a denser radial ring on hard through the difficulty if", async () => {
+  const inputs = expandInputScript(weavingShotScript(WEAVE_PERIOD_TICKS, MAX_TICKS), MAX_TICKS);
+  let ring: FanShot | null = null;
+  runHeadlessReplay(await loadSampleTitleGame(), { stageId: "stage.stage_01", difficulty: "hard", seed: SEED }, inputs, (frame, session) => {
+    ring ??= findVolley(frame, session, HARD_RADIAL_COUNT);
+  });
+
+  const hardRing = ring as FanShot | null;
+  assert.ok(hardRing !== null);
+  const angles = hardRing.angleDeg.map((angle) => (angle + 360) % 360).sort((a, b) => a - b);
+  assert.deepEqual(new Set(angles.map((angle, index) => (angles[(index + 1) % angles.length]! - angle + 360) % 360)), new Set([15]));
 });
 
 test("reproduces the same run for the same seed", async () => {

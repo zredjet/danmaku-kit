@@ -163,7 +163,7 @@ test("matches the player, shot, bullets, enemies, pickups and patterns of the sp
   assert.deepEqual(Object.fromEntries(usedPatterns.map((pattern) => [pattern.id, pattern.steps])), spec.patterns);
 });
 
-test("clears the stage with no defeats when no enemy fires and the player does nothing", async () => {
+test("clears the stage on every difficulty with no defeats when no enemy fires and the player does nothing", async () => {
   const [spec, definition] = [await readSpec(), await loadSampleTitleDefinition()];
   const stage = stageOf(definition, spec);
   // どの敵も撃たない pattern に差し替え、何もしない自機で、すべての path が敵を画面の外まで運んで clear になることを確かめる。
@@ -180,14 +180,15 @@ test("clears the stage with no defeats when no enemy fires and the player does n
   };
   const loaded = createSampleTitleCore().load(silent);
   assert.ok(loaded.ok, JSON.stringify(loaded.ok ? null : loaded.errors));
-  const { frames } = runHeadlessReplay(
-    loaded.value,
-    { stageId: stage.id, difficulty: spec.difficulties[0]!, seed: "idle" },
-    expandInputScript([{ fromTick: 0 }], IDLE_TICK_LIMIT),
-  );
-  const last = frames.at(-1)!;
-
-  assert.deepEqual([last.state.status, last.tick, last.state.score], ["stageCleared", spec.idleClearTick, 0]);
+  for (const difficulty of spec.difficulties) {
+    const { frames } = runHeadlessReplay(
+      loaded.value,
+      { stageId: stage.id, difficulty, seed: "idle" },
+      expandInputScript([{ fromTick: 0 }], IDLE_TICK_LIMIT),
+    );
+    const last = frames.at(-1)!;
+    assert.deepEqual([last.state.status, last.tick, last.state.score], ["stageCleared", spec.idleClearTick, 0], difficulty);
+  }
 });
 
 test("matches the golden values of the spec with the stage 1 replay golden", async () => {

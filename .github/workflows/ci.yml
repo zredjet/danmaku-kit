@@ -25,10 +25,16 @@ jobs:
       - name: Check
         run: npm run check
 
-  # browser smoke / regression test（design 21.5）。screenshot の baseline は platform ごとで、Linux の baseline がまだない screenshot は
-  # 比べずに skip する（browser-baselines workflow で作って commit する）。判定の正本の dump と replay の検査は常に走る。
+  # browser smoke / regression test（design 21.5）。判定の正本の dump と replay の検査は常に走る。screenshot の baseline は platform
+  # ごとで、Linux の baseline を commit するまでは、baseline のない screenshot を比べずに skip して warning を出す
+  # （ALLOW_MISSING_BROWSER_BASELINES。baseline は browser-baselines workflow で作る。commit したら env を外す）。
   browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      ALLOW_MISSING_BROWSER_BASELINES: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,6 +53,15 @@ jobs:
 
       - name: Browser test
         run: npm run test:browser
+
+      - name: Report missing Linux screenshot baselines
+        if: always()
+        run: |
+          find apps/sample-title/e2e/__screenshots__ -name '*-darwin.png' | sort | while read -r darwin; do
+            if [ ! -f "${darwin%-darwin.png}-linux.png" ]; then
+              echo "::warning file=${darwin}::no Linux screenshot baseline; run the Browser baselines workflow and commit it"
+            fi
+          done
 
       - name: Upload test results
         if: failure()
