@@ -3,10 +3,11 @@ import { Scene, Scenes } from "phaser";
 import type { AudioStatus } from "../audio/audio-status.ts";
 import { buildDebugHudLines } from "../hud/debug-lines.ts";
 import { buildHudView, buildLoadingHudView, type HudPort } from "../hud/hud-view.ts";
+import type { GameLifecycleState } from "../lifecycle/game-lifecycle.ts";
 import type { GameShell, GameShellStep } from "../lifecycle/game-shell.ts";
 import { describeRuntimeEvent } from "../runtime-event.ts";
 import { HIT_SPARK_BUDGET, HitSparks } from "../view/hit-sparks.ts";
-import { isPlayerVisibleWhileInvincible } from "../view/invincibility-blink.ts";
+import { isPlayerVisible } from "../view/invincibility-blink.ts";
 import type { StageSceneData } from "./boot-scene.ts";
 import { ColliderOverlay } from "./collider-overlay.ts";
 import { EntityViews } from "./entity-views.ts";
@@ -44,6 +45,7 @@ export class StageScene extends Scene {
   #sparkViews: HitSparkViews | null = null;
   #colliders: ColliderOverlay | null = null;
   #debugOverlayShown = false;
+  #syncedLifecycle: GameLifecycleState | null = null;
   readonly #sparks = new HitSparks();
   #warming = false;
   #halted = false;
@@ -110,10 +112,12 @@ export class StageScene extends Scene {
       this.#debugOverlayShown = step.debugOverlay;
       this.#colliders?.draw(entities, step.debugOverlay);
     }
-    if (step.stageChanged || step.ticks > 0) {
+    // lifecycle が変わった frame も、点滅を止めて自機を出すために同期する。
+    if (step.stageChanged || step.ticks > 0 || step.lifecycle.state !== this.#syncedLifecycle) {
+      this.#syncedLifecycle = step.lifecycle.state;
       const exhausted = views.sync(entities, {
         showPlayerHitbox: step.latestInput?.held.includes("focus") ?? false,
-        playerVisible: isPlayerVisibleWhileInvincible(step.frame?.state.player.invincibleTicksRemaining ?? 0),
+        playerVisible: isPlayerVisible(step.lifecycle.state, step.frame?.state.player.invincibleTicksRemaining ?? 0),
       });
       if (exhausted) {
         console.error(`[sample-title] ${describeRuntimeEvent(exhausted)}`);

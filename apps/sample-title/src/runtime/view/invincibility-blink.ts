@@ -1,3 +1,5 @@
+import type { GameLifecycleState } from "../lifecycle/game-lifecycle.ts";
+
 /** 無敵中の点滅の半周期（tick）。この tick 数ずつ自機を隠して表示する。 */
 export const INVINCIBILITY_BLINK_HALF_PERIOD_TICKS = 4;
 
@@ -12,4 +14,12 @@ export function isPlayerVisibleWhileInvincible(invincibleTicksRemaining: number)
     return true;
   }
   return Math.floor(invincibleTicksRemaining / INVINCIBILITY_BLINK_HALF_PERIOD_TICKS) % 2 === 1;
+}
+
+/**
+ * lifecycle を踏まえた自機の表示。点滅は tick が進む `playing` の間だけにし、`paused` や stage の終了で tick が止まったときに
+ * 隠れた相のまま自機が消えて見えないようにする。
+ */
+export function isPlayerVisible(lifecycle: GameLifecycleState, invincibleTicksRemaining: number): boolean {
+  return lifecycle !== "playing" || isPlayerVisibleWhileInvincible(invincibleTicksRemaining);
 }
