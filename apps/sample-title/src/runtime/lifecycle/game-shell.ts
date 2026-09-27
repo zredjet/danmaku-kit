@@ -20,6 +20,8 @@ export type GameShellOptions = Readonly<{
   nextSeed: () => string;
   input: ShellInput;
   startDurationMs?: number;
+  /** debug overlay（collider と debug HUD）を最初から表示するか。`toggleDebug` で切り替える。 */
+  debugOverlay?: boolean;
 }>;
 
 /** 1 render frame を進めた結果。Core が error を返した後や stage を始められなかった後は、同じ error を返し続ける。 */
@@ -39,6 +41,8 @@ export type GameShellStep =
     stageChanged: boolean;
     /** 現在の stage で捨てた tick の合計。 */
     droppedTicksTotal: number;
+    /** debug overlay を表示するか。 */
+    debugOverlay: boolean;
   }>
   | Readonly<{ ok: false; errors: readonly CoreError[] }>;
 
@@ -58,7 +62,8 @@ const NO_EVENTS: readonly GameEvent[] = Object.freeze([]);
  * render frame ごとに UI action を lifecycle の出来事へ変え（`pause` は pause の切り替え、`confirm` は title で stage 開始、
  * stageCleared / gameOver で title へ戻る）、`stageStarting` では開始演出の timer を、`playing` では stage loop を進める。stage が
  * 終わった frame で `stageCleared` / `gameOver` へ移る。lifecycle が入力を捨てる遷移では入力と loop の accumulator を捨て、
- * focus lost では開始演出の timer を止める。stage は title から始めるたびに新しい seed で作り直す。
+ * focus lost では開始演出の timer を止める。stage は title から始めるたびに新しい seed で作り直す。`toggleDebug` は lifecycle を
+ * 変えず、どの状態でも debug overlay の表示を切り替える。
  */
 export class GameShell {
   readonly #options: GameShellOptions;
@@ -66,13 +71,19 @@ export class GameShell {
   #stage: ActiveStage | null = null;
   #stageChanged = false;
   #failure: Extract<GameShellStep, { ok: false }> | null = null;
+  #debugOverlay: boolean;
 
   constructor(options: GameShellOptions) {
     this.#options = options;
+    this.#debugOverlay = options.debugOverlay ?? false;
   }
 
   get lifecycle(): GameLifecycle {
     return this.#lifecycle;
+  }
+
+  get debugOverlay(): boolean {
+    return this.#debugOverlay;
   }
 
   /** keyboard event を入力 adapter へ渡し、割り当てのある key なら true を返す（呼び出し側が既定動作を止める）。 */
@@ -98,6 +109,10 @@ export class GameShell {
   /** render frame の経過時間（ms）ぶん進める。 */
   advance(deltaMs: number): GameShellStep {
     for (const action of this.#options.input.takeUiInput().pressed) {
+      if (action === "toggleDebug") {
+        this.#debugOverlay = !this.#debugOverlay;
+        continue;
+      }
       const event = this.#eventForUiAction(action);
       if (event) {
         this.#apply(event);
@@ -140,10 +155,11 @@ export class GameShell {
       ticks,
       stageChanged,
       droppedTicksTotal: current?.loop.droppedTicksTotal ?? 0,
+      debugOverlay: this.#debugOverlay,
     });
   }
 
-  #eventForUiAction(action: UiActionId): LifecycleEvent | null {
+  #eventForUiAction(action: Exclude<UiActionId, "toggleDebug">): LifecycleEvent | null {
     switch (action) {
       case "pause":
         return { type: "pauseToggled" };

@@ -18,6 +18,8 @@ test("resolves the default bindings with one action per physical key", () => {
     KeyP: "pause",
     Enter: "confirm",
     Space: "confirm",
+    Backquote: "toggleDebug",
+    F3: "toggleDebug",
   });
 });
 

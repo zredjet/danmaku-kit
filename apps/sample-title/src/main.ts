@@ -45,6 +45,8 @@ const shell = new GameShell({
   stage: { stageId: stage.id, difficulty },
   nextSeed: () => requestedSeed ?? createRandomSeed(),
   input: new KeyboardInputAdapter(),
+  // dev server では debug overlay を最初から出す。どの build でも ` / F3 で切り替えられる。
+  debugOverlay: import.meta.env.DEV,
 });
 
 const game = startSampleTitleGame({

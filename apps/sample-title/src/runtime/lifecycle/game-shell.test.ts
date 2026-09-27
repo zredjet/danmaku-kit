@@ -192,6 +192,29 @@ test("ends the stage on the Core's final frame and returns to the title for a ne
   assert.deepEqual(seeds, ["seed-1", "seed-2"]);
 });
 
+test("toggles the debug overlay in any state without changing the lifecycle", () => {
+  const { shell, input } = createShellAtTitle();
+  assert.equal(shell.debugOverlay, false);
+
+  press(input, "Backquote");
+  const title = expectOk(shell.advance(TICK_MS));
+  press(input, "Enter");
+  press(input, "F3");
+  const starting = expectOk(shell.advance(TICK_MS));
+
+  assert.deepEqual([title.lifecycle.state, title.debugOverlay], ["title", true]);
+  assert.deepEqual([starting.lifecycle.state, starting.debugOverlay], ["stageStarting", false]);
+
+  const visible = new GameShell({
+    loadedGame: createScriptedGame().loadedGame,
+    stage: { stageId: "stage.stage_01", difficulty: "normal" },
+    nextSeed: () => "seed",
+    input: new KeyboardInputAdapter(),
+    debugOverlay: true,
+  });
+  assert.equal(expectOk(visible.advance(0)).debugOverlay, true);
+});
+
 test("keeps returning the Core errors after a tick or a stage start fails", () => {
   const error = { code: "input.invalid", message: "broken", severity: "error" };
   const failingTick: Pick<LoadedGame, "startStage"> = {
