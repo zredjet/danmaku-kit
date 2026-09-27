@@ -1292,6 +1292,13 @@ Hot reload の適用範囲:
 | player/shot/collision | stage restart 必須 |
 | scoring/rank/affinity | stage restart 必須 |
 
+Phase 2B-8 の sample app の実装:
+
+- content plugin（`vite/content-plugin.ts`）は game-definition と content root の変更で content を検証し直し、検証済みの content 全体か human 形式の診断を HMR の custom event（`sample-title:content-update`）で app へ送る。virtual module も無効化するので、page を読み込み直せば新しい content になる。最初の読み込みが検証の error だった page は event を受けられないので、次の有効な変更で page を読み込み直させる。
+- app（`src/runtime/content/hot-reload.ts`、Phaser 非依存）は届いた content を今動かしている content と、object の key の順を無視して比べる。`GameDefinition` も asset manifest も同じなら schema-only として error の表示を消すだけにする。`GameDefinition` の変更（stage、enemy、pattern、path、player、shot、feature の定義）は、definition が使う sprite、collider の半径、loading で作った view pool に収まれば新しい `LoadedGame` で stage を始め直し（`GameShell.replaceContent()`、lifecycle の `contentReloaded`。新しい stage は入力を記録し直すので、前の replay には混ぜない）、収まらなければ page を読み込み直す。asset manifest だけの変更は、sprite の path だけ（SVG か画像かは同じ）なら一時的な key で読み直してから入れ替え、stage を続ける。asset の増減、type、fallback の変更は page を読み込み直す。
+- 検証に失敗した変更は HUD の下端（`.hud-content-error`）に出し、古い content のまま動かし続ける。app が使えなかった変更では app の content を進めないので、後の変更も今の content と比べる。Core の error などで止まった stage は始め直せないので page を読み込み直す。focus がない間に始め直した stage の開始演出は focus が戻るまで進めない。
+- `e2e/hot-reload.spec.ts` は content を一時 directory へ写した dev server を自分で起こし、stage の再開始、error の表示と回復、表示中の sprite の読み直し、page の読み込み直しを確かめる。
+
 `validate-content` CLI の出力契約:
 
 - human output: authoring 用の読みやすいエラー表示

@@ -32,7 +32,7 @@ npm install
 npm run check
 ```
 
-`npm run check` は型検査、test、sample app の content 検証、sample app の production build を順に実行する。sample app（`apps/sample-title`、Vite + Phaser）は次で起動する。content は `apps/sample-title/config/game-definition.yaml` と `apps/sample-title/content/` にあり、dev server は変更を検証して page を再読み込みする。
+`npm run check` は型検査、test、sample app の content 検証、sample app の production build を順に実行する。sample app（`apps/sample-title`、Vite + Phaser）は次で起動する。content は `apps/sample-title/config/game-definition.yaml` と `apps/sample-title/content/` にあり、dev server は変更を検証して page を再読み込みせずに反映する（gameplay の変更は stage を始め直し、sprite の path の変更は texture を読み直し、検証の error は画面の下端に出して古い content のまま動かす。読み込み済みの sprite や view pool に収まらない変更だけ page を読み込み直す）。
 
 ```sh
 npm run dev
