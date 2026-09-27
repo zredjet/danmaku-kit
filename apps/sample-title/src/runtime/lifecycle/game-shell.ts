@@ -62,7 +62,7 @@ const NO_EVENTS: readonly GameEvent[] = Object.freeze([]);
  * render frame ごとに UI action を lifecycle の出来事へ変え（`pause` は pause の切り替え、`confirm` は title で stage 開始、
  * stageCleared / gameOver で title へ戻る）、`stageStarting` では開始演出の timer を、`playing` では stage loop を進める。stage が
  * 終わった frame で `stageCleared` / `gameOver` へ移る。lifecycle が入力を捨てる遷移では入力と loop の accumulator を捨て、
- * focus lost では開始演出の timer を止める。stage は title から始めるたびに新しい seed で作り直す。`toggleDebug` は lifecycle を
+ * focus lost では開始演出の timer を focus が戻るまで止める。stage は title から始めるたびに新しい seed で作り直す。`toggleDebug` は lifecycle を
  * 変えず、どの状態でも debug overlay の表示を切り替える。
  */
 export class GameShell {
@@ -119,6 +119,17 @@ export class GameShell {
   /** browser の focus lost と、visibility が hidden になったとき。 */
   loseFocus(): void {
     this.#apply({ type: "focusLost" });
+  }
+
+  /**
+   * browser の focus が戻ったとき。focus lost で止めた開始演出の timer を再開する。
+   *
+   * lifecycle は変えない。`paused` は focus が戻っただけでは再開せず、`pause` を待つ（design 6）。
+   */
+  regainFocus(): void {
+    if (!this.#failure) {
+      this.#stage?.timer.resume();
+    }
   }
 
   /** render frame の経過時間（ms）ぶん進める。 */

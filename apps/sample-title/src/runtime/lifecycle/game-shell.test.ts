@@ -146,11 +146,21 @@ test("pauses on focus lost while playing and holds the start timer while startin
   press(starting.input, "Enter");
   starting.shell.advance(START_MS / 2);
   starting.shell.loseFocus();
+  // window が表示されたまま focus だけを失っても render frame は届くが、focus が戻るまで開始演出を進めない。
+  const unfocused = [expectOk(starting.shell.advance(START_MS * 10)), expectOk(starting.shell.advance(START_MS * 10))];
+  starting.shell.regainFocus();
   // focus が戻った最初の frame の経過時間（focus 外の時間を含む）は数えない。
   const afterFocus = expectOk(starting.shell.advance(START_MS * 10));
   const finished = expectOk(starting.shell.advance(START_MS / 2));
 
-  assert.deepEqual([afterFocus.lifecycle.state, finished.lifecycle.state], ["stageStarting", "playing"]);
+  assert.deepEqual(
+    [...unfocused.map((step) => step.lifecycle.state), afterFocus.lifecycle.state, finished.lifecycle.state],
+    ["stageStarting", "stageStarting", "stageStarting", "playing"],
+  );
+
+  // focus が戻っても paused からは再開しない。
+  playing.shell.regainFocus();
+  assert.equal(expectOk(playing.shell.advance(TICK_MS)).lifecycle.state, "paused");
 });
 
 test("ends the stage on the Core's final frame and returns to the title for a new seed", () => {

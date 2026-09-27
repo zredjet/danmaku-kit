@@ -46,8 +46,8 @@ export function computeViewportLayout(viewport: ViewportSize): ViewportLayout {
     logicalWidth: PLAYFIELD_WIDTH,
     logicalHeight: PLAYFIELD_HEIGHT,
     scale,
-    letterboxX: measurable ? Math.floor((viewport.width - PLAYFIELD_WIDTH * scale) / 2) : 0,
-    letterboxY: measurable ? Math.floor((viewport.height - PLAYFIELD_HEIGHT * scale) / 2) : 0,
+    letterboxX: measurable ? letterboxOf(viewport.width, PLAYFIELD_WIDTH * scale) : 0,
+    letterboxY: measurable ? letterboxOf(viewport.height, PLAYFIELD_HEIGHT * scale) : 0,
     devicePixelRatio,
     renderScale: computeRenderScale(scale, devicePixelRatio),
   });
@@ -72,6 +72,14 @@ export function computeRenderScale(scale: number, devicePixelRatio: number): num
  */
 export function svgRasterScaleFor(renderScale: number): number {
   return Math.ceil(renderScale);
+}
+
+/**
+ * 余りの半分を整数 px へ切り捨てる。小数倍では `内部解像度 × scale` が浮動小数点の誤差で viewport をわずかに超えることがあるため、
+ * 負にせず 0 に留める。
+ */
+function letterboxOf(available: number, used: number): number {
+  return Math.max(0, Math.floor((available - used) / 2));
 }
 
 function isPositiveFinite(value: number): boolean {

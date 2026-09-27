@@ -129,6 +129,28 @@ assets:
   ]);
 });
 
+test("rejects percent-encoded dot segments and separators like their literal forms", () => {
+  const paths = ["assets/%2e%2e/secret.svg", "assets/.%2E/secret.svg", "%2e/a.svg", "assets%2f..%2fsecret.svg", "a%5Cb.svg"];
+  const yaml = `version: 1
+assets:
+${paths.map((path, index) => `  sprite.p${index}:
+    type: sprite
+    path: "${path}"
+    required: true
+    usage: gameplay
+`).join("")}  sprite.ok:
+    type: sprite
+    path: assets/100%25.svg
+    required: true
+    usage: gameplay
+`;
+
+  assert.deepEqual(validate(yaml).map(([code, , schemaPath]) => [code, schemaPath]), paths.map((_, index) => [
+    "assetManifest.invalidShape",
+    `assetManifest.assets["sprite.p${index}"].path`,
+  ]));
+});
+
 test("rejects fallbacks from required assets, to unknown or other-type assets, and in cycles", () => {
   const sprite = (key: string, fallback: string, required = false) => `  ${key}:
     type: sprite

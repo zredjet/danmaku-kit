@@ -630,6 +630,7 @@ Phase 1C-S 完了時点の Core では、`PathDefinition` が id / version だ�
     - Done: UI action `toggleDebug`（Backquote / F3）で debug overlay を切り替え、collider の円と debug HUD（version、lifecycle、audio、seed、tick、dropped tick、kind 別 entity 数）を出す。design 19 の HUD 項目から state hash、PRNG hash、collision candidate 数、pattern commands / tick を外した
     - Done: `BrowserDebugStateDump`（design 21.5 に `debugOverlay` を加えた）を組み立てる純粋関数と、Vite の mode が production でないときだけ `window.__SHOOTING_DEBUG_STATE__()` を置く hook を加えた。production と test の mode で app を build し、hook が test の bundle にだけ入ることを node:test で検査する
     - Done: 2A-9 の修正として、loading 中に押した `confirm` が title へ持ち越されて stage が始まる問題（loading を終えるときも入力を捨てる）と、pause や stage の終了が点滅の隠れた相に重なると自機が消えたままになる問題（点滅は `playing` の間だけ）を直した
+    - Done: review で、window が表示されたまま focus を失うと READY の timer が 1 frame 止まるだけで再び進み、focus 外で playing になる問題を直した（focus が戻るまで止める）。あわせて、小数倍の縮小で letterbox が浮動小数点の誤差により -1 px になる問題、`%2e%2e` のような percent-encoding した dot segment が asset path の検証を通る問題を直し、tick も lifecycle も debug 表示も変わらない frame では HUD と debug HUD を作り直さないようにした。test の fake session と `GameFrame` は `src/test-support/game-frames.ts` にまとめた
     - Later: SVG の texture は起動時の render scale で作るため、起動後に browser zoom や display の移動で render scale が上がると sprite が少しぼける。必要になれば texture を作り直す
 12. Phase 2A-11: サンプルステージ 1
     - Queued: `apps/sample-title/content/stages/stage_01.yaml` に、path で移動する複数 wave、3-way 弾幕、撃破できる HP を持つ敵を定義し、stage clear まで遊べる長さにする

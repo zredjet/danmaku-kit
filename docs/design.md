@@ -324,7 +324,7 @@ type GameLifecycleState =
 Phase 2A-9 の sample app の実装:
 
 - `src/runtime/lifecycle/game-lifecycle.ts` の `transitionLifecycle()` が上の遷移を純粋関数として持ち、入力と accumulator を捨てる合図と開始演出 timer を止める合図を返す。Phaser に依存しない `GameShell`（`game-shell.ts`）が UI action、focus lost / visibility change、Core の最終 frame を lifecycle の出来事に変え、合図を入力 adapter、stage loop、timer に実行させる。`result` と `replayPlayback` は型だけを置き、Phase 2A では遷移しない。
-- boot scene が asset の読み込みで `loading` を始め、stage scene が view pool を作り終えたら `title` へ進む。`title` の `confirm`（Enter / Space）で `stageStarting` へ進んで stage session を作り、seed を決める（`?seed=` があれば毎回その seed、なければ開始ごとに乱数）。開始演出（READY）は render frame の経過時間で 1,000 ms 続き、その間は tick を実行しない。
+- boot scene が asset の読み込みで `loading` を始め、stage scene が view pool を作り終えたら `title` へ進む。`title` の `confirm`（Enter / Space）で `stageStarting` へ進んで stage session を作り、seed を決める（`?seed=` があれば毎回その seed、なければ開始ごとに乱数）。開始演出（READY）は render frame の経過時間で 1,000 ms 続き、その間は tick を実行しない。window の blur か visibility の hidden で focus lost になったら、window の focus（visible に戻ったときは focus を持っていれば）が戻るまで開始演出の timer を止め、戻った最初の frame の経過時間は数えない。window が表示されたまま focus だけを失っても render frame は続くため、1 frame を捨てるだけでは止まらない。
 - `playing` 中の `pause`（P / Esc）と focus lost / visibility change で `paused` へ進み、`pause` で `playing` へ戻る。Core が `stageCleared` / `gameOver` の frame を返した render frame で同じ名前の state へ進み、`confirm` で `title` へ戻る（Phase 2A は `result` 画面を置かない）。
 - loading を終えて `title` へ進むとき、`stageStarting` へ進むとき、`paused` の出入り、`title` へ戻るときに入力ラッチと accumulator を捨てる。loading 中（stage scene が view pool を作っている間は shell を進めない）に押した UI action は title へ持ち越さず、開始前から押している key は一度離すまで効かない。
 
@@ -922,7 +922,7 @@ MVP の内部解像度は `384x448` とする。ブラウザ表示は integer sc
 
 Phase 2A-10 の sample app の実装:
 
-- `src/runtime/view/viewport-layout.ts` の `computeViewportLayout()` が表示先の大きさと devicePixelRatio から配置を決める純粋関数で、node:test で検査する。収まる最大の整数倍で表示し、余りを上下左右へ半分ずつの letterbox（整数 px へ切り捨て）にする。どちらかの軸が内部解像度より小さいときだけ収まる小数倍へ縮小する。大きさを測れない（0 や非有限）ときは等倍で原点に置く。
+- `src/runtime/view/viewport-layout.ts` の `computeViewportLayout()` が表示先の大きさと devicePixelRatio から配置を決める純粋関数で、node:test で検査する。収まる最大の整数倍で表示し、余りを上下左右へ半分ずつの letterbox（整数 px へ切り捨て、小数倍の浮動小数点の誤差でも負にしない）にする。どちらかの軸が内部解像度より小さいときだけ収まる小数倍へ縮小する。大きさを測れない（0 や非有限）ときは等倍で原点に置く。
 - canvas と DOM overlay は内部解像度の大きさの transform root（`.stage-root`）に入れ、`src/ui/viewport-fit.ts` が root に `translate(letterbox) scale(scale)` を当てる。表示先の大きさの変化は ResizeObserver、devicePixelRatio の変化（browser zoom や別の display への移動）は `resolution` の media query で受け、配置が変わったときだけ当て直す。
 - devicePixelRatio は canvas を描く解像度の倍率（render scale）にだけ使う。render scale は表示される device pixel 数（`scale × devicePixelRatio`）を 1/4 刻みで切り上げ、1 以上 4 以下に収める。1/4 刻みなら内部解像度との積が整数になる。canvas の画素数を render scale 倍にし、CSS の大きさは内部解像度のままにして、各 scene の camera の zoom で playfield 座標を canvas いっぱいに映す（`src/runtime/phaser/render-scale.ts`）。Simulation と entity の view の座標は内部解像度のまま変わらない。
 - SVG の sprite は起動時の render scale を整数へ切り上げた倍率で rasterize し、描画では同じ倍率で割って内部解像度の大きさに戻す。texture は作り直さないため、起動後に render scale が上がった分は texture の拡大で補う。
@@ -1103,7 +1103,7 @@ Core は `AssetManifest` の path、decode、fallback を知らない。Core に
 
 Manifest entry は `type`、`path`、`required`、`usage` を必須とし、`fallback`、`license`、`author`、`source` を任意 field として予約する。`usage` は `gameplay`、`ui`、`decorative`、`audio` のいずれかとする。`fallback` は同じ asset type の既存 key、または `runtime.` prefix の Runtime built-in asset だけを参照できる。fallback chain の cycle は validation error にする。`runtime.audio.silence` は manifest file を持たない built-in silent audio とし、Runtime adapter が提供する。
 
-validate-content は Phase 2A-8 から manifest entry を検証する（`tools/validate-content/src/asset-manifest.ts`）。manifest の root は `version: 1` と `assets` だけを持ち、`type` は `sprite`、`atlas`、`tilemap`、`audio`、`particle`、`effect`、`required` は boolean とする。`usage: audio` は `type: audio` の entry にだけ使う。`path` は scheme、先頭の `/`、`\`、空・`.`・`..` の segment を持たない base-relative path に限る。`fallback` は `required: false` の entry だけが持て、同じ type の manifest key か `runtime.` の built-in asset を参照し、fallback chain の cycle は `assetManifest.fallbackCycle` にする。`runtime.` で始まる key は built-in 用に予約し、manifest には書けない。`loadValidatedGameDefinition()` は検証済みの `AssetManifest`（path を含む）を `GameDefinition` と別に返し、Core へは従来どおり key の一覧だけを渡す。
+validate-content は Phase 2A-8 から manifest entry を検証する（`tools/validate-content/src/asset-manifest.ts`）。manifest の root は `version: 1` と `assets` だけを持ち、`type` は `sprite`、`atlas`、`tilemap`、`audio`、`particle`、`effect`、`required` は boolean とする。`usage: audio` は `type: audio` の entry にだけ使う。`path` は scheme、先頭の `/`、`\`、空・`.`・`..` の segment を持たない base-relative path に限る。URL parser が `%2e` を `.` と同じ dot segment として扱うため `%2e%2e` のような percent-encoding した dot segment も拒否し、server が区切りとして decode し得る `%2f` / `%5c` も拒否する。`fallback` は `required: false` の entry だけが持て、同じ type の manifest key か `runtime.` の built-in asset を参照し、fallback chain の cycle は `assetManifest.fallbackCycle` にする。`runtime.` で始まる key は built-in 用に予約し、manifest には書けない。`loadValidatedGameDefinition()` は検証済みの `AssetManifest`（path を含む）を `GameDefinition` と別に返し、Core へは従来どおり key の一覧だけを渡す。
 
 Asset load failure は lifecycle の `loading` で処理する。missing、decode error、timeout は `RuntimeEvent.assetLoadFailed` または `LoadResult` として記録し、`required: true` の asset では stage start を止める。`required: false` かつ valid fallback がある場合のみ fallback asset を使える。fallback 使用は debug HUD と log に表示し、schema validation では fallback 前提の未定義 key を許可しない。
 

@@ -15,6 +15,7 @@ const SPARK_DEPTH = 1.5;
  */
 export class HitSparkViews {
   readonly #circles: readonly GameObjects.Arc[];
+  #shown = 0;
 
   constructor(scene: Scene, capacity: number) {
     this.#circles = Array.from({ length: capacity }, () => (
@@ -22,14 +23,17 @@ export class HitSparkViews {
     ));
   }
 
-  /** spark ごとに円を広げながら薄くする。 */
+  /** spark ごとに円を広げながら薄くし、前の frame に出していて今は使わない円を隠す。 */
   render(sparks: readonly HitSpark[]): void {
-    this.#circles.forEach((circle, index) => {
-      const spark = sparks[index];
+    const count = Math.min(sparks.length, this.#circles.length);
+    for (let index = 0; index < Math.max(count, this.#shown); index += 1) {
+      const circle = this.#circles[index]!;
+      const spark = index < count ? sparks[index] : undefined;
       circle.setVisible(spark !== undefined);
       if (spark) {
         circle.setPosition(spark.x, spark.y).setScale(0.5 + spark.progress).setAlpha(1 - spark.progress);
       }
-    });
+    }
+    this.#shown = count;
   }
 }

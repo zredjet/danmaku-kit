@@ -37,6 +37,15 @@ test("keeps an integer scale until the viewport is smaller than the playfield on
   assert.ok(384 * short.scale + short.letterboxX * 2 <= 1024);
 });
 
+test("never offsets the playfield outside the viewport when the fractional scale rounds up", () => {
+  // これらの高さでは 448 × (h / 448) が浮動小数点の誤差で h をわずかに超える。
+  for (const height of [116, 123, 225, 232, 239, 246, 253]) {
+    const layout = layoutOf(1000, height);
+    assert.equal(layout.scale < 1 && layout.scale === height / 448, true, `scale for ${height}`);
+    assert.equal(layout.letterboxY, 0, `letterboxY for ${height}`);
+  }
+});
+
 test("uses the device pixel ratio only for the render scale", () => {
   const standard = layoutOf(1920, 1080, 1);
   const retina = layoutOf(1920, 1080, 2);

@@ -202,14 +202,26 @@ function findFallbackCycle(assets: Readonly<Record<string, unknown>>, key: strin
   return null;
 }
 
-/** base URL と合成してよい相対 path か。scheme、先頭の `/`、`\`、空・`.`・`..` の segment を拒否する。 */
+/**
+ * base URL と合成してよい相対 path か。scheme、先頭の `/`、`\`、空・`.`・`..` の segment を拒否する。
+ *
+ * URL parser は `%2e` を `.` と同じ dot segment として扱い（`.%2e` や `%2E%2E` も `..`）、server によっては `%2f` / `%5c` を
+ * 区切りとして decode するため、percent-encoding した形も同じく拒否する。
+ */
 function isBaseRelativeAssetPath(value: string): boolean {
   return value.length > 0
     && !value.startsWith("/")
     && !value.includes("\\")
     && !value.includes(":")
-    && value.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+    && !ENCODED_SEPARATOR.test(value)
+    && value.split("/").every((segment) => {
+      const decodedDots = segment.replace(ENCODED_DOT, ".");
+      return segment.length > 0 && decodedDots !== "." && decodedDots !== "..";
+    });
 }
+
+const ENCODED_DOT = /%2e/gi;
+const ENCODED_SEPARATOR = /%(?:2f|5c)/i;
 
 function entryPath(key: string, field?: string): string {
   return `assetManifest.assets[${JSON.stringify(key)}]${field === undefined ? "" : `.${field}`}`;
