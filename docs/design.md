@@ -2154,11 +2154,12 @@ Phase 2A-10 の sample app の実装（`src/runtime/debug/browser-debug-state.ts
 
 Phase 2A-11 の sample title（`apps/sample-title/`）の実装:
 
-- `content/stages/stage_01.yaml` は 6 wave（自機の列へ降りる drone、左右から弧を描く drone、横から波打って横切る scout、降りて揺れる scout、V 字の drone、扇状弾と狙い弾を交互に撃つ gunship と護衛の scout）で 26 体を出す約 37 秒の stage とする。敵は drone（HP 5、50 点）、scout（HP 10、100 点）、gunship（HP 200、2,000 点）で、自機 shot は 1 発 5 damage。どの path も最後に enemy を playfield の cleanup 余白（64 px）より外へ運ぶため、timeline を終えて全滅か退場で stage が clear になる。
+- `content/stages/stage_01.yaml` は 6 wave（縦にまっすぐ降りる drone、左右の上から降りて斜めに横切る drone、横から波打って横切る scout、降りて揺れる scout、V 字の drone、扇、狙い弾、16 方向の輪（radial、Phase 2B-13）を順に撃つ gunship と護衛の scout）で 26 体を出す約 37 秒の stage とする。敵は drone（HP 5、50 点）、scout（HP 10、100 点）、gunship（HP 200、2,000 点）で、自機 shot は 1 発 5 damage。どの path も最後に enemy を playfield の cleanup 余白（64 px）より外へ運ぶため、timeline を終えて全滅か退場で stage が clear になる。
 - schema test（`src/sample-content/content-references.test.ts`）は、sample content が diagnostic なしで検証に通ること、全 definition と asset が stage 1 と既定の自機から参照されていること、stage の enemy / path / pattern、pattern の bullet、enemy の asset、自機の shot の参照を 1 つずつ壊すと参照元の file に対応する code（`enemy.notFound` など）が出ることを確かめる。
 - 敵撃破の unit test（`src/sample-content/stage-01.test.ts`）は、sample の scout と drone を自機の正面に置いた stage で、serialize した HP の減少、`entityDestroyed`（defeated）、`scoreChanged` と score の加算を確かめる。
 - headless replay golden（`src/sample-content/stage-01-replay.test.ts`）は、80 tick ごとに左右へ往復しながら撃ち続ける input script で stage 1 を固定 seed で再生し、checkpoint（score、残機、kind 別 entity 数、自機座標、serialize した state の SHA-256）、撃破と score、被弾、最初の 3-way の角度を golden と比べる。Core の state hash は test 用の内部 helper でだけ求まるため、app は公開の `serialize()` の JSON を hash する。同じ seed で同じ run になることも確かめる。golden は `UPDATE_SAMPLE_TITLE_GOLDENS=1` で作り直す。
-- 3-way の golden（弾数、角度、seed 再現性）は Core の `session/enemy-pattern-tick.test.ts` にもあり、sample の golden は sample content の 3-way（30° に 3 発で隣との差 15°）を確かめる。
+- 3-way の golden（弾数、角度、seed 再現性）は Core の `session/enemy-pattern-tick.test.ts` にもあり、sample の golden は sample content の 3-way（30° に 3 発で隣との差 15°）と、gunship の最初の radial の輪（16 発で 22.5° 間隔）を確かめる。
+- stage 1 の仕様は `docs/sample-content-spec.md`（Phase 2B-13）に置く。末尾の機械で読める block（自機、shot、弾、敵、pickup、pattern の steps、wave、撃たない敵と自機で clear する tick、golden の主要な値）は `src/sample-content/sample-content-spec.test.ts` が content と golden に照らして確かめる。
 
 Phase 2B では `docs/content-authoring/examples/` を `validate-content` に通し、docs 例と schema の drift を検出する（`tests/content-authoring-examples.test.ts`。診断が 1 つもないこと、Core の公開型から網羅させた collection、definition の field、Pattern DSL の命令と修飾を例が見せていること、入力のない自機で各 stage と difficulty が clear すること、README の索引と file が一致することを確かめる）。Preview scene は Browser test で stage/enemy/pattern/path 選択、pause、step 1 tick、seed 変更、difficulty 切替、overlay 表示を確認する。
 
