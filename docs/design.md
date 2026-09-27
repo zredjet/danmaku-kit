@@ -1278,7 +1278,7 @@ Preview scene の操作仕様:
 
 - stage / enemy / pattern / path を選択して単体再生できる。
 - pause、step 1 tick、restart、seed 変更、difficulty 切替ができる。
-- spawn position、collider、entity id、pattern cursor、PRNG hash、collision candidate 数を overlay 表示できる。
+- spawn position、collider、entity id、pattern cursor、PRNG state を overlay 表示できる。pattern cursor と PRNG state は公開の `serialize()` から読み、collision candidate 数と state / PRNG の hash は Core 内部の diagnostics なので出さない（21.5）。
 - Preview scene 専用の dev-only 操作として invincible、stage jump、boss phase jump を許可する。
 - preview 操作は Runtime/UI 入力であり、replay 入力列には混ぜない。
 
@@ -1298,6 +1298,17 @@ Phase 2B-8 の sample app の実装:
 - app（`src/runtime/content/hot-reload.ts`、Phaser 非依存）は届いた content を今動かしている content と、object の key の順を無視して比べる。`GameDefinition` も asset manifest も同じなら schema-only として error の表示を消すだけにする。`GameDefinition` の変更（stage、enemy、pattern、path、player、shot、feature の定義）は、definition が使う sprite、collider の半径、loading で作った view pool に収まれば新しい `LoadedGame` で stage を始め直し（`GameShell.replaceContent()`、lifecycle の `contentReloaded`。新しい stage は入力を記録し直すので、前の replay には混ぜない）、収まらなければ page を読み込み直す。asset manifest だけの変更は、sprite の path だけ（SVG か画像かは同じ）なら一時的な key で読み直してから入れ替え、stage を続ける。asset の増減、type、fallback の変更は page を読み込み直す。
 - 検証に失敗した変更は HUD の下端（`.hud-content-error`）に出し、古い content のまま動かし続ける。app が使えなかった変更では app の content を進めないので、後の変更も今の content と比べる。Core の error などで止まった stage は始め直せないので page を読み込み直す。focus がない間に始め直した stage の開始演出は focus が戻るまで進めない。
 - `e2e/hot-reload.spec.ts` は content を一時 directory へ写した dev server を自分で起こし、stage の再開始、error の表示と回復、表示中の sprite の読み直し、page の読み込み直しを確かめる。
+
+Phase 2B-9 の sample app の実装:
+
+- Preview は dev server と test build（Vite の mode が `production` でない build）で `?preview=<target>` を付けて開く。target は `stage:<id>`、`enemy:<enemy>,<path>,<pattern>`、`pattern:<id>`、`path:<id>` で、content にない id や `?preview` だけなら最初の stage にする。production build では `src/main.ts` の分岐ごと消え、`vite/dev-only-build.test.ts` が production と test の mode で build して、Preview の印が test の bundle にだけあることを検査する。
+- Core に Preview 専用の API は足さない。app（`src/runtime/preview/preview-definition.ts`、Phaser と DOM に依存しない）は選んだ対象だけを出す `GameDefinition` を合成して普通に load する: stage はそのまま、enemy、pattern、path は tick 30 に 1 体だけ出す stage を足す。pattern は止めておく path（区間なし）の enemy に画面の上の方で撃たせ、path は撃たない pattern の enemy で動かし、enemy は選んだ path と pattern で出す（enemy と位置は content の stage で最初に使われている spawn から借りる）。足す stage、path、pattern の id は content の id と重ならないよう suffix を付ける。足す stage は選んだ difficulty だけを持ち、他の difficulty の使われない枝が予算を超える pattern も再生できる。
+- 選択（`PreviewSelection`）は対象、seed、difficulty を持つ。difficulty は stage ならその stage の difficulty、それ以外は content の stage の difficulty すべてから選ぶ。seed は変えるまで同じ値で始め直し、選択は URL（`preview`、`seed`、`difficulty`）に書いて、page を読み込み直しても同じ Preview を開く。
+- panel（`src/preview/preview-mode.ts`、transform root の外）は対象、seed、difficulty の選択と Restart（R）、Pause（P）、Step（N）を持ち、選択を変えると stage を始め直す（`GameShell.startOrRestart()`）。Preview は title で止めずに始める。Step は pause 中の stage を 1 tick 進め（`GameShell.stepPausedTick()`）、通常の tick と同じく入力を記録し、進めた tick と event は次の render frame で view に渡す。1 tick 送りで stage が終わったら pause のまま止め、pause を解くと終わった stage に tick を渡さずに stage の終わりへ進む。入力欄に打つ key は game の入力にしない。
+- overlay は playfield（transform root の中）に player、enemy、pickup の entity id と、次の 120 tick に出る spawn の位置を出す（spawn の位置は playfield の外が多いので端へ寄せ、近い印はまとめる）。panel には次に実行する tick（debug dump の `tick` と同じ）、PRNG state、pattern runner ごとの cursor と待ちの tick を、公開の `serialize()` から読んで出す（playing の間は 6 tick ごと、pause と 1 tick 送りでは毎回描き直す）。collider は debug overlay（Backquote / F3）の円で見る。
+- 対象を選び直しても view pool を作り直さないよう、Preview の view pool は enemy、enemy bullet、pickup を runtime budget の capacity まで持つ（`planPreviewViewPoolCapacities()`）。
+- content の hot reload は、新しい content で今の対象（なくなっていれば最初の stage）を合成し直して始め直す。合成した content を Core が拒めば、前の content と選択のまま動かし続けて HUD の下端に error を出す。
+- Preview の stage の再生記録（`window.__SHOOTING_DEBUG_REPLAY__`）の `stage.stageId` は合成した stage を指すので、Node で再生するには同じ合成が要る。
 
 `validate-content` CLI の出力契約:
 
@@ -2041,7 +2052,7 @@ Phase 1C の debug state dump は headless/core dump とし、root package へ�
 
 collision / event metrics は test serializer が登録された session でだけ収集する。通常の `createShootingCore()` session では collision counter、event count object、freeze を tick hot path に生成せず、Core の本番性能へ test-only diagnostics の費用を持ち込まない。
 
-Browser Test では Phase 2A 以降に `apps/sample-title` が `BrowserDebugStateDump` を所有し、最新の public `GameFrame` と runtime adapter の lifecycle / viewport / input / asset / audio / overlay state から `window.__SHOOTING_DEBUG_STATE__()` を組み立てる。この global hook は dev / test build にだけ設置し、production build では定義しない。sample app は Vite の mode が `production` でないとき（dev server と `vite build --mode test`）だけ `src/debug/debug-state-hook.ts` で hook を置き、production build では分岐ごと消える。`apps/sample-title/vite/debug-state-hook-build.test.ts` が production と test の mode で app を build し、hook 名が test の bundle にだけ含まれることを検査する。browser schema は headless dump を継承せず、Core 内部の `stateHash`、`prngHash`、`collisionCandidates` を含めないため、非公開 helper のdeep importや新しいCore diagnostics portを必要としない。
+Browser Test では Phase 2A 以降に `apps/sample-title` が `BrowserDebugStateDump` を所有し、最新の public `GameFrame` と runtime adapter の lifecycle / viewport / input / asset / audio / overlay state から `window.__SHOOTING_DEBUG_STATE__()` を組み立てる。この global hook は dev / test build にだけ設置し、production build では定義しない。sample app は Vite の mode が `production` でないとき（dev server と `vite build --mode test`）だけ `src/debug/debug-state-hook.ts` で hook を置き、production build では分岐ごと消える。`apps/sample-title/vite/dev-only-build.test.ts` が production と test の mode で app を build し、hook 名（と Phase 2B-9 の Preview の印）が test の bundle にだけ含まれることを検査する。browser schema は headless dump を継承せず、Core 内部の `stateHash`、`prngHash`、`collisionCandidates` を含めないため、非公開 helper のdeep importや新しいCore diagnostics portを必要としない。
 
 Browser の入力の再生（Phase 2A-12）: dev / test build は stage ごとに Core が受け付けた `InputFrame` を残し（`StageLoop` の `recordInputs`）、dump の schema の外にある `window.__SHOOTING_DEBUG_REPLAY__()` が `BrowserReplayRecord`（`schemaVersion: "1"`、`kind: "browserReplay"`、開始条件の `stage`（stageId / difficulty / seed）、`inputs`、最後の入力の後の serialize 結果 `state`）を返す（`src/runtime/debug/browser-replay-record.ts`）。Node の headless replay は `stage` を始めて `inputs` を順に渡し、`state` と同じ serialize 結果に着くことを、`serialize()` の JSON の SHA-256 で比べる。Core の内部 hash は browser に出さない。
 
