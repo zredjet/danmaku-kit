@@ -51,7 +51,7 @@ sample app の操作:
 
 URL に `?seed=<文字列>` を付けると、毎回その seed で stage を始める（debug HUD に seed が出る）。`?difficulty=<difficulty>` は stage が持つ difficulty を選ぶ（持たなければ最初の difficulty）。
 
-dev server（と test build）では `?preview` を付けると Preview を開き、stage、enemy（path と pattern を選ぶ）、pattern、path を単体再生する。`?preview=pattern:pattern.gunship_barrage` のように対象を URL で選べる（`stage:<id>`、`enemy:<enemy>,<path>,<pattern>`、`pattern:<id>`、`path:<id>`）。右上の panel で対象、seed、difficulty を選び、R で始め直し、P で pause、pause 中に N で 1 tick 進める。
+dev server（と test build）では `?preview` を付けると Preview を開き、stage、enemy（path と pattern を選ぶ）、pattern、path を単体再生する。`?preview=pattern:pattern.gunship_barrage` のように対象を URL で選べる（`stage:<id>`、`enemy:<enemy>,<path>,<pattern>`、`pattern:<id>`、`path:<id>`）。右上の panel で対象、seed、difficulty を選び、R で始め直し、P で pause、pause 中に N で 1 tick 進める。dev-only の cheat として、被弾しても stage が終わらない invincible と、stage の途中の spawn から始める jump も選べる（URL の `invincible=1`、`jump=<tick>`）。
 
 browser smoke test は Playwright で、`npm test` / `npm run check` とは別に実行する。`vite build --mode test` の bundle を `vite preview`（port 4173）で配って Chromium で試す。Chromium がない環境では先に `npx playwright install chromium` を実行する。
 

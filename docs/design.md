@@ -1279,7 +1279,7 @@ Preview scene の操作仕様:
 - stage / enemy / pattern / path を選択して単体再生できる。
 - pause、step 1 tick、restart、seed 変更、difficulty 切替ができる。
 - spawn position、collider、entity id、pattern cursor、PRNG state を overlay 表示できる。pattern cursor と PRNG state は公開の `serialize()` から読み、collision candidate 数と state / PRNG の hash は Core 内部の diagnostics なので出さない（21.5）。
-- Preview scene 専用の dev-only 操作として invincible、stage jump、boss phase jump を許可する。
+- Preview scene 専用の dev-only 操作として invincible と stage jump を許可する（boss phase jump は boss を足すときに検討する）。
 - preview 操作は Runtime/UI 入力であり、replay 入力列には混ぜない。
 
 Hot reload の適用範囲:
@@ -1309,6 +1309,14 @@ Phase 2B-9 の sample app の実装:
 - 対象を選び直しても view pool を作り直さないよう、Preview の view pool は enemy、enemy bullet、pickup を runtime budget の capacity まで持つ（`planPreviewViewPoolCapacities()`）。
 - content の hot reload は、新しい content で今の対象（なくなっていれば最初の stage）を合成し直して始め直す。合成した content を Core が拒めば、前の content と選択のまま動かし続けて HUD の下端に error を出す。
 - Preview の stage の再生記録（`window.__SHOOTING_DEBUG_REPLAY__`）の `stage.stageId` は合成した stage を指すので、Node で再生するには同じ合成が要る。
+
+Phase 2B-10 の dev-only cheat（Preview の操作）:
+
+- Core に cheat の API は足さず、Preview が合成する definition で表す（`src/runtime/preview/preview-cheats.ts`）。cheat は content を変えるだけなので、Core へ渡す入力と再生記録の入力には混ぜない。
+- invincible は既定の自機の `life.initialLives` を 60,000 にする。被弾の判定、無敵時間、lives の減り方は content のままで、stage が終わらないだけにする。HUD は 6 機以上の lives を `▲×<数>` で出す。
+- stage jump は stage の対象だけが持ち、timeline の spawn の tick（と 0）から選ぶ。選んだ tick より前の spawn を除き、残りをその tick だけ前へ詰める。
+- cheat を 1 つでも当てるときは、対象の stage を content の id と重ならない id（`<id>_preview_cheat`）で複製してから当てる。content の stage は変えないので、cheat を当てた再生記録が content の stage の記録に見えない。
+- panel は invincible の checkbox と、stage の対象での jump の選択を持ち、URL（`invincible=1`、`jump=<tick>`）に書く。URL の jump と、hot reload で jump 先の spawn の tick が動いたときは、その tick 以下で最大の spawn の tick に寄せる。対象の stage がなくなって最初の stage に戻ったら jump を外す。
 
 `validate-content` CLI の出力契約:
 
@@ -1456,7 +1464,7 @@ DSL の失敗時挙動:
 - production: stage load 前検証を原則とし、検出できるものは stage load error として開始を止める。
 - production runtime: 想定外の budget 超過や content error は fatal telemetry として記録し、可能なら安全な pause/error overlay に遷移する。公式 content ではここに到達しないことを品質基準とする。
 
-本編 runtime の開発用 cheat/debug command は Phase 3 以降に追加する。候補は stage jump、invincible、slow motion、spawn command、boss phase jump とする。Phase 2B の Preview scene 専用操作は、本編 runtime の cheat/debug command とは別扱いにする。
+本編 runtime の開発用 cheat/debug command は Phase 3 以降に追加する。候補は stage jump、invincible、slow motion、spawn command、boss phase jump とする。Phase 2B の Preview scene 専用操作（2B-10 の invincible と stage jump）は、本編 runtime の cheat/debug command とは別扱いにする。
 
 ## 20. 再利用可能な Core API
 
@@ -2299,7 +2307,7 @@ MVP では対象外だが、再利用基盤として以下を追跡する。
 | color / 視認性基準 | 背景と敵弾のコントラスト基準、色覚対応 palette を検討する |
 | docs 分割 | Phase 1 完了時点で `docs/core-api.md`、`docs/content-authoring.md`、`docs/runtime-adapter.md` の目次を作る。正本は分割後の各文書へ移し、`docs/design.md` は概要とリンク集に縮退させる |
 | asset 権利管理 | manifest schema に `license`、`author`、`source` の予約 field を持たせる |
-| cheat/debug command | Phase 2B dev-only で invincible と stage jump だけ検討する |
+| cheat/debug command | Phase 2B-10 で Preview の dev-only 操作として invincible と stage jump を足した（合成する definition で表し、Core に API は足さない）。本編 runtime の command と boss phase jump は Phase 3 以降 |
 | sample content 品質 | Phase 2B の成果物として sample content spec を作る |
 
 ## 26. 次に作るもの
