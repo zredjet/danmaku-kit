@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1",
+  "contentRoot": "<content-root>",
+  "ok": true,
+  "diagnostics": [
+    {
+      "kind": "featureGate",
+      "code": "feature.disabledContent",
+      "severity": "warning",
+      "message": "content.features.pickups is not used because the pickup feature is not in enabledFeatures",
+      "sourceId": "gameDefinition",
+      "schemaPath": "content.features.pickups"
+    }
+  ],
+  "summary": {
+    "errors": 0,
+    "warnings": 1,
+    "infos": 0
+  }
+}

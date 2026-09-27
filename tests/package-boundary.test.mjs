@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -8,35 +8,53 @@ import ts from "typescript";
 import { createMinimumDefinition } from "./fixtures/minimum-game-definition.ts";
 import { collectTypeScriptFiles } from "./support/source-files.mjs";
 
-const packageRoot = fileURLToPath(new URL("../packages/shooting-core", import.meta.url));
+const packageRoot = fileURLToPath(new URL("../packages/core", import.meta.url));
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const workspacePackageRoots = Object.freeze({
-  "@shooting-sample/shooting-core": packageRoot,
-  "@shooting-sample/validate-content": fileURLToPath(new URL("../tools/validate-content", import.meta.url)),
+  "@danmaku-kit/core": packageRoot,
+  "@danmaku-kit/validate-content": fileURLToPath(new URL("../tools/validate-content", import.meta.url)),
 });
 
-test("imports shooting core through the workspace package export", async () => {
-  const core = await import("@shooting-sample/shooting-core");
+test("imports the core through the workspace package export", async () => {
+  const core = await import("@danmaku-kit/core");
 
-  assert.deepEqual(Object.keys(core).sort(), ["createShootingCore"]);
-  assert.equal(typeof core.createShootingCore, "function");
+  assert.deepEqual(Object.keys(core).sort(), ["createDanmakuCore"]);
+  assert.equal(typeof core.createDanmakuCore, "function");
 });
 
-test("exposes only the root package export", async () => {
+test("exposes the root export and one entry per optional feature module directory", async () => {
   const packageJson = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8"));
+  const featureDirectories = await listFeatureDirectories();
 
-  assert.deepEqual(Object.keys(packageJson.exports).sort(), ["."]);
+  // optional feature は `src/features/<feature>/index.ts` を `./features/<feature>` で公開し、app が `createDanmakuCore()` に渡す。
+  assert.deepEqual(packageJson.exports, Object.fromEntries([
+    [".", "./src/basic/index.ts"],
+    ...featureDirectories.map((name) => [`./features/${name}`, `./src/features/${name}/index.ts`]),
+  ]));
+  assert.deepEqual(featureDirectories.filter((name) => !FEATURE_DIRECTORIES.includes(name)), []);
+});
+
+test("imports each optional feature through its subpath export as the only value it exports", async () => {
+  for (const name of await listFeatureDirectories()) {
+    const feature = await import(`@danmaku-kit/core/features/${name}`);
+    const exportName = `${name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())}Feature`;
+
+    assert.deepEqual(Object.keys(feature), [exportName], `features/${name} must export only ${exportName}`);
+    const { createDanmakuCore } = await import("@danmaku-kit/core");
+    assert.doesNotThrow(() => createDanmakuCore({ features: [feature[exportName]] }));
+  }
 });
 
 test("rejects deep package imports outside the public export map", async () => {
   const forbiddenSubpaths = [
     "package.json",
     ...await listBasicSourceSubpaths(),
+    ...await listFeatureSourceSubpaths(),
   ];
 
   for (const subpath of forbiddenSubpaths) {
     await assert.rejects(
-      import(`@shooting-sample/shooting-core/${subpath}`),
+      import(`@danmaku-kit/core/${subpath}`),
       (error) => {
         assert.equal(error && typeof error, "object");
         assert.equal("code" in error && error.code, "ERR_PACKAGE_PATH_NOT_EXPORTED");
@@ -129,10 +147,36 @@ async function listBasicSourceSubpaths() {
   return files.map((file) => path.relative(packageRoot, file).split(path.sep).join("/")).sort();
 }
 
-test("runs the minimum gameplay flow through the workspace package export", async () => {
-  const { createShootingCore } = await import("@shooting-sample/shooting-core");
+/** feature id（design 20）ごとの `src/features/` の directory 名。 */
+const FEATURE_DIRECTORIES = Object.freeze(["bomb", "graze", "affinity", "rank", "pickup", "advanced-scoring"]);
 
-  const loaded = createShootingCore("0.0.0").load(createMinimumDefinition());
+/** `src/features/` の directory 名。feature がまだなければ空。 */
+async function listFeatureDirectories() {
+  try {
+    const entries = await readdir(path.join(packageRoot, "src", "features"), { withFileTypes: true });
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+}
+
+/** feature の source の package 内 path（package の export 名でも、実 file の path でも公開しない）。 */
+async function listFeatureSourceSubpaths() {
+  const subpaths = [];
+  for (const name of await listFeatureDirectories()) {
+    const files = await collectTypeScriptFiles(path.join(packageRoot, "src", "features", name));
+    subpaths.push(...files.map((file) => path.relative(packageRoot, file).split(path.sep).join("/")));
+  }
+  return subpaths.sort();
+}
+
+test("runs the minimum gameplay flow through the workspace package export", async () => {
+  const { createDanmakuCore } = await import("@danmaku-kit/core");
+
+  const loaded = createDanmakuCore("0.0.0").load(createMinimumDefinition());
   assert.equal(loaded.ok, true);
 
   if (!loaded.ok) {

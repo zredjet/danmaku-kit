@@ -1,0 +1,2 @@
+<content-root>/patterns/scout_three_way.yaml:4:3-37:1 [ERROR] definition.invalidConstraint: pattern.steps fire 2048 bullets in one tick, over the active enemy bullet budget 2000 (schema=content.patterns[1].steps, source=pattern.scout_three_way)
+Summary: 1 error(s), 0 warning(s), 0 info(s)

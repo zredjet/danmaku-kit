@@ -93,6 +93,47 @@ test("assembles split YAML definitions in deterministic UTF-8 file order", async
   );
 });
 
+test("puts feature collections under content.features and an empty collection for an enabled feature without files", async () => {
+  const root = path.join("/project", "content");
+  const gameDefinitionPath = path.join("/project", "game-definition.yaml");
+  const load = (enabledFeatures: string, pickupFiles: Readonly<Record<string, string>>) => loadContentSource(
+    gameDefinitionPath,
+    root,
+    createMemoryFileSystem({
+      files: {
+        [gameDefinitionPath]: `schemaVersion: "1"\nenabledFeatures: ${enabledFeatures}\ndefaultPlayerId: player.a\ncontentVersion: c.1\n`,
+        [path.join(root, "assets", "manifest.yaml")]: "version: 1\nassets: {}\n",
+        ...Object.fromEntries(Object.entries(pickupFiles).map(([name, text]) => [path.join(root, "pickups", name), text])),
+      },
+      directories: {
+        [root]: [directory("assets"), ...(Object.keys(pickupFiles).length > 0 ? [directory("pickups")] : [])],
+        [path.join(root, "pickups")]: Object.keys(pickupFiles).map(file),
+      },
+    }),
+  );
+  const featuresOf = async (result: ReturnType<typeof load>) => {
+    const loaded = await result;
+    assert.equal(loaded.ok, true);
+    return loaded.ok ? (loaded.definition as { content: { features?: unknown } }).content.features : null;
+  };
+
+  assert.deepEqual(await featuresOf(load("[pickup]", {})), { pickups: [] });
+  assert.equal(await featuresOf(load("[]", {})), undefined);
+  assert.deepEqual(await featuresOf(load("[]", { "b.yaml": "id: pickup.b\n", "a.yaml": "id: pickup.a\n" })), {
+    pickups: [{ id: "pickup.a" }, { id: "pickup.b" }],
+  });
+  const withPickup = await load("[pickup]", { "a.yaml": "id: pickup.a\nscore: 1\n" });
+  assert.equal(withPickup.ok, true);
+  assert.deepEqual(withPickup.ok && withPickup.sourceIndex.locateSchemaPath("content.features.pickups[0].score").span, {
+    path: path.join(root, "pickups", "a.yaml"),
+    line: 2,
+    column: 8,
+    endLine: 2,
+    endColumn: 9,
+  });
+  assert.equal(withPickup.ok && withPickup.sourceIndex.locateSchemaPath("pickup.score", "pickup.a").sourceId, "pickup.a");
+});
+
 test("prioritizes an indexed schema path when duplicate ids make referrer ids ambiguous", async () => {
   const root = path.join("/project", "content");
   const gameDefinitionPath = path.join("/project", "game-definition.yaml");

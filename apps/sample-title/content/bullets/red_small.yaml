@@ -1,0 +1,5 @@
+id: bullet.red_small
+version: 1
+asset: bullet.red_small
+collision:
+  radius: 4

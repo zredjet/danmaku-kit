@@ -1,0 +1,251 @@
+{
+  "seed": "stage-01-golden",
+  "weavePeriodTicks": 80,
+  "end": {
+    "tick": 2216,
+    "status": "stageCleared",
+    "score": 3920,
+    "lives": 2
+  },
+  "checkpoints": [
+    {
+      "tick": 599,
+      "score": 650,
+      "lives": 3,
+      "entityCounts": {
+        "player": 1,
+        "enemy": 0,
+        "enemyBullet": 0,
+        "playerShot": 20,
+        "pickup": 12
+      },
+      "player": {
+        "x": 352,
+        "y": 400
+      },
+      "stateDigest": "937e31162087fabe"
+    },
+    {
+      "tick": 1199,
+      "score": 1230,
+      "lives": 3,
+      "entityCounts": {
+        "player": 1,
+        "enemy": 0,
+        "enemyBullet": 0,
+        "playerShot": 20,
+        "pickup": 0
+      },
+      "player": {
+        "x": 192,
+        "y": 400
+      },
+      "stateDigest": "7ab114bd1320e14c"
+    },
+    {
+      "tick": 1799,
+      "score": 1720,
+      "lives": 3,
+      "entityCounts": {
+        "player": 1,
+        "enemy": 1,
+        "enemyBullet": 26,
+        "playerShot": 17,
+        "pickup": 0
+      },
+      "player": {
+        "x": 32,
+        "y": 400
+      },
+      "stateDigest": "f5002f48f89573a6"
+    },
+    {
+      "tick": 2216,
+      "score": 3920,
+      "lives": 2,
+      "entityCounts": {
+        "player": 1,
+        "enemy": 0,
+        "enemyBullet": 35,
+        "playerShot": 13,
+        "pickup": 0
+      },
+      "player": {
+        "x": 284,
+        "y": 400
+      },
+      "stateDigest": "698467eda079f943"
+    }
+  ],
+  "defeats": [
+    {
+      "tick": 100,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 113,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 126,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 138,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 151,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 380,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 385,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 392,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 463,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 469,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 476,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 686,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 756,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 823,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 991,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 1017,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 1326,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1336,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1350,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1379,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1393,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1404,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1414,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1825,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 1896,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 2216,
+      "enemy": "enemy.gunship",
+      "score": 2000
+    }
+  ],
+  "pickups": {
+    "dropped": 36,
+    "collected": 32,
+    "score": 320
+  },
+  "playerHits": [
+    1894
+  ],
+  "firstThreeWay": {
+    "tick": 660,
+    "count": 3,
+    "angleDeg": [
+      72.25,
+      87.25,
+      102.25
+    ]
+  },
+  "firstRadial": {
+    "tick": 1770,
+    "count": 16,
+    "angleDeg": [
+      90,
+      112.5,
+      135,
+      157.5,
+      180,
+      -157.5,
+      -135,
+      -112.5,
+      -90,
+      -67.5,
+      -45,
+      -22.5,
+      0,
+      22.5,
+      45,
+      67.5
+    ]
+  }
+}

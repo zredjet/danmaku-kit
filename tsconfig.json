@@ -13,9 +13,12 @@
     "types": [],
     "target": "ES2024"
   },
+  // root program は Core の source と、Core の公開型契約・fixture を node 型なしで検査する。node 型が要る test と tool の型契約は
+  // tsconfig.test.json（tests/**/*.ts をすべて含む）で検査する。
   "include": [
     "packages/*/src/**/*.ts",
-    "tests/**/*.ts"
+    "tests/public-type-contract/**/*.ts",
+    "tests/fixtures/**/*.ts"
   ],
   "exclude": [
     "packages/*/src/**/*.test.ts",

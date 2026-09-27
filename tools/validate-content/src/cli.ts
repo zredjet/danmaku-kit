@@ -1,8 +1,10 @@
 import { formatValidateContentHuman, formatValidateContentJson } from "./output-format.ts";
-import { createToolErrorRunResult, createValidationRunResult } from "./output.ts";
-import { createNodeContentFileSystem, type ContentFileSystem } from "./content-file-system.ts";
-import { loadContentSource, type LoadContentSourceResult } from "./content-loader.ts";
-import { validateContentDefinition } from "./core-diagnostic-adapter.ts";
+import { createOwnToolErrorRunResult } from "./output.ts";
+import {
+  loadValidatedGameDefinitionWith,
+  safeErrorMessage,
+  type GameDefinitionLoaderDependencies,
+} from "./game-definition-loader.ts";
 import type { ValidateContentRunResult } from "./types.ts";
 
 export type ValidateContentFormat = "human" | "json";
@@ -22,15 +24,6 @@ type ParseCliArgumentsResult =
   | Readonly<{ ok: true; kind: "help" }>
   | Readonly<{ ok: true; kind: "run"; options: ValidateContentCliOptions }>
   | Readonly<{ ok: false; message: string; format: ValidateContentFormat }>;
-
-type ValidateContentCliDependencies = Readonly<{
-  fileSystem?: ContentFileSystem;
-  loadSource?: (
-    gameDefinitionPath: string,
-    contentRoot: string,
-    fileSystem: ContentFileSystem,
-  ) => Promise<LoadContentSourceResult>;
-}>;
 
 export const VALIDATE_CONTENT_USAGE = [
   "Usage: validate-content --game-definition <file.yaml> --content-root <directory> [--format human|json]",
@@ -52,11 +45,11 @@ export const VALIDATE_CONTENT_USAGE = [
 export async function runValidateContentCli(
   argv: readonly string[],
   io: ValidateContentCliIo,
-  dependencies: ValidateContentCliDependencies = {},
+  dependencies: GameDefinitionLoaderDependencies = {},
 ): Promise<number> {
   const parsed = parseValidateContentArguments(argv);
   if (!parsed.ok) {
-    const result = createToolErrorRunResult("", "tool.invalidArguments", parsed.message);
+    const result = createOwnToolErrorRunResult("", "tool.invalidArguments", parsed.message);
     return await writeCliOutput(io, formatResult(result, parsed.format), result.exitCode);
   }
   if (parsed.kind === "help") {
@@ -64,23 +57,16 @@ export async function runValidateContentCli(
   }
 
   const { options } = parsed;
-  const fileSystem = dependencies.fileSystem ?? createNodeContentFileSystem();
-  const loadSource = dependencies.loadSource ?? loadContentSource;
+  const { runResult } = await loadValidatedGameDefinitionWith(options, dependencies);
+  let text: string;
   try {
-    const loaded = await loadSource(options.gameDefinitionPath, options.contentRoot, fileSystem);
-    const diagnostics = loaded.ok
-      ? [...loaded.diagnostics, ...validateContentDefinition(loaded.definition, loaded.sourceIndex)]
-      : loaded.diagnostics;
-    const result = createValidationRunResult(options.contentRoot, diagnostics);
-    return await writeCliOutput(io, formatResult(result, options.format), result.exitCode);
+    text = formatResult(runResult, options.format);
   } catch (cause) {
-    const result = createToolErrorRunResult(
-      options.contentRoot,
-      isFileSystemError(cause) ? "tool.readFailed" : "tool.unexpected",
-      safeErrorMessage(cause),
-    );
-    return await writeCliOutput(io, formatResult(result, options.format), result.exitCode);
+    // formatter の予期しない例外も process を落とさず、exit code 2 の tool error として出力する。
+    const toolError = createOwnToolErrorRunResult(options.contentRoot, "tool.unexpected", safeErrorMessage(cause));
+    return await writeCliOutput(io, formatResult(toolError, options.format), toolError.exitCode);
   }
+  return await writeCliOutput(io, text, runResult.exitCode);
 }
 
 /** CLI argvを重複・未知optionを拒否する厳密な設定値へ変換する。 */
@@ -168,23 +154,6 @@ function detectRequestedFormat(argv: readonly string[]): ValidateContentFormat {
     }
   }
   return "human";
-}
-
-/** Node filesystem errorだけをread failureへ分類する。 */
-function isFileSystemError(value: unknown): boolean {
-  return value !== null
-    && typeof value === "object"
-    && "code" in value
-    && typeof value.code === "string"
-    && "syscall" in value
-    && typeof value.syscall === "string";
-}
-
-/** 例外objectからstackを出力せず、content制作者向けmessageだけを取り出す。 */
-function safeErrorMessage(value: unknown): string {
-  return value instanceof Error && value.message.length > 0
-    ? value.message
-    : "Unexpected validate-content failure";
 }
 
 /** emergency stderrを1行に保ち、terminal control sequenceを無効化する。 */

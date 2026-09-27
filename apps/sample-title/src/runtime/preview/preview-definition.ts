@@ -1,0 +1,190 @@
+import type {
+  Difficulty,
+  EnemyId,
+  GameDefinition,
+  PathId,
+  PatternId,
+  StageId,
+  StageTimelineAction,
+} from "@danmaku-kit/core";
+
+import { PLAYFIELD_WIDTH } from "../view/playfield.ts";
+
+/** Preview で単体再生するもの。enemy は path と pattern を選んで出す。 */
+export type PreviewTarget =
+  | Readonly<{ kind: "stage"; stageId: StageId }>
+  | Readonly<{ kind: "enemy"; enemyId: EnemyId; pathId: PathId; patternId: PatternId }>
+  | Readonly<{ kind: "pattern"; patternId: PatternId }>
+  | Readonly<{ kind: "path"; pathId: PathId }>;
+
+/** Preview が stage 以外の対象を出すために合成する stage（content が同じ id を持てば、持たない id になるまで suffix を付ける）。 */
+export const PREVIEW_STAGE_ID: StageId = "stage.preview";
+/** 合成した stage が対象を出す tick。開始演出の後、少し待ってから出す。 */
+export const PREVIEW_SPAWN_TICK = 30;
+/** pattern の単体再生で、enemy を止めておく path（区間がないので spawn の位置から動かない）。 */
+export const PREVIEW_HOLD_PATH_ID: PathId = "path.preview_hold";
+/** path の単体再生で、enemy に撃たせない pattern。 */
+export const PREVIEW_SILENT_PATTERN_ID: PatternId = "pattern.preview_silent";
+/** pattern の単体再生で enemy を止める位置。 */
+const PATTERN_PREVIEW_POSITION = Object.freeze({ x: PLAYFIELD_WIDTH / 2, y: 120 });
+/** stage で使われていない enemy や path を出す位置（上の境界の外）。 */
+const DEFAULT_SPAWN_POSITION = Object.freeze({ x: PLAYFIELD_WIDTH / 2, y: -16 });
+
+/**
+ * Preview の対象だけを出す `GameDefinition` を合成する（design 19）。Core に Preview 専用の API は足さず、合成した definition を普通に
+ * load して動かす。
+ *
+ * - stage はそのまま（`stageId` だけを返す）。
+ * - enemy、pattern、path は、それだけを tick `PREVIEW_SPAWN_TICK` に 1 体出す stage（`PREVIEW_STAGE_ID`）を足す。stage で最初に
+ *   使われている spawn の enemy と位置を借りる（enemy は選んだ path の spawn の位置を優先する）。pattern は止めた enemy に撃たせ
+ *   （`PREVIEW_HOLD_PATH_ID`）、path は撃たない enemy（`PREVIEW_SILENT_PATTERN_ID`）で動かす。足す stage、path、pattern の id は
+ *   content の id と重ならないようにする。
+ * - 足す stage は `difficulty` だけを持つ。Core は stage が持つ difficulty ごとに pattern の予算を検査するので、他の difficulty の
+ *   使われない枝が予算を超える pattern も、選んだ difficulty では再生できる。
+ */
+export function composePreviewDefinition(
+  definition: GameDefinition,
+  target: PreviewTarget,
+  difficulty: Difficulty,
+): Readonly<{ definition: GameDefinition; stageId: StageId }> {
+  if (target.kind === "stage") {
+    return Object.freeze({ definition, stageId: target.stageId });
+  }
+  const { content } = definition;
+  const stageId = unusedId(PREVIEW_STAGE_ID, content.stages);
+  const ids = {
+    holdPath: unusedId(PREVIEW_HOLD_PATH_ID, content.paths),
+    silentPattern: unusedId(PREVIEW_SILENT_PATTERN_ID, content.patterns),
+  };
+  const action = previewAction(definition, target, ids);
+  return Object.freeze({
+    definition: {
+      ...definition,
+      content: {
+        ...content,
+        stages: [...content.stages, { id: stageId, version: 1, difficulties: [difficulty], timeline: [{ tick: PREVIEW_SPAWN_TICK, action }] }],
+        paths: [...content.paths, { id: ids.holdPath, version: 1 }],
+        patterns: [...content.patterns, { id: ids.silentPattern, version: 1 }],
+      },
+    },
+    stageId,
+  });
+}
+
+/** Preview の stage 以外の対象で選べる difficulty（content の stage が持つ difficulty すべて）。 */
+export function previewDifficulties(definition: GameDefinition): readonly Difficulty[] {
+  return Object.freeze([...new Set(definition.content.stages.flatMap((stage) => stage.difficulties))]);
+}
+
+/** `base` が `definitions` の id になければ `base`、あれば `_2` から順に suffix を付けて、ない id にする。 */
+export function unusedId<T extends string>(base: T, definitions: readonly Readonly<{ id: string }>[]): T {
+  const used = new Set(definitions.map((definition) => definition.id));
+  let id = base;
+  for (let suffix = 2; used.has(id); suffix += 1) {
+    id = `${base}_${suffix}` as T;
+  }
+  return id;
+}
+
+function previewAction(
+  definition: GameDefinition,
+  target: Exclude<PreviewTarget, { kind: "stage" }>,
+  ids: Readonly<{ holdPath: PathId; silentPattern: PatternId }>,
+): StageTimelineAction {
+  const actions = definition.content.stages.flatMap((stage) => stage.timeline.map((step) => step.action));
+  const firstEnemy = definition.content.enemies[0]?.id ?? "enemy.preview";
+  switch (target.kind) {
+    case "enemy": {
+      // path が spawn の位置に合うよう、同じ enemy と path の spawn、同じ path の spawn、同じ enemy の spawn の順に位置を借りる。
+      const usage = actions.find((action) => action.enemy === target.enemyId && action.path === target.pathId)
+        ?? actions.find((action) => action.path === target.pathId)
+        ?? actions.find((action) => action.enemy === target.enemyId);
+      return {
+        type: "spawnEnemy",
+        enemy: target.enemyId,
+        path: target.pathId,
+        pattern: target.patternId,
+        position: usage?.position ?? DEFAULT_SPAWN_POSITION,
+      };
+    }
+    case "pattern": {
+      const usage = actions.find((action) => action.pattern === target.patternId);
+      return {
+        type: "spawnEnemy",
+        enemy: usage?.enemy ?? firstEnemy,
+        path: ids.holdPath,
+        pattern: target.patternId,
+        position: PATTERN_PREVIEW_POSITION,
+      };
+    }
+    case "path": {
+      const usage = actions.find((action) => action.path === target.pathId);
+      return {
+        type: "spawnEnemy",
+        enemy: usage?.enemy ?? firstEnemy,
+        path: target.pathId,
+        pattern: ids.silentPattern,
+        position: usage?.position ?? DEFAULT_SPAWN_POSITION,
+      };
+    }
+  }
+}
+
+/** Preview で選べるもの（content の id）。 */
+export type PreviewChoices = Readonly<{
+  stages: readonly StageId[];
+  enemies: readonly EnemyId[];
+  patterns: readonly PatternId[];
+  paths: readonly PathId[];
+}>;
+
+export function listPreviewChoices(definition: GameDefinition): PreviewChoices {
+  const { stages, enemies, patterns, paths } = definition.content;
+  return Object.freeze({
+    stages: Object.freeze(stages.map((stage) => stage.id)),
+    enemies: Object.freeze(enemies.map((enemy) => enemy.id)),
+    patterns: Object.freeze(patterns.map((pattern) => pattern.id)),
+    paths: Object.freeze(paths.map((path) => path.id)),
+  });
+}
+
+/**
+ * URL の `?preview=` の値を対象にする。`stage:<id>`、`pattern:<id>`、`path:<id>`、`enemy:<enemy>,<path>,<pattern>` を受け、content に
+ * ない id や形の誤りは null（呼び出し側は最初の stage にする）。
+ */
+export function parsePreviewTarget(value: string, definition: GameDefinition): PreviewTarget | null {
+  const choices = listPreviewChoices(definition);
+  const separator = value.indexOf(":");
+  const [kind, rest] = separator < 0 ? [value, ""] : [value.slice(0, separator), value.slice(separator + 1)];
+  const has = <T extends string>(ids: readonly T[], id: string): id is T => (ids as readonly string[]).includes(id);
+  switch (kind) {
+    case "stage":
+      return has(choices.stages, rest) ? { kind, stageId: rest } : null;
+    case "pattern":
+      return has(choices.patterns, rest) ? { kind, patternId: rest } : null;
+    case "path":
+      return has(choices.paths, rest) ? { kind, pathId: rest } : null;
+    case "enemy": {
+      const [enemyId = "", pathId = "", patternId = ""] = rest.split(",");
+      return has(choices.enemies, enemyId) && has(choices.paths, pathId) && has(choices.patterns, patternId)
+        ? { kind, enemyId, pathId, patternId }
+        : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** 対象を `?preview=` の値にする（`parsePreviewTarget()` の逆）。 */
+export function formatPreviewTarget(target: PreviewTarget): string {
+  switch (target.kind) {
+    case "stage":
+      return `stage:${target.stageId}`;
+    case "pattern":
+      return `pattern:${target.patternId}`;
+    case "path":
+      return `path:${target.pathId}`;
+    case "enemy":
+      return `enemy:${target.enemyId},${target.pathId},${target.patternId}`;
+  }
+}

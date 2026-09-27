@@ -1,21 +1,33 @@
-// createShootingCore / load / startStage / restore / tick / serialize の呼び出し形と CoreErrorCode を固定する。
+// createDanmakuCore / load / startStage / restore / tick / serialize の呼び出し形と CoreErrorCode を固定する。
 
-import { createShootingCore } from "@shooting-sample/shooting-core";
+import { createDanmakuCore } from "@danmaku-kit/core";
 import type {
   CoreError,
   CoreErrorCode,
   CoreResult,
+  CoreWarning,
+  DanmakuCore,
+  DanmakuCoreFeature,
+  DanmakuCoreOptions,
   InputFrame,
   LoadedGame,
   SerializedGameState,
-  ShootingCore,
   StageSession,
   StartStageOptions,
-} from "@shooting-sample/shooting-core";
+} from "@danmaku-kit/core";
 import { definition } from "./content-definitions.ts";
 import { serializedInitialGameState } from "./serialized-state.ts";
 
-const core: ShootingCore = createShootingCore("type-contract");
+const core: DanmakuCore = createDanmakuCore("type-contract");
+// Phase 2B-4: optional feature は feature の package entry が公開する値を `features` に渡す。
+const noFeatures: readonly DanmakuCoreFeature[] = [];
+const coreOptions: DanmakuCoreOptions = { coreVersion: "type-contract", features: noFeatures };
+const coreWithOptions: DanmakuCore = createDanmakuCore(coreOptions);
+const coreWithDefaults: DanmakuCore = createDanmakuCore();
+// @ts-expect-error a feature is made by the feature package entry, not by a plain object with the feature name.
+const forgedFeature: DanmakuCoreFeature = { feature: "pickup" };
+// @ts-expect-error features take the feature package entries, not feature names.
+createDanmakuCore({ features: ["pickup"] });
 
 const input: InputFrame = {
   tick: 0,
@@ -33,11 +45,21 @@ const contextualCoreError: CoreError = {
   referrerId: "stage.stage_01",
   targetId: "enemy.missing",
 };
+// load の warning は error と同じく content の位置を持てる（pattern の意味の検証など）。
+const contextualCoreWarning: CoreWarning = {
+  code: "pattern.unreachableStep",
+  message: "pattern.steps[4] is never executed from the spawn",
+  schemaPath: "content.patterns[1].steps[4]",
+  referrerId: "pattern.scout_three_way",
+};
 const errorCode: CoreErrorCode = "input.invalidShape";
 const bulletErrorCode: CoreErrorCode = "bullet.notFound";
+const enemyBulletBudgetErrorCode: CoreErrorCode = "enemyBullet.budgetExceeded";
+const patternBudgetErrorCode: CoreErrorCode = "pattern.budgetExceeded";
 const invalidConstraintErrorCode: CoreErrorCode = "definition.invalidConstraint";
 const playerShotErrorCode: CoreErrorCode = "playerShot.notFound";
 const fatalStageSessionErrorCode: CoreErrorCode = "stageSession.fatal";
+const endedStageSessionErrorCode: CoreErrorCode = "stageSession.ended";
 const testHookFailureErrorCode: CoreErrorCode = "testHook.failure";
 const restoreInvalidShapeErrorCode: CoreErrorCode = "state.invalidShape";
 const restoreCoreVersionMismatchErrorCode: CoreErrorCode = "state.coreVersionMismatch";
@@ -90,6 +112,10 @@ if (loaded.ok) {
 // @ts-expect-error stageId must use the stage.* namespace.
 const invalidStartOptions: StartStageOptions = { stageId: "enemy.scout", difficulty: "normal", seed: "seed-1" };
 
+// Phase 2B-5 / 2B-6: pickup feature の参照切れと active pickup の上限。
+const pickupErrorCodes: readonly CoreErrorCode[] = ["pickup.notFound", "pickup.budgetExceeded", "feature.disabled"];
+void pickupErrorCodes;
+
 // @ts-expect-error entity.notFound is an internal invariant, not a public CoreErrorCode.
 const invalidCoreErrorCode: CoreErrorCode = "entity.notFound";
 
@@ -109,14 +135,20 @@ if (loaded.ok) {
   }
 }
 
+void coreWithOptions;
+void coreWithDefaults;
+void forgedFeature;
 void input;
 void loaded;
 void loadedAsResult;
 void errorCode;
 void bulletErrorCode;
+void enemyBulletBudgetErrorCode;
+void patternBudgetErrorCode;
 void invalidConstraintErrorCode;
 void playerShotErrorCode;
 void fatalStageSessionErrorCode;
+void endedStageSessionErrorCode;
 void testHookFailureErrorCode;
 void restoreInvalidShapeErrorCode;
 void restoreCoreVersionMismatchErrorCode;
@@ -129,6 +161,7 @@ void invalidStartOptions;
 void invalidCoreErrorCode;
 void invalidDebugStateHashErrorCode;
 void contextualCoreError;
+void contextualCoreWarning;
 void invalidEntityAllocatorRestoreErrorCode;
 void restorePrngInvalidErrorCode;
 void restoreRegistryInvalidErrorCode;

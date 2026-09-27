@@ -1,0 +1,7 @@
+id: path.scout_sweep_left
+version: 1
+segments:
+  - type: velocity
+    duration: 260
+    velocity: { x: -2, y: 0.5 }
+    offset: { type: sine, axis: y, amplitude: 24, periodTicks: 90 }

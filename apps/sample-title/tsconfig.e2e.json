@@ -1,0 +1,18 @@
+{
+  // Playwright の config と browser smoke test（e2e/）を検査する。test は Node で動き、page.evaluate の中は browser で動くため、
+  // node の型と DOM lib の両方を使う。
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2024",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "playwright.config.ts",
+    "e2e/**/*.ts"
+  ]
+}

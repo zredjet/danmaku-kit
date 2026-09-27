@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1",
+  "contentRoot": "<content-root>",
+  "ok": false,
+  "diagnostics": [
+    {
+      "kind": "schema",
+      "code": "definition.invalidShape",
+      "severity": "error",
+      "message": "pickup.collectRadius must be a positive number",
+      "path": "<content-root>/pickups/score_small.yaml",
+      "line": 5,
+      "column": 16,
+      "endLine": 5,
+      "endColumn": 17,
+      "schemaPath": "content.features.pickups[0].collectRadius",
+      "sourceId": "pickup.score_small"
+    }
+  ],
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "infos": 0
+  }
+}

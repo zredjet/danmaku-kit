@@ -1,7 +1,9 @@
 import path from "node:path";
 
+import { toAssetManifest, validateAssetManifestSource, type AssetManifest } from "./asset-manifest.ts";
 import {
   COLLECTION_DIRECTORIES,
+  FEATURE_COLLECTIONS,
   type CollectionSource,
   type ContentCollectionName,
   type ContentDirectoryName,
@@ -14,7 +16,12 @@ import {
   type ContentFileSystem,
 } from "./content-file-system.ts";
 import { createContentSourceIndex, type ContentSourceIndex } from "./content-source-index.ts";
-import { createRootParseDiagnostic, defaultSpan, freezeSchemaDiagnostic } from "./diagnostic-factory.ts";
+import {
+  createRootParseDiagnostic,
+  defaultSpan,
+  freezeSchemaDiagnostic,
+  type OwnSchemaDiagnosticCode,
+} from "./diagnostic-factory.ts";
 import type { ParseOrSchemaContentDiagnostic } from "./types.ts";
 import {
   parseYamlSource,
@@ -27,6 +34,8 @@ export type LoadContentSourceResult =
   | Readonly<{
       ok: true;
       definition: unknown;
+      /** 検証済みの asset manifest。Core へは key の一覧だけを渡し、runtime はこちらの path で asset を読み込む。 */
+      assetManifest: AssetManifest;
       sourceIndex: ContentSourceIndex;
       diagnostics: readonly ParseOrSchemaContentDiagnostic[];
     }>
@@ -130,6 +139,7 @@ export async function loadContentSource(
   return Object.freeze({
     ok: true,
     definition,
+    assetManifest: toAssetManifest(assetManifest.source.value),
     sourceIndex,
     diagnostics: Object.freeze(diagnostics),
   });
@@ -190,6 +200,7 @@ function validateCliSourceShapes(
       "assetManifest",
     ));
   }
+  diagnostics.push(...validateAssetManifestSource(assetManifest));
   for (const source of collectionSources) {
     if (!asPlainRecord(source.source.value)) {
       diagnostics.push(createSchemaDiagnostic(
@@ -223,9 +234,28 @@ function assembleGameDefinition(
     playerShots: collectDefinitions(collectionSources, "playerShots"),
     patterns: collectDefinitions(collectionSources, "patterns"),
     paths: collectDefinitions(collectionSources, "paths"),
+    ...collectFeatureContent(collectionSources, game.enabledFeatures),
   };
   const { contentVersion: _contentVersion, content: _content, ...coreFields } = game;
   return { ...coreFields, content };
+}
+
+/**
+ * optional feature の collection を `content.features` にまとめる。file のある collection と、有効な feature の collection（file が
+ * なければ空）を置き、どちらもなければ `content.features` を省く。
+ */
+function collectFeatureContent(
+  sources: readonly CollectionSource[],
+  enabledFeatures: unknown,
+): Readonly<{ features?: Record<string, readonly unknown[]> }> {
+  const features: Record<string, readonly unknown[]> = {};
+  for (const [collection, feature] of Object.entries(FEATURE_COLLECTIONS)) {
+    const enabled = Array.isArray(enabledFeatures) && enabledFeatures.includes(feature);
+    if (enabled || sources.some((source) => source.collection === collection)) {
+      features[collection.slice("features.".length)] = collectDefinitions(sources, collection as ContentCollectionName);
+    }
+  }
+  return Object.keys(features).length > 0 ? { features } : {};
 }
 
 /** collection fileのUTF-8 path順を保ったまま定義配列へ投影する。 */
@@ -310,7 +340,7 @@ async function readYamlSource(
 /** loader 固有の source file / manifest 構造エラーを error severity の schema diagnostic にする。 */
 function createSchemaDiagnostic(
   span: YamlSourceSpan,
-  code: string,
+  code: OwnSchemaDiagnosticCode,
   message: string,
   schemaPath: string,
   sourceId: string,

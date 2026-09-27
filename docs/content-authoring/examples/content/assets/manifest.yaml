@@ -1,0 +1,31 @@
+# asset manifest: content の `asset` が参照する key と、runtime が読む file。
+version: 1
+assets:
+  player.example:
+    type: sprite
+    # base URL からの相対 path。validate-content は file の有無を見ない（この例の file はない）。
+    path: assets/sprites/player.svg
+    # required: true の asset を読めなければ、runtime は stage を始めない。required: false なら fallback（別の asset の key）を
+    # 使い、fallback がなければ usage と type で省けるもの（ui / decorative の画像など）だけを省く（design 17）。
+    required: true
+    usage: gameplay
+  shot.example:
+    type: sprite
+    path: assets/sprites/shot.svg
+    required: true
+    usage: gameplay
+  bullet.example:
+    type: sprite
+    path: assets/sprites/bullet.svg
+    required: true
+    usage: gameplay
+  enemy.example:
+    type: sprite
+    path: assets/sprites/enemy.svg
+    required: true
+    usage: gameplay
+  pickup.example:
+    type: sprite
+    path: assets/sprites/pickup.svg
+    required: true
+    usage: gameplay

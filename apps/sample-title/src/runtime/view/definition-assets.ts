@@ -1,0 +1,63 @@
+import type { GameDefinition, PickupDefinition } from "@danmaku-kit/core";
+
+/**
+ * content 定義の asset key を definition id から引ける表にする。
+ *
+ * `GameFrame` の entity は definition id だけを持つため、view の texture は app が持つ content 定義から asset key を引く。definition id は
+ * 種類ごとの namespace prefix を持つので、全種類を 1 つの表にまとめても衝突しない。
+ */
+export function collectDefinitionAssets(definition: GameDefinition): ReadonlyMap<string, string> {
+  const { players, enemies, bullets, playerShots } = definition.content;
+  return new Map<string, string>(
+    [...players, ...enemies, ...bullets, ...playerShots, ...enabledPickups(definition)].map((item) => [item.id, item.asset]),
+  );
+}
+
+/**
+ * pickup feature が有効なときの pickup の定義。有効でない feature の collection は Core が検証せずに読み込むだけ（使わない）なので、
+ * view も使わない。
+ */
+export function enabledPickups(definition: GameDefinition): readonly PickupDefinition[] {
+  return definition.enabledFeatures.includes("pickup") ? definition.content.features?.pickups ?? [] : [];
+}
+
+/**
+ * definition id から、読み込み済みの texture の key を引ける表を作る。
+ *
+ * asset の読み込み結果（fallback を含む）で key を置き換える。gameplay entity の view は欠かせないため、texture を持たない
+ * definition があれば、その asset key の一覧を返して stage を始めない。
+ */
+export function resolveDefinitionTextures(
+  definitionAssets: ReadonlyMap<string, string>,
+  loadedKeys: ReadonlyMap<string, string>,
+): Readonly<{ ok: true; textures: ReadonlyMap<string, string> }> | Readonly<{ ok: false; missingAssets: readonly string[] }> {
+  const textures = new Map<string, string>();
+  const missingAssets = new Set<string>();
+  for (const [definitionId, assetKey] of definitionAssets) {
+    const texture = loadedKeys.get(assetKey);
+    if (texture === undefined) {
+      missingAssets.add(assetKey);
+    } else {
+      textures.set(definitionId, texture);
+    }
+  }
+  return missingAssets.size > 0
+    ? Object.freeze({ ok: false, missingAssets: Object.freeze([...missingAssets].sort()) })
+    : Object.freeze({ ok: true, textures });
+}
+
+/**
+ * content の hot reload で読み直した asset を使う definition の texture を、読み直した asset 自身の key に向け直す。起動時に読めずに
+ * fallback を使った asset も、読み直せれば fallback をやめる（`resolveDefinitionTextures()` の表は fallback の key を指したままになる）。
+ */
+export function retargetReloadedTextures(
+  textures: ReadonlyMap<string, string>,
+  definitionAssets: ReadonlyMap<string, string>,
+  reloadedAssetKeys: readonly string[],
+): ReadonlyMap<string, string> {
+  const reloaded = new Set(reloadedAssetKeys);
+  return new Map([...textures].map(([definitionId, texture]) => {
+    const assetKey = definitionAssets.get(definitionId);
+    return [definitionId, assetKey !== undefined && reloaded.has(assetKey) ? assetKey : texture] as const;
+  }));
+}

@@ -1,0 +1,23 @@
+# stage: difficulty（normal と hard から選ぶ）と、tick ごとに敵を出す timeline。timeline を出し終え、敵と pickup がいなくなると
+# clear する。
+id: stage.example
+version: 1
+difficulties:
+  - normal
+  - hard
+timeline:
+  - tick: 60
+    action:
+      type: spawnEnemy
+      enemy: enemy.example
+      path: path.example_dive
+      pattern: pattern.example_aimed
+      # 出す位置。playfield は 384 x 448 px で、左上が (0, 0)。上の境界の外から入れる。
+      position: { x: 96, y: -16 }
+  - tick: 120
+    action:
+      type: spawnEnemy
+      enemy: enemy.example
+      path: path.example_dive
+      pattern: pattern.example_ring
+      position: { x: 192, y: -16 }

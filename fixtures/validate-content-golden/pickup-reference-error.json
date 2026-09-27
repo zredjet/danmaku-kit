@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1",
+  "contentRoot": "<content-root>",
+  "ok": false,
+  "diagnostics": [
+    {
+      "kind": "reference",
+      "code": "pickup.notFound",
+      "severity": "error",
+      "message": "Pickup not found: pickup.score_large",
+      "path": "<content-root>/enemies/scout.yaml",
+      "line": 9,
+      "column": 13,
+      "endLine": 9,
+      "endColumn": 31,
+      "referrerId": "enemy.scout",
+      "targetId": "pickup.score_large",
+      "schemaPath": "content.enemies[0].drops[0].pickup"
+    }
+  ],
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "infos": 0
+  }
+}

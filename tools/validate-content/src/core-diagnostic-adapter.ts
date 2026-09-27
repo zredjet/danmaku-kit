@@ -1,12 +1,13 @@
 import {
-  createShootingCore,
+  createDanmakuCore,
   type CoreError,
   type CoreWarning,
   type GameDefinition,
-} from "@shooting-sample/shooting-core";
+} from "@danmaku-kit/core";
+import { pickupFeature } from "@danmaku-kit/core/features/pickup";
 
 import type { ContentSourceIndex } from "./content-source-index.ts";
-import { freezeSchemaDiagnostic } from "./diagnostic-factory.ts";
+import { freezeCoreSchemaDiagnostic } from "./diagnostic-factory.ts";
 import type {
   FeatureGateContentDiagnostic,
   ParseOrSchemaContentDiagnostic,
@@ -20,6 +21,7 @@ const REFERENCE_ERROR_CODES = new Set<string>([
   "enemy.notFound",
   "path.notFound",
   "pattern.notFound",
+  "pickup.notFound",
   "player.defaultNotFound",
   "playerShot.notFound",
 ]);
@@ -32,7 +34,8 @@ export function validateContentDefinition(
   definition: unknown,
   sourceIndex: ContentSourceIndex,
 ): readonly ValidationContentDiagnostic[] {
-  const result = createShootingCore("validate-content").load(definition as GameDefinition);
+  // validate-content は Core の持つ optional feature をすべて登録し、`enabledFeatures` で有効にした feature の content を検証する。
+  const result = createDanmakuCore({ coreVersion: "validate-content", features: [pickupFeature] }).load(definition as GameDefinition);
   if (!result.ok) {
     return Object.freeze(result.errors.map((error) => mapCoreError(error, sourceIndex)));
   }
@@ -42,7 +45,7 @@ export function validateContentDefinition(
 /** Core error codeをreference / feature gate / schemaの公開diagnostic kindへ分類する。 */
 function mapCoreError(error: CoreError, sourceIndex: ContentSourceIndex): ValidationContentDiagnostic {
   if (error.code.startsWith("feature.")) {
-    return createFeatureGateDiagnostic(error.code, "error", error.message);
+    return createFeatureGateDiagnostic(error, "error", sourceIndex);
   }
   if (REFERENCE_ERROR_CODES.has(error.code)) {
     return createReferenceDiagnostic(error, sourceIndex);
@@ -50,11 +53,14 @@ function mapCoreError(error: CoreError, sourceIndex: ContentSourceIndex): Valida
   return createSchemaDiagnostic(error, "error", sourceIndex);
 }
 
-/** Core warningはblockingしないschema diagnosticとして同じsource lookupを適用する。 */
+/** Core warningはblockingしない診断として、feature の warning は feature gate、それ以外は schema diagnostic にする。 */
 function mapCoreWarning(
   warning: CoreWarning,
   sourceIndex: ContentSourceIndex,
-): ParseOrSchemaContentDiagnostic {
+): ParseOrSchemaContentDiagnostic | FeatureGateContentDiagnostic {
+  if (warning.code.startsWith("feature.")) {
+    return createFeatureGateDiagnostic(warning, "warning", sourceIndex);
+  }
   return createSchemaDiagnostic(warning, "warning", sourceIndex);
 }
 
@@ -80,19 +86,24 @@ function createReferenceDiagnostic(error: CoreError, sourceIndex: ContentSourceI
   });
 }
 
-/** feature validationはGameDefinition.enabledFeaturesを正本位置として表す。 */
+/**
+ * feature gate の診断。`enabledFeatures` の誤りと、有効でない feature の collection 全体（直す場所は `enabledFeatures`）は game
+ * definition を、無効な feature を使う definition の field（`enemy.drops` など）はその definition の source を指す。
+ */
 function createFeatureGateDiagnostic(
-  code: string,
+  error: Readonly<Pick<CoreError, "code" | "message" | "schemaPath" | "referrerId">> | CoreWarning,
   severity: "error" | "warning",
-  message: string,
+  sourceIndex: ContentSourceIndex,
 ): FeatureGateContentDiagnostic {
+  const schemaPath = error.schemaPath ?? "enabledFeatures";
+  const atGameDefinition = schemaPath === "enabledFeatures" || /^content\.features\.[A-Za-z]+$/.test(schemaPath);
   return Object.freeze({
     kind: "featureGate",
-    code,
+    code: error.code,
     severity,
-    message,
-    sourceId: "gameDefinition",
-    schemaPath: "enabledFeatures",
+    message: error.message,
+    sourceId: atGameDefinition ? "gameDefinition" : sourceIndex.locateSchemaPath(schemaPath, error.referrerId).sourceId,
+    schemaPath,
   });
 }
 
@@ -102,17 +113,8 @@ function createSchemaDiagnostic(
   severity: "error" | "warning",
   sourceIndex: ContentSourceIndex,
 ): ParseOrSchemaContentDiagnostic {
-  const schemaPath = "schemaPath" in error && error.schemaPath !== undefined
-    ? error.schemaPath
-    : inferSchemaPath(error.code, error.message);
-  const referrerId = "referrerId" in error ? error.referrerId : undefined;
-  return freezeSchemaDiagnostic(
-    error.code,
-    severity,
-    error.message,
-    schemaPath,
-    sourceIndex.locateSchemaPath(schemaPath, referrerId),
-  );
+  const schemaPath = error.schemaPath ?? inferSchemaPath(error.code, error.message);
+  return freezeCoreSchemaDiagnostic(error, severity, schemaPath, sourceIndex.locateSchemaPath(schemaPath, error.referrerId));
 }
 
 /** Core messageのpath表現を可能な範囲で抽出し、code別fallbackを必ず返す。 */
@@ -130,6 +132,7 @@ function inferSchemaPath(code: string, message: string): string {
     case "feature.duplicate":
     case "feature.unknown":
     case "feature.unsupported": return "enabledFeatures";
+    case "pickup.notFound": return "enemy.drops[].pickup";
     case "player.defaultNotFound": return "defaultPlayerId";
     case "playerShot.notFound": return "player.shot.definition";
     case "bullet.notFound": return "pattern.fireOnSpawn.bullet";

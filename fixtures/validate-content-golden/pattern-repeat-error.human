@@ -1,0 +1,2 @@
+<content-root>/patterns/scout_three_way.yaml:11:22-11:23 [ERROR] definition.invalidShape: pattern.steps[].repeat.steps[].fire.radial.count must divide 360 degrees into 0.25 degree steps (schema=content.patterns[1].steps[0].repeat.steps[0].fire.radial.count, source=pattern.scout_three_way)
+Summary: 1 error(s), 0 warning(s), 0 info(s)

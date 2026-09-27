@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2024",
+      "DOM"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    // Phaser 4.2.1 同梱の型定義は TypeScript 6 で内部の型 error を出すため、.d.ts の検査だけを省く。.ts source は検査する。
+    "skipLibCheck": true,
+    "types": [
+      "vite/client"
+    ]
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/test-support/**"
+  ]
+}

@@ -1,0 +1,5 @@
+id: bullet.blue_large
+version: 1
+asset: bullet.blue_large
+collision:
+  radius: 6

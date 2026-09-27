@@ -1,0 +1,47 @@
+id: pattern.gunship_barrage
+version: 1
+steps:
+  - wait: 90
+  - fire:
+      bullet: bullet.blue_large
+      angleDeg: 90
+      fan:
+        count: 7
+        spreadDeg: 90
+      speed: 2
+  - wait: 30
+  - fire:
+      bullet: bullet.red_small
+      aim: player
+      fan:
+        count: 3
+        spreadDeg: 20
+      speed: 3.5
+  - wait: 30
+  # 画面全体へ広がる輪（radial）。扇より遅くし、隙間を抜けられるようにする。hard は 24 方向、normal は 16 方向。
+  - if:
+      difficulty: [hard]
+      then:
+        - fire:
+            bullet: bullet.blue_large
+            angleDeg: 90
+            radial:
+              count: 24
+            speed: 1.5
+      else:
+        - fire:
+            bullet: bullet.blue_large
+            angleDeg: 90
+            radial:
+              count: 16
+            speed: 1.5
+  - wait: 30
+  - fire:
+      bullet: bullet.red_small
+      aim: player
+      fan:
+        count: 3
+        spreadDeg: 20
+      speed: 3.5
+  - wait: 30
+  - loop: 1

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1",
+  "contentRoot": "<content-root>",
+  "ok": true,
+  "diagnostics": [
+    {
+      "kind": "schema",
+      "code": "pattern.unusedBranch",
+      "severity": "warning",
+      "message": "pattern.steps[].if.difficulty lists a difficulty this step never runs on: hard",
+      "path": "<content-root>/patterns/scout_three_way.yaml",
+      "line": 6,
+      "column": 19,
+      "endLine": 6,
+      "endColumn": 25,
+      "schemaPath": "content.patterns[1].steps[1].if.difficulty",
+      "sourceId": "pattern.scout_three_way"
+    }
+  ],
+  "summary": {
+    "errors": 0,
+    "warnings": 1,
+    "infos": 0
+  }
+}

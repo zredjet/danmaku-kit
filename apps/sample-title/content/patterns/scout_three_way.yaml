@@ -1,0 +1,13 @@
+id: pattern.scout_three_way
+version: 1
+steps:
+  - wait: 60
+  - fire:
+      bullet: bullet.red_small
+      aim: player
+      fan:
+        count: 3
+        spreadDeg: 30
+      speed: 3
+  - wait: 40
+  - loop: 1

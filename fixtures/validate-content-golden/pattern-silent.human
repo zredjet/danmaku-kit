@@ -1,0 +1,2 @@
+<content-root>/patterns/scout_three_way.yaml:4:3-6:1 [WARNING] pattern.neverFires: pattern.steps never fire a bullet (schema=content.patterns[1].steps, source=pattern.scout_three_way)
+Summary: 0 error(s), 1 warning(s), 0 info(s)

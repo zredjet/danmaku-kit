@@ -1,0 +1,16 @@
+# 敵の移動 path。segments を順に、duration tick ずつ velocity で動く。path を終えた敵はその位置で止まり、playfield の外へ 64 px を
+# 超えて出ていれば消える（止まった敵が残ると stage は clear しないので、最後の segment で画面の外まで出す）。
+id: path.example_dive
+version: 1
+segments:
+  - type: velocity
+    duration: 60
+    velocity: { x: 0, y: 2 }
+  # offset は velocity の動きに重ねる揺れ（sine）。
+  - type: velocity
+    duration: 120
+    velocity: { x: 0, y: 0 }
+    offset: { type: sine, axis: x, amplitude: 32, periodTicks: 60 }
+  - type: velocity
+    duration: 150
+    velocity: { x: 0, y: 3 }

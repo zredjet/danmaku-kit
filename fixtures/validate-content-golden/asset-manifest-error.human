@@ -1,0 +1,2 @@
+<content-root>/assets/manifest.yaml:20:11-20:20 [ERROR] assetManifest.invalidShape: asset path must be a base-relative path without a scheme, leading slash, backslash or . / .. segment (schema=assetManifest.assets["shot.player_basic"].path, source=shot.player_basic)
+Summary: 1 error(s), 0 warning(s), 0 info(s)

@@ -1,0 +1,173 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { createEnemyBulletRuntimeEntity } from "./enemy-bullet/model.ts";
+import { createEnemyRuntimeEntity } from "./enemy/model.ts";
+import { createPlayerRuntimeEntity } from "./player/model.ts";
+import { createPlayerShotRuntimeEntity } from "./player-shot/model.ts";
+import { toReadonlyEntityState } from "./runtime-entity.ts";
+import { EntityAllocator } from "../simulation/entity.ts";
+import { createMinimumDefinition } from "../../../../../tests/fixtures/minimum-game-definition.ts";
+
+test("creates player runtime components from player content", () => {
+  const definition = createMinimumDefinition();
+  const player = definition.content.players[0]!;
+  const entity = createPlayerRuntimeEntity(new EntityAllocator(), player);
+
+  assert.equal(entity.ok, true);
+  if (!entity.ok) {
+    assert.fail("expected player entity");
+  }
+  assert.deepEqual(entity.value, {
+    id: 1,
+    kind: "player",
+    definitionId: "player.default",
+    position: { x: 192, y: 400 },
+    movement: { speed: 4, focusSpeed: 1.8 },
+    collisionRadius: 3,
+    lives: 3,
+    invincibleTicksRemaining: 0,
+    shotDefinitionId: "playerShot.basic",
+    nextShotAllowedTick: 0,
+  });
+  assert.equal(Object.isFrozen(entity.value), true);
+  assert.equal(Object.isFrozen(entity.value.position), true);
+  assert.equal(Object.isFrozen(entity.value.movement), true);
+});
+
+test("creates enemy runtime components from enemy content and spawn action", () => {
+  const definition = createMinimumDefinition();
+  const enemy = definition.content.enemies[0]!;
+  const action = definition.content.stages[0]!.timeline[0]!.action;
+  const entity = createEnemyRuntimeEntity(new EntityAllocator(), enemy, action);
+
+  assert.equal(entity.ok, true);
+  if (!entity.ok) {
+    assert.fail("expected enemy entity");
+  }
+  assert.deepEqual(entity.value, {
+    id: 1,
+    kind: "enemy",
+    definitionId: "enemy.scout",
+    position: { x: 192, y: -16 },
+    pathId: "path.none",
+    patternId: "pattern.none",
+    collisionRadius: 12,
+    hp: 10,
+    scoreOnKill: 100,
+    pathRunnerState: { segmentIndex: 0, segmentStart: { x: 192, y: -16 }, segmentElapsedTicks: 0 },
+  });
+  assert.equal(Object.isFrozen(entity.value), true);
+  assert.equal(Object.isFrozen(entity.value.position), true);
+  assert.equal(Object.isFrozen(entity.value.pathRunnerState.segmentStart), true);
+});
+
+test("creates bullet and player shot runtime components from content hitboxes", () => {
+  const definition = createMinimumDefinition();
+  const allocator = new EntityAllocator();
+  const bullet = createEnemyBulletRuntimeEntity(allocator, definition.content.bullets[0]!, { x: 100, y: 120 }, { x: 0, y: 3 });
+  const shot = createPlayerShotRuntimeEntity(allocator, definition.content.playerShots[0]!, { x: 200, y: 360 });
+
+  assert.equal(bullet.ok, true);
+  assert.equal(shot.ok, true);
+  if (!bullet.ok || !shot.ok) {
+    assert.fail("expected projectile entities");
+  }
+  assert.deepEqual(bullet.value, {
+    id: 1,
+    kind: "enemyBullet",
+    definitionId: "bullet.red_small",
+    position: { x: 100, y: 120 },
+    collisionRadius: 4,
+    velocity: { x: 0, y: 3 },
+    spawnPosition: { x: 100, y: 120 },
+    ageTicks: 0,
+  });
+  assert.deepEqual(shot.value, {
+    id: 2,
+    kind: "playerShot",
+    definitionId: "playerShot.basic",
+    position: { x: 200, y: 360 },
+    velocity: { x: 0, y: -8 },
+    collisionRadius: 5,
+    damage: 5,
+    remainingLifetimeTicks: 3,
+  });
+});
+
+test("rejects non-finite enemy bullet positions before consuming ids", () => {
+  const definition = createMinimumDefinition();
+  const allocator = new EntityAllocator();
+  const bullet = createEnemyBulletRuntimeEntity(
+    allocator,
+    definition.content.bullets[0]!,
+    { x: Number.POSITIVE_INFINITY, y: 120 },
+    { x: 0, y: 0 },
+  );
+
+  assert.equal(bullet.ok, false);
+  assert.equal(!bullet.ok && bullet.errors[0]?.code, "definition.invalidConstraint");
+  assert.equal(allocator.snapshot(), 1);
+});
+
+test("projects runtime components to public readonly snapshots without leaking internals", () => {
+  const definition = createMinimumDefinition();
+  const player = createPlayerRuntimeEntity(new EntityAllocator(), definition.content.players[0]!);
+  const runtime = createEnemyRuntimeEntity(
+    new EntityAllocator(),
+    definition.content.enemies[0]!,
+    definition.content.stages[0]!.timeline[0]!.action,
+  );
+
+  assert.equal(player.ok, true);
+  assert.equal(runtime.ok, true);
+  if (!player.ok || !runtime.ok) {
+    assert.fail("expected runtime entities");
+  }
+  const playerSnapshot = toReadonlyEntityState(player.value);
+  assert.deepEqual(playerSnapshot, {
+    id: 1,
+    kind: "player",
+    definitionId: "player.default",
+    position: { x: 192, y: 400 },
+  });
+  assert.equal("nextShotAllowedTick" in playerSnapshot, false);
+  assert.equal("shotDefinitionId" in playerSnapshot, false);
+  assert.equal("collisionRadius" in playerSnapshot, false);
+  assert.equal(Object.isFrozen(playerSnapshot), true);
+  assert.equal(Object.isFrozen(playerSnapshot.position), true);
+
+  const snapshot = toReadonlyEntityState(runtime.value);
+  assert.deepEqual(snapshot, {
+    id: 1,
+    kind: "enemy",
+    definitionId: "enemy.scout",
+    position: { x: 192, y: -16 },
+  });
+  assert.equal("hp" in snapshot, false);
+  assert.equal("pathId" in snapshot, false);
+  assert.equal("collisionRadius" in snapshot, false);
+  assert.equal(Object.isFrozen(snapshot), true);
+  assert.equal(Object.isFrozen(snapshot.position), true);
+
+  const bullet = createEnemyBulletRuntimeEntity(
+    new EntityAllocator(),
+    definition.content.bullets[0]!,
+    { x: 100, y: 120 },
+    { x: 0, y: 3 },
+  );
+  assert.equal(bullet.ok, true);
+  if (!bullet.ok) {
+    assert.fail("expected enemy bullet entity");
+  }
+  const bulletSnapshot = toReadonlyEntityState(bullet.value);
+  assert.deepEqual(bulletSnapshot, {
+    id: 1,
+    kind: "enemyBullet",
+    definitionId: "bullet.red_small",
+    position: { x: 100, y: 120 },
+  });
+  assert.equal("collisionRadius" in bulletSnapshot, false);
+  assert.equal(Object.isFrozen(bulletSnapshot), true);
+  assert.equal(Object.isFrozen(bulletSnapshot.position), true);
+});

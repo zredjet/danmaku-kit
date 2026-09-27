@@ -1,5 +1,5 @@
 {
-  "name": "@shooting-sample/validate-content",
+  "name": "@danmaku-kit/validate-content",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@shooting-sample/shooting-core": "0.0.0",
+    "@danmaku-kit/core": "0.0.0",
     "yaml": "2.9.0"
   }
 }

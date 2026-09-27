@@ -1,5 +1,5 @@
 {
-  "name": "shooting-sample",
+  "name": "danmaku-kit",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,10 +13,15 @@
     "apps/*"
   ],
   "scripts": {
-    "check": "npm run typecheck && npm test",
-    "test": "node --experimental-strip-types --test \"packages/*/src/**/*.test.ts\" \"tools/*/src/**/*.test.ts\" \"apps/*/src/**/*.test.ts\" \"tests/**/*.test.ts\" \"tests/**/*.test.mjs\"",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tools/validate-content/tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "build": "npm run build -w @danmaku-kit/sample-title",
+    "check": "npm run typecheck && npm test && npm run validate-content:sample && npm run build",
+    "dev": "npm run dev -w @danmaku-kit/sample-title",
+    "generate-sine-table": "node packages/core/scripts/generate-sine-table.mjs",
+    "test": "node --experimental-strip-types --test \"packages/*/src/**/*.test.ts\" \"tools/*/src/**/*.test.ts\" \"apps/*/src/**/*.test.ts\" \"apps/*/vite/**/*.test.ts\" \"tests/**/*.test.ts\" \"tests/**/*.test.mjs\"",
+    "test:browser": "npm run test:browser -w @danmaku-kit/sample-title --",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tools/validate-content/tsconfig.json && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p apps/sample-title/tsconfig.json && tsc --noEmit -p apps/sample-title/tsconfig.runtime.json && tsc --noEmit -p apps/sample-title/tsconfig.node.json && tsc --noEmit -p apps/sample-title/tsconfig.e2e.json",
     "validate-content": "node --experimental-strip-types tools/validate-content/src/cli-entry.ts",
+    "validate-content:sample": "npm run validate-content -- --game-definition apps/sample-title/config/game-definition.yaml --content-root apps/sample-title/content --format json",
     "update-validate-content-goldens": "node tools/validate-content/scripts/update-goldens.mjs"
   },
   "devDependencies": {

@@ -137,6 +137,40 @@ test("preserves original indexes after non-object content and timeline elements"
   assert.equal(schemaPaths.includes("content.stages[0].timeline[1].tick"), true);
 });
 
+test("points feature gate diagnostics at the definition that uses a disabled feature", () => {
+  const minimum = createMinimumDefinition();
+  const definition = {
+    ...minimum,
+    content: {
+      ...minimum.content,
+      enemies: [{ ...minimum.content.enemies[0]!, drops: [{ pickup: "pickup.score_small", count: 1 }] }],
+    },
+  };
+
+  assert.deepEqual(validateContentDefinition(definition, sourceIndexStub()), [{
+    kind: "featureGate",
+    code: "feature.disabled",
+    severity: "error",
+    message: "enemy.drops requires the pickup feature in enabledFeatures",
+    sourceId: "enemy.scout",
+    schemaPath: "content.enemies[0].drops",
+  }]);
+});
+
+test("points a disabled feature collection warning at the game definition", () => {
+  const minimum = createMinimumDefinition();
+  const definition = { ...minimum, content: { ...minimum.content, features: { pickups: [] } } };
+
+  assert.deepEqual(validateContentDefinition(definition, sourceIndexStub()), [{
+    kind: "featureGate",
+    code: "feature.disabledContent",
+    severity: "warning",
+    message: "content.features.pickups is not used because the pickup feature is not in enabledFeatures",
+    sourceId: "gameDefinition",
+    schemaPath: "content.features.pickups",
+  }]);
+});
+
 function sourceIndexStub(): ContentSourceIndex {
   return Object.freeze({
     locateSchemaPath(schemaPath, referrerId) {
@@ -149,6 +183,13 @@ function sourceIndexStub(): ContentSourceIndex {
             endLine: 8,
             endColumn: 29,
           }),
+          sourceId: referrerId,
+          schemaPath,
+        });
+      }
+      if (referrerId === "enemy.scout") {
+        return Object.freeze({
+          span: Object.freeze({ path: "content/enemies/scout.yaml", line: 7, column: 1, endLine: 7, endColumn: 6 }),
           sourceId: referrerId,
           schemaPath,
         });

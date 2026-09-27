@@ -10,7 +10,7 @@ import type {
   SerializedPendingEvent,
   SerializedPrngSnapshot,
   SerializedRuntimeEntityState,
-} from "@shooting-sample/shooting-core";
+} from "@danmaku-kit/core";
 
 const serializedEntityId: SerializedEntityId = 1;
 
@@ -53,6 +53,7 @@ const serializedEnemyEntity: SerializedRuntimeEntityState = {
   scoreOnKill: 100,
   pathId: "path.none",
   patternId: "pattern.none",
+  pathRunnerState: { segmentIndex: 0, segmentStart: { x: 192, y: 80 }, segmentElapsedTicks: 0 },
 };
 const serializedEnemyBulletEntity: SerializedRuntimeEntityState = {
   id: 3,
@@ -60,6 +61,9 @@ const serializedEnemyBulletEntity: SerializedRuntimeEntityState = {
   definitionId: "bullet.red_small",
   position: { x: 192, y: 120 },
   collisionRadius: 4,
+  velocity: { x: 0, y: 2 },
+  spawnPosition: { x: 192, y: 100 },
+  ageTicks: 10,
 };
 const serializedPlayerShotEntity: SerializedRuntimeEntityState = {
   id: 4,
@@ -76,6 +80,7 @@ const serializedInitialDeterministicState: SerializedDeterministicState = {
   pendingEvents: [serializedPendingEvent],
   score: 0,
   timelineCursor: 0,
+  stageStatus: "playing",
   patternRunnerStates: [],
   enabledFeatureStates: [],
 };
@@ -89,15 +94,26 @@ const serializedDeterministicState: SerializedDeterministicState = {
   pendingEvents: [],
   score: 100,
   timelineCursor: 1,
+  stageStatus: "playing",
   patternRunnerStates: [],
   enabledFeatureStates: [],
+};
+const serializedClearedDeterministicState: SerializedDeterministicState = {
+  ...serializedDeterministicState,
+  runtimeEntities: [serializedPlayerEntity],
+  stageStatus: "stageCleared",
+};
+const invalidSerializedStageStatus: SerializedDeterministicState = {
+  ...serializedDeterministicState,
+  // @ts-expect-error stageStatus is playing, stageCleared or gameOver.
+  stageStatus: "paused",
 };
 const serializedGameState: SerializedGameState = {
   coreVersion: "0.0.0",
   schemaVersion: "1",
   contentVersion: "1",
   inputFormatVersion: "1",
-  stateHashVersion: 1,
+  stateHashVersion: 3,
   enabledFeatures: [],
   stageId: "stage.stage_01",
   difficulty: "normal",
@@ -144,6 +160,7 @@ const invalidSerializedEnemyEntity: SerializedRuntimeEntityState = {
   hp: 10,
   scoreOnKill: 100,
   pathId: "path.none",
+  pathRunnerState: { segmentIndex: 0, segmentStart: { x: 192, y: 80 }, segmentElapsedTicks: 0 },
 };
 
 const invalidSerializedPlayerDefinition: SerializedPlayerEntityForContract = {
@@ -185,6 +202,7 @@ const invalidSerializedEnemyDefinition: SerializedEnemyEntityForContract = {
   scoreOnKill: 100,
   pathId: "path.none",
   patternId: "pattern.none",
+  pathRunnerState: { segmentIndex: 0, segmentStart: { x: 192, y: 80 }, segmentElapsedTicks: 0 },
 };
 
 const invalidSerializedEnemyPath: SerializedRuntimeEntityState = {
@@ -198,6 +216,7 @@ const invalidSerializedEnemyPath: SerializedRuntimeEntityState = {
   // @ts-expect-error serialized enemy state の path reference は PathId に限定する。
   pathId: "pattern.none",
   patternId: "pattern.none",
+  pathRunnerState: { segmentIndex: 0, segmentStart: { x: 192, y: 80 }, segmentElapsedTicks: 0 },
 };
 
 const invalidSerializedEnemyPattern: SerializedRuntimeEntityState = {
@@ -211,6 +230,7 @@ const invalidSerializedEnemyPattern: SerializedRuntimeEntityState = {
   pathId: "path.none",
   // @ts-expect-error serialized enemy state の pattern reference は PatternId に限定する。
   patternId: "path.none",
+  pathRunnerState: { segmentIndex: 0, segmentStart: { x: 192, y: 80 }, segmentElapsedTicks: 0 },
 };
 
 const invalidSerializedEnemyBulletDefinition: SerializedEnemyBulletEntityForContract = {
@@ -220,6 +240,9 @@ const invalidSerializedEnemyBulletDefinition: SerializedEnemyBulletEntityForCont
   definitionId: "playerShot.basic",
   position: { x: 192, y: 120 },
   collisionRadius: 4,
+  velocity: { x: 0, y: 2 },
+  spawnPosition: { x: 192, y: 100 },
+  ageTicks: 10,
 };
 
 const invalidSerializedEnemyBulletProjectile: SerializedRuntimeEntityState = {
@@ -228,7 +251,10 @@ const invalidSerializedEnemyBulletProjectile: SerializedRuntimeEntityState = {
   definitionId: "bullet.red_small",
   position: { x: 192, y: 120 },
   collisionRadius: 4,
-  // @ts-expect-error Phase 1B の enemy bullet serialized state は復元不能な projectile field を持たない。
+  velocity: { x: 0, y: 2 },
+  spawnPosition: { x: 192, y: 100 },
+  ageTicks: 10,
+  // @ts-expect-error enemy bullet serialized state は runtime が正本を持たない projectile field を持たない。
   projectile: {
     velocity: { x: 0, y: 2 },
     damage: 1,
@@ -305,7 +331,7 @@ const invalidSerializedGameStateWithoutState: SerializedGameState = {
   schemaVersion: "1",
   contentVersion: "1",
   inputFormatVersion: "1",
-  stateHashVersion: 1,
+  stateHashVersion: 3,
   enabledFeatures: [],
   stageId: "stage.stage_01",
   difficulty: "normal",
@@ -460,3 +486,5 @@ void runtimeInvalidPatternRunnerIdWithEmptySuffix;
 void invalidSerializedFeatureStateName;
 void invalidSerializedFeatureStateVersion;
 void serializedInitialGameState;
+void serializedClearedDeterministicState;
+void invalidSerializedStageStatus;

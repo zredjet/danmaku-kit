@@ -1,31 +1,46 @@
+import type { GameDefinition } from "@danmaku-kit/core";
 import {
+  VALIDATE_CONTENT_DIAGNOSTIC_CODES,
   createToolErrorRunResult,
   createValidationRunResult,
   formatValidateContentHuman,
   formatValidateContentJson,
-} from "@shooting-sample/validate-content";
+  loadValidatedGameDefinition,
+} from "@danmaku-kit/validate-content";
 import type {
+  AssetManifest,
+  AssetManifestEntry,
+  AssetType,
+  AssetUsage,
   ContentDiagnostic,
   ContentDiagnosticKind,
   ContentDiagnosticSeverity,
   ContentDiagnosticSummary,
   FeatureGateContentDiagnostic,
+  LoadValidatedGameDefinitionResult,
   ParseOrSchemaContentDiagnostic,
   ReferenceContentDiagnostic,
   ToolContentDiagnostic,
   ValidationContentDiagnostic,
+  ValidateContentDiagnosticCode,
   ValidateContentExitCode,
   ValidateContentJsonOutput,
   ValidateContentRunResult,
-} from "@shooting-sample/validate-content";
+  ValidateContentSourcePaths,
+  ValidateContentToolDiagnosticCode,
+  YamlParserDiagnosticCode,
+} from "@danmaku-kit/validate-content";
 
 import type { AssertTrue, IsExactly } from "./support/type-assertions.ts";
 
 // @ts-expect-error validate-content internal types are not importable through a deep package subpath.
-import type { ContentDiagnostic as DeepContentDiagnostic } from "@shooting-sample/validate-content/src/types.ts";
+import type { ContentDiagnostic as DeepContentDiagnostic } from "@danmaku-kit/validate-content/src/types.ts";
 
 // @ts-expect-error validate-content internal functions are not importable through a deep package subpath.
-import { createValidationRunResult as DeepCreateValidationRunResult } from "@shooting-sample/validate-content/src/output.ts";
+import { createValidationRunResult as DeepCreateValidationRunResult } from "@danmaku-kit/validate-content/src/output.ts";
+
+// @ts-expect-error the loader dependency injection entry is not importable through a deep package subpath.
+import { loadValidatedGameDefinitionWith as DeepLoadValidatedGameDefinitionWith } from "@danmaku-kit/validate-content/src/game-definition-loader.ts";
 
 type ExpectedBase = Readonly<{
   code: string;
@@ -74,8 +89,53 @@ type ExpectedRunResult =
   | Readonly<{ exitCode: 0; output: ExpectedOutput & Readonly<{ ok: true }> }>
   | Readonly<{ exitCode: 1; output: ExpectedOutput & Readonly<{ ok: false }> }>
   | Readonly<{ exitCode: 2; output: ExpectedOutput & Readonly<{ ok: false }> }>;
+type ExpectedSourcePaths = Readonly<{ gameDefinitionPath: string; contentRoot: string }>;
+type ExpectedAssetType = "sprite" | "atlas" | "tilemap" | "audio" | "particle" | "effect";
+type ExpectedAssetUsage = "gameplay" | "ui" | "decorative" | "audio";
+type ExpectedAssetManifestEntry = Readonly<{
+  type: ExpectedAssetType;
+  path: string;
+  required: boolean;
+  usage: ExpectedAssetUsage;
+  fallback?: string;
+  license?: string;
+  author?: string;
+  source?: string;
+}>;
+type ExpectedAssetManifest = Readonly<{
+  version: 1;
+  assets: Readonly<Record<string, ExpectedAssetManifestEntry>>;
+}>;
+type ExpectedLoadResult =
+  | Readonly<{ ok: true; definition: GameDefinition; assetManifest: ExpectedAssetManifest; runResult: ExpectedRunResult }>
+  | Readonly<{ ok: false; runResult: ExpectedRunResult }>;
+
+type ExpectedOwnDiagnosticCode =
+  | "assetManifest.fallbackCycle"
+  | "assetManifest.invalidFallback"
+  | "assetManifest.invalidShape"
+  | "assetManifest.unknownField"
+  | "content.assetManifestNotFound"
+  | "content.unknownEntry"
+  | "content.unsupportedEntry"
+  | ExpectedToolDiagnosticCode
+  | "yaml.parse.alias_not_supported"
+  | "yaml.parse.invalid_utf8"
+  | "yaml.parse.unsupported_version"
+  | "yaml.resource";
+type ExpectedToolDiagnosticCode =
+  | "tool.invalidArguments"
+  | "tool.invalidDiagnostic"
+  | "tool.invalidInput"
+  | "tool.invalidOutput"
+  | "tool.readFailed"
+  | "tool.unexpected";
 
 type ValidateContentContractAssertions = readonly [
+  AssertTrue<IsExactly<(typeof VALIDATE_CONTENT_DIAGNOSTIC_CODES)[number], ExpectedOwnDiagnosticCode>>,
+  AssertTrue<IsExactly<YamlParserDiagnosticCode, `yaml.parse.${string}`>>,
+  AssertTrue<IsExactly<ValidateContentDiagnosticCode, ExpectedOwnDiagnosticCode | `yaml.parse.${string}`>>,
+  AssertTrue<IsExactly<ValidateContentToolDiagnosticCode, ExpectedToolDiagnosticCode>>,
   AssertTrue<IsExactly<ContentDiagnosticKind, "parse" | "schema" | "reference" | "featureGate" | "tool">>,
   AssertTrue<IsExactly<ContentDiagnosticSeverity, "error" | "warning" | "info">>,
   AssertTrue<IsExactly<ParseOrSchemaContentDiagnostic, ExpectedParseOrSchemaDiagnostic>>,
@@ -102,6 +162,18 @@ type ValidateContentContractAssertions = readonly [
   >,
   AssertTrue<IsExactly<typeof formatValidateContentJson, (output: ValidateContentJsonOutput) => string>>,
   AssertTrue<IsExactly<typeof formatValidateContentHuman, (output: ValidateContentJsonOutput) => string>>,
+  AssertTrue<IsExactly<ValidateContentSourcePaths, ExpectedSourcePaths>>,
+  AssertTrue<IsExactly<AssetType, ExpectedAssetType>>,
+  AssertTrue<IsExactly<AssetUsage, ExpectedAssetUsage>>,
+  AssertTrue<IsExactly<AssetManifestEntry, ExpectedAssetManifestEntry>>,
+  AssertTrue<IsExactly<AssetManifest, ExpectedAssetManifest>>,
+  AssertTrue<IsExactly<LoadValidatedGameDefinitionResult, ExpectedLoadResult>>,
+  AssertTrue<
+    IsExactly<
+      typeof loadValidatedGameDefinition,
+      (paths: ValidateContentSourcePaths) => Promise<LoadValidatedGameDefinitionResult>
+    >
+  >,
 ];
 
 const parseDiagnostic: ContentDiagnostic = {
@@ -252,3 +324,4 @@ void invalidValidationSuccess;
 void invalidExitCode;
 void (undefined as unknown as DeepContentDiagnostic);
 void DeepCreateValidationRunResult;
+void DeepLoadValidatedGameDefinitionWith;

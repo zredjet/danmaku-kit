@@ -1,3 +1,4 @@
+import type { ValidateContentToolDiagnosticCode } from "./diagnostic-codes.ts";
 import { normalizeDiagnostics } from "./diagnostic-normalization.ts";
 import type {
   ContentDiagnostic,
@@ -20,15 +21,15 @@ export function createValidationRunResult(
   diagnostics: readonly ValidationContentDiagnostic[],
 ): ValidateContentRunResult {
   if (typeof contentRoot !== "string") {
-    return createToolErrorRunResult("", "tool.invalidInput", "contentRoot must be a string");
+    return createOwnToolErrorRunResult("", "tool.invalidInput", "contentRoot must be a string");
   }
   const normalized = normalizeDiagnostics(diagnostics);
   if (!normalized.ok) {
-    return createToolErrorRunResult(contentRoot, "tool.invalidDiagnostic", normalized.message);
+    return createOwnToolErrorRunResult(contentRoot, "tool.invalidDiagnostic", normalized.message);
   }
   const toolDiagnostic = normalized.value.find((diagnostic) => diagnostic.kind === "tool");
   if (toolDiagnostic) {
-    return createToolErrorRunResult(contentRoot, toolDiagnostic.code, toolDiagnostic.message);
+    return reemitToolDiagnostic(contentRoot, toolDiagnostic);
   }
 
   const output = createJsonOutput(contentRoot, normalized.value as readonly ValidationContentDiagnostic[]);
@@ -36,6 +37,24 @@ export function createValidationRunResult(
     return Object.freeze({ exitCode: 0, output });
   }
   return Object.freeze({ exitCode: 1, output });
+}
+
+/**
+ * validate-content 自身の tool error。code を `VALIDATE_CONTENT_DIAGNOSTIC_CODES` の tool の code に限る（公開の
+ * `createToolErrorRunResult()` は JS の caller のために string を受ける。validate-content の中では、自分の code はこの関数、受け取った
+ * tool 診断の出し直しは `reemitToolDiagnostic()` を使う）。
+ */
+export function createOwnToolErrorRunResult(
+  contentRoot: string,
+  code: ValidateContentToolDiagnosticCode,
+  message: string,
+): ValidateContentRunResult {
+  return createToolErrorRunResult(contentRoot, code, message);
+}
+
+/** 受け取った tool 診断を、その code のまま tool error の結果にし直す（code は受け取った診断のもの）。 */
+export function reemitToolDiagnostic(contentRoot: string, diagnostic: ToolContentDiagnostic): ValidateContentRunResult {
+  return createToolErrorRunResult(contentRoot, diagnostic.code, diagnostic.message);
 }
 
 /**

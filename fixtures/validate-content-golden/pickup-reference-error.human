@@ -1,0 +1,2 @@
+<content-root>/enemies/scout.yaml:9:13-9:31 [ERROR] pickup.notFound: Pickup not found: pickup.score_large (schema=content.enemies[0].drops[0].pickup, referrer=enemy.scout, target=pickup.score_large)
+Summary: 1 error(s), 0 warning(s), 0 info(s)

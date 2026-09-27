@@ -4,10 +4,37 @@ import type {
   EnemyId,
   GameEvent,
   ReadonlyEntityState,
+  ReadonlyFeatureFrameState,
   ReadonlyGameState,
+  ReadonlyPickupState,
   ReadonlyPlayerState,
-} from "@shooting-sample/shooting-core";
+} from "@danmaku-kit/core";
 import { playerId, stageId } from "./content-definitions.ts";
+
+// Phase 2B-6: pickup feature が有効な content の frame は `state.features.pickups` を持つ。
+const pickupState: ReadonlyPickupState = { id: 4, definitionId: "pickup.score_small", position: { x: 182, y: 380 }, attracted: false };
+const featureFrame: ReadonlyFeatureFrameState = { pickups: [pickupState] };
+// @ts-expect-error frame pickups reference pickup ids.
+const invalidPickupState: ReadonlyPickupState = { ...pickupState, definitionId: "enemy.scout" };
+const pickupCollectedEvent: GameEvent = { type: "pickupCollected", tick: 7, entityId: 5, definitionId: "pickup.score_small" };
+const pickupScoreEvent: GameEvent = {
+  type: "scoreChanged",
+  tick: 7,
+  delta: 100,
+  total: 200,
+  reason: "pickupCollected",
+  pickupId: "pickup.score_small",
+  entityId: 5,
+};
+// @ts-expect-error pickup score changes name the pickup, not an enemy.
+const invalidPickupScoreEvent: GameEvent = { ...pickupScoreEvent, enemyId: "enemy.scout" };
+// feature が有効でない content の frame は `features` を持たないため、読むときは optional chaining にする。
+const firstPickupAttracted = (state: ReadonlyGameState): boolean | undefined => state.features?.pickups?.[0]?.attracted;
+void firstPickupAttracted;
+void featureFrame;
+void invalidPickupState;
+void pickupCollectedEvent;
+void invalidPickupScoreEvent;
 
 const entity: ReadonlyEntityState = {
   id: 1,
@@ -42,7 +69,22 @@ const playerShotEntity: ReadonlyEntityState = {
   position: { x: 192, y: 360 },
 };
 const playerState: ReadonlyPlayerState = { lives: 3, invincibleTicksRemaining: 0 };
-const state: ReadonlyGameState = { tick: 0, stageId, playerId, player: playerState, score: 0, entities: [playerEntity, entity] };
+const state: ReadonlyGameState = {
+  tick: 0,
+  stageId,
+  playerId,
+  status: "playing",
+  player: playerState,
+  score: 0,
+  entities: [playerEntity, entity],
+};
+const endedState: ReadonlyGameState = { ...state, status: "gameOver" };
+// @ts-expect-error frame status is playing, stageCleared or gameOver.
+const invalidStatusState: ReadonlyGameState = { ...state, status: "paused" };
+const stageClearedEvent: GameEvent = { type: "stageCleared", tick: 600, stageId };
+const gameOverEvent: GameEvent = { type: "gameOver", tick: 240, stageId };
+// @ts-expect-error stage end events carry the stage id.
+const invalidGameOverEvent: GameEvent = { type: "gameOver", tick: 240 };
 const event: GameEvent = { type: "stageStarted", tick: 0, stageId };
 const tickedEvent: GameEvent = { type: "tickAdvanced", tick: 0 };
 const spawnedEvent: GameEvent = {
@@ -274,6 +316,13 @@ function assertEventExhaustive(value: GameEvent): number {
       return value.bullets.length;
     case "scoreChanged":
       return value.total;
+    case "stageCleared":
+    case "gameOver":
+      return value.tick;
+    case "pickupsSpawnedBatch":
+      return value.pickups.length;
+    case "pickupCollected":
+      return value.entityId;
     default: {
       const neverEvent: never = value;
       return neverEvent;
@@ -283,6 +332,11 @@ function assertEventExhaustive(value: GameEvent): number {
 
 void playerState;
 void state;
+void endedState;
+void invalidStatusState;
+void stageClearedEvent;
+void gameOverEvent;
+void invalidGameOverEvent;
 void playerEntity;
 void enemyBulletEntity;
 void playerShotEntity;

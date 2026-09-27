@@ -1,0 +1,15 @@
+# 敵の pattern: 自機を狙って 3-way を撃ち続ける。
+id: pattern.example_aimed
+version: 1
+steps:
+  - wait: 30
+  - fire:
+      bullet: bullet.example
+      # aim: player は、撃つ tick の敵の位置から自機の位置への向き。angleDeg で向きを決めるなら +x が 0°、90 が真下。
+      aim: player
+      speed: 3
+      # fan は基準の向きを中心に count 発を、両端の間が spreadDeg になるよう並べる。
+      fan: { count: 3, spreadDeg: 30 }
+  - wait: 40
+  # loop は top-level の step の index（0 始まり。ここでは 1 の fire）へ戻る。戻った先から loop までに wait が要る。
+  - loop: 1

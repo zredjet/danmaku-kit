@@ -30,7 +30,8 @@ export function createContentSourceIndex(
         return context(assetManifest, ["assets"], "assetManifest", schemaPath);
       }
 
-      const contentMatch = /^content\.(players|stages|enemies|bullets|playerShots|patterns|paths)(?:\[(\d+)\])?(?:\.(.*))?$/.exec(schemaPath);
+      const contentMatch = /^content\.(players|stages|enemies|bullets|playerShots|patterns|paths|features\.pickups)(?:\[(\d+)\])?(?:\.(.*))?$/
+        .exec(schemaPath);
       if (contentMatch?.[2] !== undefined) {
         const collection = contentMatch[1] as ContentCollectionName;
         const index = Number(contentMatch[2]);
@@ -60,7 +61,7 @@ export function createContentSourceIndex(
         }
       }
 
-      const genericMatch = /^(playerShot|player|stage|enemy|bullet|pattern|path)(?:\.(.*))?$/.exec(schemaPath);
+      const genericMatch = /^(playerShot|player|stage|enemy|bullet|pattern|path|pickup)(?:\.(.*))?$/.exec(schemaPath);
       if (genericMatch) {
         const collection = singularToCollection(genericMatch[1]!);
         const source = collectionSources.find((item) => item.collection === collection);
@@ -112,6 +113,7 @@ function singularToCollection(value: string): ContentCollectionName {
     case "playerShot": return "playerShots";
     case "pattern": return "patterns";
     case "path": return "paths";
+    case "pickup": return "features.pickups";
     default: return "players";
   }
 }
@@ -121,8 +123,8 @@ function localSourcePath(
   schemaPath: string,
   collection: ContentCollectionName,
 ): readonly (string | number)[] {
-  const contentPrefix = `content.${collection}`;
-  if (schemaPath === contentPrefix || new RegExp(`^${contentPrefix}\\[\\d+\\]$`).test(schemaPath)) {
+  const contentPrefix = `content.${collection}`.replaceAll(".", "\\.");
+  if (new RegExp(`^${contentPrefix}(?:\\[\\d+\\])?$`).test(schemaPath)) {
     return Object.freeze([]);
   }
   const contentMatch = new RegExp(`^${contentPrefix}(?:\\[\\d+\\])?\\.(.*)$`).exec(schemaPath);
@@ -148,5 +150,6 @@ function collectionToSingular(collection: ContentCollectionName): string {
     case "playerShots": return "playerShot";
     case "patterns": return "pattern";
     case "paths": return "path";
+    case "features.pickups": return "pickup";
   }
 }

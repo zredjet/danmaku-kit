@@ -1,0 +1,2 @@
+<content-root>/pickups/score_small.yaml:5:16-5:17 [ERROR] definition.invalidShape: pickup.collectRadius must be a positive number (schema=content.features.pickups[0].collectRadius, source=pickup.score_small)
+Summary: 1 error(s), 0 warning(s), 0 info(s)

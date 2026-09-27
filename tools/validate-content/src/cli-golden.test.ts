@@ -12,6 +12,16 @@ type GoldenCaseName =
   | "schema-error"
   | "reference-error"
   | "budget-error"
+  | "pattern-error"
+  | "pattern-warning"
+  | "pattern-silent"
+  | "pattern-budget-error"
+  | "pattern-repeat-error"
+  | "pattern-difficulty-warning"
+  | "pickup-disabled-warning"
+  | "pickup-reference-error"
+  | "pickup-schema-error"
+  | "asset-manifest-error"
   | "game-definition-error"
   | "argument-error";
 type GoldenFormat = "json" | "human";
@@ -35,6 +45,16 @@ const GOLDEN_CASES: readonly Readonly<{
   Object.freeze({ name: "schema-error", exitCode: 1 }),
   Object.freeze({ name: "reference-error", exitCode: 1 }),
   Object.freeze({ name: "budget-error", exitCode: 1 }),
+  Object.freeze({ name: "pattern-error", exitCode: 1 }),
+  Object.freeze({ name: "pattern-warning", exitCode: 0 }),
+  Object.freeze({ name: "pattern-silent", exitCode: 0 }),
+  Object.freeze({ name: "pattern-budget-error", exitCode: 1 }),
+  Object.freeze({ name: "pattern-repeat-error", exitCode: 1 }),
+  Object.freeze({ name: "pattern-difficulty-warning", exitCode: 0 }),
+  Object.freeze({ name: "pickup-disabled-warning", exitCode: 0 }),
+  Object.freeze({ name: "pickup-reference-error", exitCode: 1 }),
+  Object.freeze({ name: "pickup-schema-error", exitCode: 1 }),
+  Object.freeze({ name: "asset-manifest-error", exitCode: 1 }),
   Object.freeze({ name: "game-definition-error", exitCode: 1 }),
   Object.freeze({ name: "argument-error", exitCode: 2 }),
 ]);
@@ -79,6 +99,71 @@ after(async () => {
   await replaceGoldenDirectory(generatedGoldens);
 });
 
+const SILENT_PATTERN_YAML = "id: pattern.scout_three_way\nversion: 1\nsteps:\n  - wait: 20\n  - loop: 0\n";
+const BURST_PATTERN_YAML = [
+  "id: pattern.scout_three_way",
+  "version: 1",
+  "steps:",
+  ...Array.from({ length: 32 }, () => "  - fire: { bullet: bullet.red_small, angleDeg: 90, speed: 2, fan: { count: 64, spreadDeg: 63 } }"),
+  "  - wait: 60",
+  "",
+].join("\n");
+
+const REPEAT_ERROR_PATTERN_YAML = [
+  "id: pattern.scout_three_way",
+  "version: 1",
+  "steps:",
+  "  - repeat:",
+  "      count: 3",
+  "      steps:",
+  "        - fire:",
+  "            bullet: bullet.red_small",
+  "            angleDeg: 90",
+  "            radial:",
+  "              count: 7",
+  "            speed: 2",
+  "        - wait: 10",
+  "  - loop: 0",
+  "",
+].join("\n");
+
+const DIFFICULTY_BRANCH_PATTERN_YAML = [
+  "id: pattern.scout_three_way",
+  "version: 1",
+  "steps:",
+  "  - wait: 20",
+  "  - if:",
+  "      difficulty: [hard]",
+  "      then:",
+  "        - fire:",
+  "            bullet: bullet.red_small",
+  "            aim: player",
+  "            fan:",
+  "              count: 5",
+  "              spreadDeg: 40",
+  "            speed: 2.4",
+  "      else:",
+  "        - fire:",
+  "            bullet: bullet.red_small",
+  "            aim: player",
+  "            speed: 2.4",
+  "  - wait: 50",
+  "  - loop: 0",
+  "",
+].join("\n");
+
+const SCORE_PICKUP_YAML = [
+  "id: pickup.score_small",
+  "version: 1",
+  "asset: pickup.score_small",
+  "score: 100",
+  "collectRadius: 10",
+  "velocity:",
+  "  x: 0",
+  "  y: 1.5",
+  "",
+].join("\n");
+
 /** 静的minimum fixtureを隔離領域へ複製し、各失敗ケースの差分だけを適用する。 */
 async function prepareCaseFixture(
   context: Readonly<{ after: (callback: () => Promise<void>) => void }>,
@@ -101,6 +186,45 @@ async function prepareCaseFixture(
     await replaceFixtureText(contentRoot, "stages/stage_01.yaml", "      enemy: enemy.scout", "      enemy: enemy.missing");
   } else if (name === "budget-error") {
     await replaceFixtureText(contentRoot, "players/default.yaml", "  speed: 4", "  speed: 17");
+  } else if (name === "pattern-error") {
+    await replaceFixtureText(contentRoot, "patterns/scout_three_way.yaml", "        spreadDeg: 24\n", "        spreadDeg: 24.1\n");
+  } else if (name === "pattern-warning") {
+    // loop より後ろの step は spawn からどの run でも実行されない。
+    await replaceFixtureText(contentRoot, "patterns/scout_three_way.yaml", "  - loop: 0\n", "  - loop: 0\n  - wait: 5\n");
+  } else if (name === "pattern-silent") {
+    // 待つだけで一度も撃たない pattern。
+    await writeFile(path.join(contentRoot, "patterns", "scout_three_way.yaml"), SILENT_PATTERN_YAML, "utf8");
+  } else if (name === "pattern-budget-error") {
+    // fan 64 発を 32 回続けて撃ち、1 tick に 2,048 発になる pattern。
+    await writeFile(path.join(contentRoot, "patterns", "scout_three_way.yaml"), BURST_PATTERN_YAML, "utf8");
+  } else if (name === "pattern-repeat-error") {
+    // repeat の中の fire の radial.count が 1 周を 0.25° 刻みに等分しない。
+    await writeFile(path.join(contentRoot, "patterns", "scout_three_way.yaml"), REPEAT_ERROR_PATTERN_YAML, "utf8");
+  } else if (name === "pattern-difficulty-warning") {
+    // normal だけの stage が使う pattern の `if` が hard を挙げる。
+    await writeFile(path.join(contentRoot, "patterns", "scout_three_way.yaml"), DIFFICULTY_BRANCH_PATTERN_YAML, "utf8");
+    await replaceFixtureText(contentRoot, "stages/stage_01.yaml", "      pattern: pattern.basic\n", "      pattern: pattern.scout_three_way\n");
+  } else if (name === "pickup-disabled-warning" || name === "pickup-reference-error" || name === "pickup-schema-error") {
+    await mkdir(path.join(contentRoot, "pickups"));
+    await writeFile(path.join(contentRoot, "pickups", "score_small.yaml"), SCORE_PICKUP_YAML, "utf8");
+    await replaceFixtureText(
+      contentRoot,
+      "assets/manifest.yaml",
+      "    path: shot.png\n    required: true\n    usage: gameplay\n",
+      "    path: shot.png\n    required: true\n    usage: gameplay\n  pickup.score_small:\n    type: sprite\n    path: pickup.png\n    required: true\n    usage: gameplay\n",
+    );
+    if (name === "pickup-schema-error") {
+      // 有効な pickup の collectRadius が 0。
+      await replaceFileText(gameDefinitionPath, "game-definition.yaml", "enabledFeatures: []", "enabledFeatures: [pickup]");
+      await replaceFixtureText(contentRoot, "pickups/score_small.yaml", "collectRadius: 10\n", "collectRadius: 0\n");
+    }
+    if (name === "pickup-reference-error") {
+      // pickup を有効にした content の enemy が、定義のない pickup を落とす。
+      await replaceFileText(gameDefinitionPath, "game-definition.yaml", "enabledFeatures: []", "enabledFeatures: [pickup]");
+      await replaceFixtureText(contentRoot, "enemies/scout.yaml", "score: 100\n", "score: 100\ndrops:\n  - pickup: pickup.score_large\n    count: 2\n");
+    }
+  } else if (name === "asset-manifest-error") {
+    await replaceFixtureText(contentRoot, "assets/manifest.yaml", "    path: shot.png\n", "    path: /shot.png\n");
   } else if (name === "game-definition-error") {
     await replaceFileText(
       gameDefinitionPath,
@@ -208,6 +332,18 @@ function expectedDiagnosticPath(
   }
   if (name === "schema-error" || name === "budget-error") {
     return path.join(fixture.contentRoot, "players", "default.yaml");
+  }
+  if (name.startsWith("pattern-")) {
+    return path.join(fixture.contentRoot, "patterns", "scout_three_way.yaml");
+  }
+  if (name === "pickup-reference-error") {
+    return path.join(fixture.contentRoot, "enemies", "scout.yaml");
+  }
+  if (name === "pickup-schema-error") {
+    return path.join(fixture.contentRoot, "pickups", "score_small.yaml");
+  }
+  if (name === "asset-manifest-error") {
+    return path.join(fixture.contentRoot, "assets", "manifest.yaml");
   }
   if (name === "game-definition-error") {
     return fixture.gameDefinitionPath;

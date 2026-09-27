@@ -56,6 +56,44 @@ test("maps a real cross-file reference failure back to its stage scalar", async 
   });
 });
 
+test("maps a path segment constraint failure back to the segment scalar", async (context) => {
+  const fixture = await createTemporaryContent(context, "enemy.scout");
+  await writeFile(path.join(fixture.contentRoot, "paths", "none.yaml"), [
+    "id: path.none",
+    "version: 1",
+    "segments:",
+    "  - type: velocity",
+    "    duration: 30",
+    "    velocity: { x: 0, y: 1 }",
+    "  - type: velocity",
+    "    duration: 0",
+    "    velocity: { x: 0, y: 1 }",
+    "",
+  ].join("\n"), "utf8");
+  const capture = createIoCapture();
+
+  const exitCode = await runValidateContentCli([
+    "--game-definition", fixture.gameDefinitionPath,
+    "--content-root", fixture.contentRoot,
+    "--format", "json",
+  ], capture.io);
+
+  assert.equal(exitCode, 1);
+  assert.deepEqual(JSON.parse(capture.stdout()).diagnostics, [{
+    kind: "schema",
+    code: "definition.invalidShape",
+    severity: "error",
+    message: "path.segments[].duration must be a positive integer",
+    path: path.join(fixture.contentRoot, "paths", "none.yaml"),
+    line: 8,
+    column: 15,
+    endLine: 8,
+    endColumn: 16,
+    schemaPath: "content.paths[0].segments[1].duration",
+    sourceId: "path.none",
+  }]);
+});
+
 async function createTemporaryContent(
   context: Readonly<{ after: (callback: () => Promise<void>) => void }>,
   stageEnemyId: string,

@@ -10,6 +10,8 @@
     "packages/*/src/**/test-support/**/*.ts",
     "tools/*/src/**/*.test.ts",
     "apps/*/src/**/*.test.ts",
+    "apps/*/src/**/test-support/**/*.ts",
+    "apps/*/vite/**/*.test.ts",
     "tests/**/*.test.ts",
     "tests/**/*.ts"
   ],

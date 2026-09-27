@@ -1,0 +1,9 @@
+id: pickup.score_small
+version: 1
+asset: pickup.score_small
+score: 10
+collectRadius: 12
+magnetRadius: 64
+velocity:
+  x: 0
+  y: 1.25

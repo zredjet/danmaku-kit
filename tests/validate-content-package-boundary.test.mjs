@@ -7,19 +7,22 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
+import { collectModuleReferences, isPathInside, MODULE_IMPORT_KINDS } from "./support/module-references.mjs";
 import { collectTypeScriptFiles, isTestCodeFile } from "./support/source-files.mjs";
 
 const packageRoot = fileURLToPath(new URL("../tools/validate-content", import.meta.url));
-const corePackageRoot = fileURLToPath(new URL("../packages/shooting-core", import.meta.url));
+const corePackageRoot = fileURLToPath(new URL("../packages/core", import.meta.url));
 
 test("imports validate-content through the workspace package export", async () => {
-  const validateContent = await import("@shooting-sample/validate-content");
+  const validateContent = await import("@danmaku-kit/validate-content");
 
   assert.deepEqual(Object.keys(validateContent).sort(), [
+    "VALIDATE_CONTENT_DIAGNOSTIC_CODES",
     "createToolErrorRunResult",
     "createValidationRunResult",
     "formatValidateContentHuman",
     "formatValidateContentJson",
+    "loadValidatedGameDefinition",
   ]);
 });
 
@@ -28,18 +31,27 @@ test("keeps the validate-content root type export surface explicit", async () =>
   const sourceText = await readFile(indexPath, "utf8");
 
   assert.deepEqual(collectTypeOnlyExportNames(indexPath, sourceText), [
+    "AssetManifest",
+    "AssetManifestEntry",
+    "AssetType",
+    "AssetUsage",
     "ContentDiagnostic",
     "ContentDiagnosticKind",
     "ContentDiagnosticSeverity",
     "ContentDiagnosticSummary",
     "FeatureGateContentDiagnostic",
+    "LoadValidatedGameDefinitionResult",
     "ParseOrSchemaContentDiagnostic",
     "ReferenceContentDiagnostic",
     "ToolContentDiagnostic",
+    "ValidateContentDiagnosticCode",
     "ValidateContentExitCode",
     "ValidateContentJsonOutput",
     "ValidateContentRunResult",
+    "ValidateContentSourcePaths",
+    "ValidateContentToolDiagnosticCode",
     "ValidationContentDiagnostic",
+    "YamlParserDiagnosticCode",
   ]);
 });
 
@@ -103,7 +115,7 @@ test("rejects validate-content deep imports outside the public export map", asyn
 
   for (const subpath of forbiddenSubpaths) {
     await assert.rejects(
-      import(`@shooting-sample/validate-content/${subpath}`),
+      import(`@danmaku-kit/validate-content/${subpath}`),
       (error) => {
         assert.equal(error && typeof error, "object");
         assert.equal("code" in error && error.code, "ERR_PACKAGE_PATH_NOT_EXPORTED");
@@ -117,12 +129,13 @@ test("keeps Core and validate-content package dependencies pointing in the allow
   const coreDependencies = await assertPackageDependencies(corePackageRoot, []);
   const validateContentDependencies = await assertPackageDependencies(
     packageRoot,
-    ["@shooting-sample/shooting-core", "yaml"],
+    ["@danmaku-kit/core", "yaml"],
   );
   await assertSourceImports(corePackageRoot, [], coreDependencies);
+  // validate-content は Core の root export と、検証に登録する optional feature の package entry だけを使う。
   await assertSourceImports(
     packageRoot,
-    ["@shooting-sample/shooting-core", "yaml", "node:"],
+    ["@danmaku-kit/core", "@danmaku-kit/core/features/pickup", "yaml", "node:"],
     validateContentDependencies,
   );
 });
@@ -149,7 +162,12 @@ async function assertSourceImports(root, allowedImports, declaredDependencies) {
 
   for (const file of sourceFiles) {
     const sourceText = await readFile(file, "utf8");
-    for (const specifier of collectModuleSpecifiers(file, sourceText)) {
+    for (const { kind, specifier } of collectModuleReferences(file, sourceText)) {
+      // reference directive と非 literal の dynamic import は依存先を静的に確かめられないため、package を問わず拒否する。
+      if (!MODULE_IMPORT_KINDS.includes(kind) || specifier === null) {
+        violations.push(`${path.relative(root, file)} -> ${kind} ${specifier ?? "(non-literal)"}`);
+        continue;
+      }
       if (specifier.startsWith(".")) {
         const target = path.resolve(path.dirname(file), specifier);
         if (!isPathInside(root, target)) {
@@ -162,7 +180,9 @@ async function assertSourceImports(root, allowedImports, declaredDependencies) {
         violations.push(`${path.relative(root, file)} -> ${specifier}`);
         continue;
       }
-      if (!isAllowedNodeBuiltin && !declaredDependencies.includes(specifier)) {
+      // subpath export（`@scope/name/features/pickup` など）は package 名で依存の宣言を確かめる。
+      const packageName = specifier.split("/").slice(0, specifier.startsWith("@") ? 2 : 1).join("/");
+      if (!isAllowedNodeBuiltin && !declaredDependencies.includes(packageName)) {
         violations.push(`${path.relative(root, file)} -> ${specifier} (undeclared dependency)`);
       }
     }
@@ -209,34 +229,3 @@ function getModuleSpecifierText(exportDeclaration) {
     : "<unknown>";
 }
 
-function collectModuleSpecifiers(file, sourceText) {
-  const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const specifiers = [];
-
-  function visit(node) {
-    if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
-      && node.moduleSpecifier
-      && ts.isStringLiteral(node.moduleSpecifier)
-    ) {
-      specifiers.push(node.moduleSpecifier.text);
-    }
-    if (
-      ts.isCallExpression(node)
-      && node.expression.kind === ts.SyntaxKind.ImportKeyword
-      && node.arguments.length === 1
-      && ts.isStringLiteral(node.arguments[0])
-    ) {
-      specifiers.push(node.arguments[0].text);
-    }
-    ts.forEachChild(node, visit);
-  }
-
-  visit(sourceFile);
-  return specifiers;
-}
-
-function isPathInside(root, candidate) {
-  const relative = path.relative(root, candidate);
-  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
-}

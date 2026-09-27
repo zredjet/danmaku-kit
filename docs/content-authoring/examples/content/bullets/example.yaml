@@ -1,0 +1,6 @@
+# 敵弾。向きと速さは pattern の fire が決める。
+id: bullet.example
+version: 1
+asset: bullet.example
+collision:
+  radius: 4

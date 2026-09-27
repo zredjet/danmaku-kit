@@ -1,0 +1,2 @@
+<content-root>/patterns/scout_three_way.yaml:11:20-11:24 [ERROR] definition.invalidShape: pattern.steps[].fire.fan.spreadDeg must be a multiple of 0.25 (schema=content.patterns[1].steps[1].fire.fan.spreadDeg, source=pattern.scout_three_way)
+Summary: 1 error(s), 0 warning(s), 0 info(s)

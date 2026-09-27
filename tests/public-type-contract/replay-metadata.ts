@@ -1,6 +1,6 @@
 // ReplayMetadata の exact field set、readonly 性、互換性 field の型を固定する。
 
-import type { Difficulty, EnabledFeature, PlayerId, ReplayMetadata, StageId } from "@shooting-sample/shooting-core";
+import type { Difficulty, EnabledFeature, PlayerId, ReplayMetadata, StageId } from "@danmaku-kit/core";
 import type { AssertTrue, IsExactly } from "../support/type-assertions.ts";
 
 type ExpectedReplayMetadata = Readonly<{

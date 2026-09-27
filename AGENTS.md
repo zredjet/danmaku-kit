@@ -50,22 +50,67 @@ ast-grep --lang ts -p 'export type $NAME = $$$TYPE' packages tests
 - 単一責務で分割すると読みにくくなる file（例: `hash/canonical-encoder.ts`）は例外として残してよい。
 - 分割・移動は振る舞いを変えない commit に分け、`npm run check` と state hash / validate-content の golden が変わらないことを確認する。移動部分は `git diff --color-moved=zebra` で本文不変を確認する。
 
-### 依存方向（`packages/shooting-core/src/basic/`）
+### 依存方向（`packages/core/src/basic/`）
 
 - 以下の import 制約は非 test source（`*.test.ts` と `test-support/` 以外）に適用する。非 test source は `*.test.ts` と `test-support/` を型 import も含めて import しない（validate-content も同じ）。
-- `core.ts` は `createShootingCore()` / `load()` の facade とし、import してよいのは `index.ts` と `testing/testing-hooks.ts` だけにする。公開型は `api-types.ts` に置く。
+- `packages/core/src/` の非 test source は同じ `src/` 配下の module だけを相対 path で import する。bare specifier（npm package）、`node:`、`src/` の外への相対 path、非 literal の dynamic import、triple-slash reference directive は型 import も含めて使わない。apps の依存（phaser、vite など）が root `node_modules` にあっても Core から解決させないためで、`tests/module-graph.test.mjs` が検査する。
+- `core.ts` は `createDanmakuCore()` / `load()` の facade とし、import してよいのは `index.ts` と `testing/testing-hooks.ts` だけにする。公開型は `api-types.ts` に置く。
 - `session/`（stage session、tick pipeline、loaded game）を import してよいのは `core.ts` だけ。
 - `serialization/restore/` を import してよいのは `session/` だけ。
 - `state/`（committed state と serialize / hash projection）を import してよいのは `session/`、`serialization/restore/`、`instrumentation/` だけ。
 - `instrumentation/`（test hook 有効化 guard、stage session testing hook、headless debug checkpoint）は通常 runtime から到達してよい session の差し込み口で、import してよいのは `core.ts`、`session/`、`testing/` だけ。
 - `hash/` は DTO、encoder、digest だけを持ち、上位 layer を import しない。`hash/` を import してよいのは `state/hashable-projection.ts`、`instrumentation/`、`testing/` だけ。
 - `shared/`（guard、immutable、UTF-8 順序比較、field order helper）は最下層とし、`src/basic/` 内の他 module を import しない。
+- `extension/`（optional feature の module の型、`defineFeature()`、登録の解決、feature 向けの content 検証 helper と playfield の facade、feature の frame の型）は `content/types.ts`、`content/runtime-budgets.ts`、`content/validation/` の `fields.ts` / `references.ts` / `schema-path.ts`、`entities/runtime-entity.ts`、`events/game-event.ts`、`simulation/entity.ts`、`result.ts`、`serialization/types.ts`、`shared/` だけを import し、`extension/` を import してよいのは `core.ts`、`api-types.ts`、`index.ts`、`session/`、`state/`、`serialization/restore/`、`instrumentation/`、`testing/` だけ。
 - `entities/*/snapshot.ts` を import してよいのは `serialization/types.ts`、`state/`、`hash/`、`entities/*/restore.ts` だけ。`entities/*/restore.ts` は `serialization/restore/` からだけ、`entities/restore-common.ts` はそれと `entities/*/restore.ts` からだけ、`serialization/restore-plain-data.ts` は restore 層と entities の restore module からだけ import する。layer rule の `*` は `/` を含まない1 segment に一致する。
 - `entities/<kind>/` の module は別 kind の directory を型 import も含めて import しない。
 - `index.ts` から実行時 import で到達する範囲に test / tooling 専用の `hash/` と `testing/` を含めない。`testing/` は非 test source から型 import も含めて import しない。state hash と headless debug dump の digest は test helper 側で計算する。
 - runtime import cycle を作らない。`tests/module-graph.test.mjs` が layer rule は型 import も含めて、cycle と到達範囲は実行時 import（`import type` を除く）で検査する。rule に書いた path が実在する module を指すことも同じ test が検査するため、module を移動・改名したら rule も更新する。
 
-### runtime entity kind（`packages/shooting-core/src/basic/entities/`）
+### sample app（`apps/sample-title/`）
+
+- `src/` は browser bundle に入る。非 test source は `src/` 内の module を相対 path で import し、package は `tests/module-graph.test.mjs` の `SAMPLE_TITLE_PACKAGE_IMPORT_RULES` に載せたものだけを型 import も含めて import する。Core は package root（`@danmaku-kit/core`）から import し、optional feature の subpath export（`@danmaku-kit/core/features/<feature>`）は Core を作る `src/main.ts` だけが import する。deep import、`node:`、validate-content は使わない。新しい package や feature が必要なら rule に足す。
+- Core の frame の pickup のような feature の entity は、`src/runtime/view/view-entities.ts` の `collectViewEntities()` で Core の entity と 1 つの view の並びにしてから view pool、collider、debug HUD / dump の数に渡す。有効でない feature の定義は app でも使わない（`enabledPickups()`）。
+- `phaser` を import してよいのは entry の `src/main.ts` と Phaser adapter の `src/runtime/phaser/` だけにする。それ以外の runtime module は Phaser なしで node:test から検査できる形に保つ。`src/runtime/` のうち `src/runtime/phaser/` 以外は `tsconfig.runtime.json`（DOM lib と Vite の型なし）でも型検査するため、DOM global を使わず、`KeyboardEvent` のような DOM の値は必要な field だけの入力型で受ける。
+- `import.meta`（`import.meta.env` など Vite 固有の値）と Vite の virtual module（`virtual:sample-title/game-definition`）を読むのは `src/main.ts` だけにし、他の module へは引数で渡す。
+- `src/` の依存方向: DOM overlay（`ui/`）、dev / test build 専用の debug hook（`debug/`）と Preview の panel（`preview/`）、Phaser adapter（`runtime/phaser/`）を import してよいのは entry の `src/main.ts` だけにし、entry がそれらを組み立てて scene へ `HudPort` のような型として渡す。`runtime/` の他の module は DOM と Phaser なしで node:test から検査できる形に保ち、`runtime/debug/` には dump と再生記録を組み立てる純粋関数と型だけを置く。`tests/module-graph.test.mjs` の `SAMPLE_TITLE_LAYER_RULES` が型 import も含めて検査し、`tsconfig.runtime.json` の型検査も DOM の型で止まる。
+- canvas と DOM overlay は同じ transform root（`.stage-root`）に入れ、表示の倍率と letterbox は root の transform だけで当てる。devicePixelRatio は canvas を描く解像度にだけ使い、Simulation と view の座標は内部解像度のままにする。
+- browser の debug hook（debug state dump の `window.__DANMAKU_KIT_DEBUG_STATE__` と再生記録の `window.__DANMAKU_KIT_DEBUG_REPLAY__`）は `src/debug/` に置き、`src/main.ts` の `import.meta.env.MODE !== "production"` の分岐からだけ呼ぶ。production の bundle に入らないことは `vite/dev-only-build.test.ts` が build して検査する。
+- Preview（`?preview`）は dev / test build 専用で、DOM の panel と overlay を `src/preview/` に、definition の合成、選択、overlay の文字を Phaser と DOM に依存しない `src/runtime/preview/` に置き、`src/main.ts` の `import.meta.env.MODE !== "production"` の分岐からだけ作る。Core に Preview 専用の API は足さず、選んだ対象だけを出す `GameDefinition` を合成して普通に load する。dev-only の cheat（invincible、stage jump）も合成する definition で表し、Core へ渡す入力には混ぜない（cheat を当てた stage は `<id>_preview_cheat` に複製する）。overlay は公開の `serialize()` と `GameFrame` から読めるものだけを出す。Preview の印（panel の class 名、合成する stage の id）が production の bundle に入らないことも `vite/dev-only-build.test.ts` が検査する。
+- browser smoke / regression test は `e2e/`（Playwright、`npm run test:browser`）に置き、`npm test` とは分ける。判定は debug hook の dump と再生記録を正本にし、screenshot diff は補助にする。screenshot は `e2e/support.ts` の `expectScreenshot()` で撮り（CI で Linux の baseline がないものは `ALLOW_MISSING_BROWSER_BASELINES` で skip する）、baseline を足したら Linux の baseline も `.github/workflows/browser-baselines.yml` で作って commit する。決定的な画面は Preview の start paused（`paused=1`）から N で 1 tick ずつ、render frame を待ちながら進めて撮る。e2e は `src/` の Phaser 非依存の module と `src/test-support/` を import してよく、`tsconfig.e2e.json` で型検査する。画面、入力、HUD、debug hook、viewport、Preview、content の hot reload に触れたら `npm run test:browser` も通す。
+- Vite config と content plugin のように Node で動く code は `src/` の外（`vite.config.ts`、`vite/`）に置き、`tsconfig.node.json` で型検査する。`vite/**/*.test.ts` も `npm test` の対象にする。
+- dev server の content の hot reload は、content plugin が検証済みの content を HMR の custom event で送り、app の `src/runtime/content/hot-reload.ts`（Phaser 非依存）が今の content と比べて stage の再開始、texture の読み直し、page の読み込み直しを決める。`import.meta.hot` を読むのは `src/main.ts` だけにする。
+- content は build / dev server 時に `vite/content-plugin.ts` が validate-content の `loadValidatedGameDefinition()` で検証する。browser へ YAML parser や filesystem access を持ち込まない。virtual module は `GameDefinition` を default export、検証済みの asset manifest を `assetManifest` として export する。app は validate-content を import しないため、manifest の型は `src/runtime/assets/asset-manifest.ts` に同じ形で置き、content plugin が validate-content の値をこの型へ代入して形のずれを型検査で検出する。
+- sample content（`content/`）を変えたら、`src/sample-content/` の test（参照の schema test、敵撃破、stage 1 の headless replay golden、`docs/sample-content-spec.md` との照合）を通す。golden は `UPDATE_SAMPLE_TITLE_GOLDENS=1 npm test` で作り直し、差分（clear の tick、撃破、被弾、3-way と radial の角度）が意図どおりかを確認し、spec の文章と機械で読める block も合わせてから、`npm test` をもう一度実行して commit する（spec の test が新しい golden を読むため）。
+- 診断の code を足したら `docs/content-authoring/error-guide.md` に節（重要度、原因、直し方、content の診断なら schema path）を足す。validate-content が自分で出す code は `tools/validate-content/src/diagnostic-codes.ts` の `VALIDATE_CONTENT_DIAGNOSTIC_CODES` に足す（診断を作る関数の型が一覧にない code を拒む）。`tests/error-guide.test.mjs` が見出しと code の一覧の一致を検査する。
+- content の schema（collection、definition の field、Pattern DSL の命令や fire の修飾）を足したら、`docs/content-authoring/examples/` の例で見せるか、例の README の「例にない形」に書く。`tests/content-authoring-examples.test.ts` の表は Core の公開型から網羅させているので、足すまで型検査が止まる。
+- asset は `public/assets/` に置き、manifest の path は base URL からの相対 path にする。Phaser に依存しない loading の判断（`src/runtime/assets/`）と view pool の見積もり・使い回し（`src/runtime/view/`）は node:test で検査し、Phaser の scene はそれを呼ぶだけにする。
+
+### 決定性（`packages/core/src/`）
+
+- tick に入り得る Core の source は host によって結果が変わる演算を使わない。`Math.sin` / `Math.cos` / `Math.atan2` / `Math.hypot` / `Math.pow` などの implementation-approximated な `Math` function と `**` 演算子は `tests/deterministic-math.test.mjs` が拒否する。`Math.sqrt`、`Math.floor`、`Math.abs`、四則演算は正確なので使ってよい。
+- 角度は 0.25° 刻みの整数 step（`shared/angle-steps.ts`）で扱い、sine / cosine / 単位 vector / 狙いの向き（vector に最も近い step）は `simulation/deterministic-trig.ts` を使う。sine 表 `simulation/sine-table.ts` は `npm run generate-sine-table` が生成する正本で、手で編集しない。
+- 移動する entity の位置は、生成位置や segment 開始位置から `origin + velocity * t` のように毎 tick 求め直し、tick ごとの加算を積まない。restore はこの式で state が spawn から到達可能かを検証するため、式を変えるときは restore の検証も同じ式にそろえる。
+- pattern の命令列は load 時に `patterns/pattern-program.ts` で run を始められる cursor ごとの run へ正規化し、tick の runner（`pattern-runner.ts`）と restore の時刻表（`pattern-schedule.ts`）が同じ run を使う。runner の進め方を変えるときは、時刻表と 1 tick ずつ進めた結果を比べる test で一致を確かめる。DSL の命令を足すときは、load 時に run へ展開できる形にして runner state（cursor と `waitRemaining`）を増やさないことを優先し、1 回の発射の弾の並び（採番順）を restore の割り当て（`serialization/restore/pattern-fires.ts`）と tick の system で同じにする。difficulty で変わる命令は difficulty ごとの program に展開し（`content/content-index.ts` の `patternProgramsForDifficulty()`）、session と restore は state の difficulty の表を引く。
+
+### optional feature（`packages/core/src/features/`）
+
+- feature は `src/features/<feature>/`（feature id の kebab-case。`advancedScoring` は `advanced-scoring`）に置き、`index.ts` が `defineFeature()` で作った feature を export する。package の export map に `"./features/<feature>": "./src/features/<feature>/index.ts"` を足す（`tests/package-boundary.test.mjs` が directory と export の対応を検査する）。
+- basic は `src/features/` を import しない。feature は同じ feature の directory と basic の `extension/`、`shared/`、`result.ts`、`content/types.ts`、`serialization/types.ts` だけを型 import も含めて import し、feature 同士は import しない（`tests/module-graph.test.mjs` の `FEATURE_ALLOWED_BASIC_TARGETS`）。basic の module が要るときは、feature の hook の文脈（`FeatureStageContext`、`FeatureTickContext`、`FeatureRestoreContext`）に足す。
+- feature の state は JSON 互換の plain data にし、有効な feature は必ず 1 つの state を持つ（状態のない feature は `null`）。serialize（`serializeState()`）と hash（`hashState()`）は契約が異なるため、本文が同じでも別に持つ。`restoreState()` は payload の形と、spawn から `expectedTick` までに到達できる state であることを検証する。
+- tick の system は `spawn` と `scoring` の位置で canonical feature order に実行する。system order に新しい位置を足すときは design 7.1 と `FEATURE_TICK_SLOTS` を同時に更新する。
+- feature の entity は basic の entity union に足さず、feature の directory の model / snapshot / restore（と tick の systems）に分ける。id は tick の文脈の `allocateEntityIds()` で basic と同じ allocator から採番し、restore は `entityAllocationTicks` で basic の entity との採番順を、`maxAllocations()` で allocation envelope を合わせる。位置は basic の entity と同じく spawn からの式で求め直す。
+- feature が出す event は `FeatureGameEvent` に足してから出す（basic の event は出せない）。score は `scoring` の文脈の `addScore()` だけで足す。feature の entity が残る間に stage を終わらせたくなければ `holdsStageClear()` を使う。
+
+feature を追加するとき:
+
+1. `src/features/<feature>/` と `index.ts`（`defineFeature()`）を作り、package の export map に足す。
+2. feature の content の型を basic の `content/types.ts`（`FeatureContentRegistry` と、basic の definition に足す field）に置き、`content/feature-fields.ts` の表に collection と field を登録する（basic はこの表で、module が登録されていなくても gating する）。
+3. content の検証と索引（`loadContent()`）、tick の system、state の serialize / hash / restore を module の hook に実装し、無効な feature の gating（定義だけは warning、参照は error）と feature 間の依存を matrix test に固定する。feature の test の共通 helper は `src/features/<feature>/test-support/` に置く。
+4. feature を使う host（sample app、validate-content）が `createDanmakuCore({ features })` に渡すようにし、`SAMPLE_TITLE_PACKAGE_IMPORT_RULES` や validate-content の package boundary test の import rule に subpath を足す。validate-content の content-root の directory は `content-collections.ts` に足す。
+5. feature の state の byte 列は feature の `stateVersion` で区別する（state の形を変えたら上げる）。basic の byte 列は変わらないので `SERIALIZED_STATE_HASH_VERSION` は上げず、feature を有効にした content の hash golden、型契約、`docs/design.md` の feature の項を更新する（design 20。basic の state の byte 列を変えるときだけ hash version を上げる）。
+
+### runtime entity kind（`packages/core/src/basic/entities/`）
 
 - `entities/` 直下は kind 横断の module（`entity-kinds.ts`、`model-common.ts`、`snapshot-common.ts`、`restore-common.ts`、`runtime-entity.ts`）だけにし、サブディレクトリは `RUNTIME_ENTITY_KINDS` の1 kind（kebab-case）に1つ対応させる。
 - kind directory は `model.ts`（runtime 型、content からの生成、restore 済み値からの再構築）、`snapshot.ts`（public serialize DTO、hash DTO と canonical field order、serialize / hash projection）、`restore.ts`（受け付ける key 一覧と検証）の3 file を持つ。serialize / hash projection は契約が異なるため本文が同じでも統合しない。
@@ -91,6 +136,6 @@ kind を追加するとき:
 
 - 移動した内部 API を元 file から re-export せず、import 元を新しい path へ更新する。
 - 統合するのは完全に同一の helper だけにする。似ているが契約が異なる helper（例: boolean を返す `hasOnlyKeys` と error を積む `validateAllowedKeys`、lone surrogate の扱いが異なる UTF-8 encoder）は統合しない。
-- 複数 test file で使う test helper は `src/basic/test-support/` に置く。Core 内部 test hook を使う test file は `enableInternalTestHooksForTestFile()` で環境変数を設定する。
+- 複数 test file で使う test helper は `src/basic/test-support/`（sample app は `apps/sample-title/src/test-support/`）に置く。Core 内部 test hook を使う test file は `enableInternalTestHooksForTestFile()` で環境変数を設定する。
 - `@ts-expect-error` を含む型契約 file を分割・移動するときは、directive を無効化した状態の diagnostic が変わらないことを確認し、import 漏れなど別の error を握りつぶさないようにする。
 - 型契約の deep import 確認は exports map で常に error になり path の stale を検出できないため、`tests/package-boundary.test.mjs` が対象 file と export 名の実在を検査する。module を移動したら型契約の path も更新する。
