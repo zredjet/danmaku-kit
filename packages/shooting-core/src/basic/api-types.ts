@@ -1,5 +1,6 @@
 import type { Difficulty, GameDefinition, PlayerId, StageId } from "./content/types.ts";
 import type { ReadonlyEntityState } from "./entities/runtime-entity.ts";
+import type { ReadonlyFeatureFrameState } from "./extension/feature-frame.ts";
 import type { ShootingCoreFeature } from "./extension/feature-module.ts";
 import type { GameEvent } from "./events/game-event.ts";
 import type { InputFrame } from "./input/input-frame.ts";
@@ -35,6 +36,8 @@ export type ReadonlyGameState = Readonly<{
   player: ReadonlyPlayerState;
   score: number;
   entities: ReadonlyArray<ReadonlyEntityState>;
+  /** 有効な optional feature が出す state（pickup など）。frame に出す feature がなければ持たない。 */
+  features?: ReadonlyFeatureFrameState;
 }>;
 
 /** HUD / debug が event fold なしで参照できる自機の現在状態。 */

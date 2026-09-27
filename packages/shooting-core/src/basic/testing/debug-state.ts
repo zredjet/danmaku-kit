@@ -83,7 +83,7 @@ function hashHeadlessDebugCheckpoint(checkpoint: HeadlessDebugCheckpoint): Headl
     return createHeadlessDebugStateHashError();
   }
   return okResult(Object.freeze({
-    schemaVersion: "2",
+    schemaVersion: "3",
     kind: "headless",
     tick: checkpoint.hashableState.expectedTick,
     seed: checkpoint.seed,
@@ -154,6 +154,8 @@ export function projectHeadlessDebugStateForStableJson(dump: HeadlessDebugStateD
       scoreChanged: dump.eventCounts.scoreChanged,
       stageCleared: dump.eventCounts.stageCleared,
       gameOver: dump.eventCounts.gameOver,
+      pickupsSpawnedBatch: dump.eventCounts.pickupsSpawnedBatch,
+      pickupCollected: dump.eventCounts.pickupCollected,
     },
   };
 }

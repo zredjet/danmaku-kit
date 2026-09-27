@@ -1,7 +1,10 @@
 import { KNOWN_ENABLED_FEATURES } from "../content/types.ts";
-import type { Difficulty, EnabledFeature, GameDefinition, PlayerDefinition, StageDefinition } from "../content/types.ts";
+import type { Difficulty, EnabledFeature, EnemyId, GameDefinition, PlayerDefinition, StageDefinition } from "../content/types.ts";
+import type { ReadonlyEntityState } from "../entities/runtime-entity.ts";
+import type { GameEvent } from "../events/game-event.ts";
 import type { CoreResult } from "../result.ts";
 import type { SerializedJsonValue } from "../serialization/types.ts";
+import type { ReadonlyFeatureFrameState } from "./feature-frame.ts";
 import { deepFreezeClone, deepFreezePlainData } from "../shared/immutable.ts";
 
 /**
@@ -24,11 +27,46 @@ export type FeatureStageBase = Readonly<{
 /** feature の state を作るときと restore するときに渡す stage の文脈。`content` は feature の `loadContent()` が作った値。 */
 export type FeatureStageContext<Content> = FeatureStageBase & Readonly<{ content: Content }>;
 
-/** feature の system に渡す 1 tick の文脈。entity の採番、event、score のような basic の state は、使う feature を足す slice で足す。 */
-export type FeatureTickContext<Content> = FeatureStageContext<Content> & Readonly<{ tick: number }>;
+/** この tick に撃破された enemy（collision resolution の順）。位置は撃破された tick の移動の後の位置。 */
+export type FeatureDefeatedEnemy = Readonly<{
+  id: number;
+  definitionId: EnemyId;
+  position: Readonly<{ x: number; y: number }>;
+}>;
 
-/** restore で feature の state を作るときの文脈。`expectedTick` は snapshot が次に受け付ける tick。 */
-export type FeatureRestoreContext<Content> = FeatureStageContext<Content> & Readonly<{ expectedTick: number }>;
+/**
+ * feature の system に渡す 1 tick の文脈。
+ *
+ * `entities` は basic の entity（`spawn` では spawn の後、`scoring` では collision resolution の後で cleanup の前、id の順）。
+ * `defeatedEnemies` は `scoring` だけが持ち、`spawn` では空。entity id は basic と同じ allocator から採番し、score と event は basic の
+ * 値に続けて足す（event は frame の event の順に並ぶ）。
+ */
+export type FeatureTickContext<Content> = FeatureStageContext<Content> & Readonly<{
+  tick: number;
+  entities: readonly ReadonlyEntityState[];
+  defeatedEnemies: readonly FeatureDefeatedEnemy[];
+  /** `count` 個の entity id を採番する。足りなければ何も採番せずに error を返す。 */
+  allocateEntityIds(count: number): CoreResult<readonly number[]>;
+  /** score に `delta`（0 以上の整数）を足し、足した後の合計を返す。 */
+  addScore(delta: number): number;
+  emitEvent(event: GameEvent): void;
+}>;
+
+/**
+ * restore で feature の state を作るときの文脈。`expectedTick` は snapshot が次に受け付ける tick、`nextEntityId` は snapshot の次に
+ * 採番する id、`entityIds` は restore した basic の entity の id。
+ */
+export type FeatureRestoreContext<Content> = FeatureStageContext<Content> & Readonly<{
+  expectedTick: number;
+  nextEntityId: number;
+  entityIds: ReadonlySet<number>;
+}>;
+
+/** restore の allocation envelope を見積もるときの文脈。 */
+export type FeatureAllocationContext<Content> = FeatureStageContext<Content> & Readonly<{ expectedTick: number }>;
+
+/** frame に feature の state を出すときの文脈。`tick` はその frame の tick。 */
+export type FeatureFrameContext<Content> = FeatureStageContext<Content> & Readonly<{ tick: number }>;
 
 /** 1 tick の決まった位置で feature の state を進める。error を返すと stage session は fatal になる。 */
 export type FeatureSystem<State, Content> = (state: State, context: FeatureTickContext<Content>) => CoreResult<State>;
@@ -64,6 +102,13 @@ export type FeatureModule<State extends SerializedJsonValue, Content> = Readonly
    * 検証し、受け付けない state は `state.invalidShape` などの error にする。
    */
   restoreState(payload: SerializedJsonValue, context: FeatureRestoreContext<Content>): CoreResult<State>;
+  /**
+   * spawn から `expectedTick` までに feature が採番し得る entity id の数の上限。restore は basic の上限に足して `nextEntityId` を
+   * 検証する。entity を持たない feature は省略する（0）。
+   */
+  maxAllocations?(context: FeatureAllocationContext<Content>): number;
+  /** frame の `state.features` に出す値。出さない feature は省略する。 */
+  projectFrameState?(state: State, context: FeatureFrameContext<Content>): ReadonlyFeatureFrameState;
 }>;
 
 /** state と content の型を消した feature module。Core の中ではこの形で持つ。 */
@@ -99,6 +144,11 @@ export function defineFeature<State extends SerializedJsonValue, Content>(module
   }
   for (const name of MODULE_FUNCTIONS) {
     if (typeof module[name] !== "function") {
+      throw new TypeError(`Feature module ${name} must be a function: ${module.feature}`);
+    }
+  }
+  for (const name of ["maxAllocations", "projectFrameState"] as const) {
+    if (module[name] !== undefined && typeof module[name] !== "function") {
       throw new TypeError(`Feature module ${name} must be a function: ${module.feature}`);
     }
   }

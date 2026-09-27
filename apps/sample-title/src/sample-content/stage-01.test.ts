@@ -65,7 +65,7 @@ test("defeats a sample scout in two shots, emitting the defeat and adding its sc
   assert.equal(destroyed?.reason, "defeated");
   assert.ok(destroyed !== undefined && destroyed.tick > hpByTick[1]![0]);
   assert.deepEqual(
-    scored?.type === "scoreChanged" ? [scored.tick, scored.enemyId, scored.delta, scored.total] : null,
+    scored?.type === "scoreChanged" && scored.reason === "enemyDefeated" ? [scored.tick, scored.enemyId, scored.delta, scored.total] : null,
     [destroyed.tick, "enemy.scout", 100, 100],
   );
   // 敵が timeline を終えて全滅したので、倒した tick で stage が clear になる。
@@ -77,5 +77,8 @@ test("defeats a sample drone with a single shot", async () => {
 
   assert.deepEqual(hpByTick.map(([, hp]) => hp), [5]);
   assert.equal(destroyed?.reason, "defeated");
-  assert.deepEqual(scored?.type === "scoreChanged" ? [scored.enemyId, scored.delta] : null, ["enemy.drone", 50]);
+  assert.deepEqual(
+    scored?.type === "scoreChanged" && scored.reason === "enemyDefeated" ? [scored.enemyId, scored.delta] : null,
+    ["enemy.drone", 50],
+  );
 });

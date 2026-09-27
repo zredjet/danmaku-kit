@@ -25,11 +25,7 @@ import {
   MAX_PICKUP_MAGNET_RADIUS,
   MAX_PICKUP_SPEED_PER_AXIS,
 } from "./budgets.ts";
-
-/** pickup feature が load 時に作る content。 */
-export type PickupContent = Readonly<{
-  pickupsById: ReadonlyMap<PickupId, PickupDefinition>;
-}>;
+import type { PickupContent } from "./model.ts";
 
 /**
  * pickup feature の content を検証し、pickup の索引を作る（design 9.9 / 20）。
@@ -70,7 +66,11 @@ export function loadPickupContent(definition: GameDefinition): CoreResult<Pickup
   ));
   const pickupsById = new Map(pickups.map((pickup) => [pickup.id, pickup] as const));
   definition.content.enemies.forEach((enemy, enemyIndex) => validateDropReferences(enemy, enemyIndex, pickupsById, errors));
-  return errors.length > 0 ? errorResult(errors) : okResult(Object.freeze({ pickupsById }));
+  if (errors.length > 0) {
+    return errorResult(errors);
+  }
+  const dropsByEnemyId = new Map(definition.content.enemies.flatMap((enemy) => enemy.drops ? [[enemy.id, enemy.drops] as const] : []));
+  return okResult(Object.freeze({ pickupsById, dropsByEnemyId }));
 }
 
 function validatePickupShape(pickup: Record<string, unknown>, errors: CoreError[]): void {

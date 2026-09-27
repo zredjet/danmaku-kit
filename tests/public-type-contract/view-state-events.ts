@@ -4,10 +4,34 @@ import type {
   EnemyId,
   GameEvent,
   ReadonlyEntityState,
+  ReadonlyFeatureFrameState,
   ReadonlyGameState,
+  ReadonlyPickupState,
   ReadonlyPlayerState,
 } from "@shooting-sample/shooting-core";
 import { playerId, stageId } from "./content-definitions.ts";
+
+// Phase 2B-6: pickup feature が有効な content の frame は `state.features.pickups` を持つ。
+const pickupState: ReadonlyPickupState = { id: 4, definitionId: "pickup.score_small", position: { x: 182, y: 380 }, attracted: false };
+const featureFrame: ReadonlyFeatureFrameState = { pickups: [pickupState] };
+// @ts-expect-error frame pickups reference pickup ids.
+const invalidPickupState: ReadonlyPickupState = { ...pickupState, definitionId: "enemy.scout" };
+const pickupCollectedEvent: GameEvent = { type: "pickupCollected", tick: 7, entityId: 5, definitionId: "pickup.score_small" };
+const pickupScoreEvent: GameEvent = {
+  type: "scoreChanged",
+  tick: 7,
+  delta: 100,
+  total: 200,
+  reason: "pickupCollected",
+  pickupId: "pickup.score_small",
+  entityId: 5,
+};
+// @ts-expect-error pickup score changes name the pickup, not an enemy.
+const invalidPickupScoreEvent: GameEvent = { ...pickupScoreEvent, enemyId: "enemy.scout" };
+void featureFrame;
+void invalidPickupState;
+void pickupCollectedEvent;
+void invalidPickupScoreEvent;
 
 const entity: ReadonlyEntityState = {
   id: 1,
@@ -292,6 +316,10 @@ function assertEventExhaustive(value: GameEvent): number {
     case "stageCleared":
     case "gameOver":
       return value.tick;
+    case "pickupsSpawnedBatch":
+      return value.pickups.length;
+    case "pickupCollected":
+      return value.entityId;
     default: {
       const neverEvent: never = value;
       return neverEvent;

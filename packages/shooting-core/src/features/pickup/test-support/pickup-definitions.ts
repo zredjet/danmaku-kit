@@ -40,3 +40,30 @@ export function without(record: Readonly<Record<string, unknown>>, key: string):
   const { [key]: _omitted, ...rest } = record;
   return rest;
 }
+
+/**
+ * 自機（192, 400）の shot が tick 0 に真上（192, 380）の scout を撃破し、scout が score pickup を 3 個（幅 20 px）落とす definition。
+ *
+ * pickup は x = 182, 192, 202 に出て毎 tick 1.5 px 落ちる。`magnetRadius` を渡さなければ、真ん中の pickup だけが tick 7 に自機の
+ * `collectRadius`（10）に入って回収され、両脇は tick 67 に playfield の下の cleanup 境界を越えて消える。`magnetRadius: 40` なら
+ * 3 個とも tick 0 に吸い寄せに入り、tick 12 に回収される。stage は tick 36,000 の 2 体目まで終わらない。
+ */
+export function createDroppingEnemyDefinition(options: Readonly<{ magnetRadius?: number }> = {}): GameDefinition {
+  const definition = createMinimumDefinition();
+  const pickup = { ...without(SCORE_SMALL_PICKUP, "magnetRadius"), ...(options.magnetRadius === undefined ? {} : { magnetRadius: options.magnetRadius }) };
+  const spawnScout = (tick: number, y: number) => ({
+    tick,
+    action: { type: "spawnEnemy", enemy: "enemy.scout", path: "path.none", pattern: "pattern.none", position: { x: 192, y } },
+  } as const);
+  return {
+    ...definition,
+    enabledFeatures: ["pickup"],
+    content: {
+      ...definition.content,
+      stages: [{ ...definition.content.stages[0]!, timeline: [spawnScout(0, 380), spawnScout(36_000, -16)] }],
+      enemies: definition.content.enemies.map((enemy) => ({ ...enemy, drops: [{ pickup: "pickup.score_small", count: 3, spread: 20 }] })),
+      playerShots: [{ ...definition.content.playerShots[0]!, damage: 10 }],
+      features: { pickups: [pickup] },
+    },
+  } as unknown as GameDefinition;
+}

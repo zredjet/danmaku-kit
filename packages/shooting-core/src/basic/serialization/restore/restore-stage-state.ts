@@ -15,7 +15,7 @@ import type { StageSessionSerializationMetadata } from "../metadata.ts";
 import { cloneRestoreTopLevelPlainRecord } from "../restore-plain-data.ts";
 import type { SerializedGameState } from "../types.ts";
 import { parseRestoreDeterministicPayload, validateRestorePrngSnapshot } from "./deterministic-payload.ts";
-import { restoreFeatureStates } from "./feature-states.ts";
+import { countFeatureAllocations, restoreFeatureStates } from "./feature-states.ts";
 import type { ValidatedRestoreDeterministicPayload } from "./deterministic-payload.ts";
 import {
   parseRestoreCompatibilityMetadata,
@@ -109,16 +109,21 @@ export function restoreStageState(
   if (!prng.ok) {
     return prng;
   }
-  const payload = parseRestoreDeterministicPayload(state.value, content);
-  if (!payload.ok) {
-    return payload;
-  }
-  const featureStates = restoreFeatureStates(payload.value.enabledFeatureStates, features, Object.freeze({
+  const featureContext = Object.freeze({
     definition: content.definition,
     stage: content.stagesById.get(state.value.stageId)!,
     player: content.playersById.get(state.value.playerId)!,
     difficulty: state.value.difficulty,
     expectedTick: state.value.expectedTick,
+  });
+  const payload = parseRestoreDeterministicPayload(state.value, content, countFeatureAllocations(features, featureContext));
+  if (!payload.ok) {
+    return payload;
+  }
+  const featureStates = restoreFeatureStates(payload.value.enabledFeatureStates, features, Object.freeze({
+    ...featureContext,
+    nextEntityId: state.value.nextEntityId,
+    entityIds: new Set(payload.value.activeEntities.map((entity) => entity.id)),
   }));
   if (!featureStates.ok) {
     return featureStates;

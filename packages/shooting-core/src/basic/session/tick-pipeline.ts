@@ -4,8 +4,7 @@ import type { PlayerDefinition, PlayerId, StageDefinition } from "../content/typ
 import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
 import { toReadonlyEntityState } from "../entities/runtime-entity.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
-import { freezeFeatureState } from "../extension/feature-module.ts";
-import type { FeatureStageBase, FeatureTickSlot, LoadedFeature } from "../extension/feature-module.ts";
+import type { FeatureStageBase, LoadedFeature } from "../extension/feature-module.ts";
 import type { InputFrame } from "../input/input-frame.ts";
 import { consumeWorkingMutationFailureForTesting } from "../instrumentation/stage-session-testing-hooks.ts";
 import type { ActiveStageSessionTestingHooks } from "../instrumentation/stage-session-testing-hooks.ts";
@@ -26,6 +25,7 @@ import { advanceStageTimeline } from "../simulation/stage-timeline-system.ts";
 import { freezeEntitiesInIdOrder } from "../simulation/system-order.ts";
 import { createCommittedStageState } from "../state/committed-state.ts";
 import type { CommittedStageState, WorkingStageState } from "../state/committed-state.ts";
+import { NO_DEFEATED_ENEMIES, advanceFeatureSystems, collectDefeatedEnemies, projectFeatureFrameState } from "./feature-systems.ts";
 
 /** tick pipeline が参照する load 済み content と、session の stage / player。 */
 export type StageTickContent = Pick<
@@ -169,9 +169,16 @@ export function runStageTick(
   }
 
   // system order の spawnBulletsPlayerShots の最後。feature の spawn（pickup の生成など）を canonical feature order で進める。
-  const featureSpawn = advanceFeatureSystems(working, content, "spawn");
-  if (featureSpawn) {
-    return featureSpawn;
+  const featureSpawnErrors = advanceFeatureSystems(
+    working,
+    content.features,
+    content.featureStageBase,
+    "spawn",
+    working.activeEntities,
+    NO_DEFEATED_ENEMIES,
+  );
+  if (featureSpawnErrors) {
+    return fatalTickOutcome(featureSpawnErrors);
   }
 
   const injectedFailure = consumeWorkingMutationFailureForTesting(instrumentation.testingHooks, working);
@@ -200,12 +207,20 @@ export function runStageTick(
     working.eventLog.push(event);
   }
   const resolvedEntities = collision.entities;
-  const resolvedScore = collision.score;
-  // system order の scoring。basic の scoring の後に、feature の scoring（pickup の回収など）を canonical feature order で進める。
-  const featureScoring = advanceFeatureSystems(working, content, "scoring");
-  if (featureScoring) {
-    return featureScoring;
+  working.score = collision.score;
+  // system order の scoring。basic の scoring の後に、feature の scoring（pickup の生成と回収など）を canonical feature order で進める。
+  const featureScoringErrors = advanceFeatureSystems(
+    working,
+    content.features,
+    content.featureStageBase,
+    "scoring",
+    resolvedEntities,
+    content.features.length > 0 ? collectDefeatedEnemies(collision.events, advancedEntities) : NO_DEFEATED_ENEMIES,
+  );
+  if (featureScoringErrors) {
+    return fatalTickOutcome(featureScoringErrors);
   }
+  const resolvedScore = working.score;
   // system order の cleanupDestroyedEntities。撃破や cleanup でいなくなった enemy の runner を破棄する。
   const resolvedRunners = retainRunnersOfActiveEnemies(working.patternRunners, resolvedEntities);
 
@@ -238,6 +253,7 @@ export function runStageTick(
     player: toReadonlyPlayerState(resolvedPlayer),
     score: resolvedScore,
     entities: Object.freeze(orderedEntities.map((entity) => toReadonlyEntityState(entity))),
+    ...projectFeatureFrameState(working, content.features, content.featureStageBase),
   });
   const frameEvents = working.eventLog.drain();
   const frame = Object.freeze({
@@ -264,39 +280,6 @@ export function runStageTick(
     committedState,
     collisionCandidates: collision.collisionCandidates,
   });
-}
-
-/**
- * `slot` に system を持つ feature の state を canonical feature order で進める。失敗した feature があれば fatal の outcome を、なければ
- * null を返す。
- */
-function advanceFeatureSystems(
-  working: WorkingStageState,
-  content: StageTickContent,
-  slot: FeatureTickSlot,
-): StageTickOutcome | null {
-  for (const [index, { module, content: featureContent }] of content.features.entries()) {
-    const system = module.systems[slot];
-    if (!system) {
-      continue;
-    }
-    const current = working.featureStates[index];
-    if (current?.feature !== module.feature) {
-      return fatalTickOutcome([{ code: "stageSession.fatal", message: `Feature state not found: ${module.feature}` }]);
-    }
-    const advanced = system(current.state, { ...content.featureStageBase, content: featureContent, tick: working.expectedTick });
-    if (!advanced.ok) {
-      return fatalTickOutcome(advanced.errors);
-    }
-    const state = freezeFeatureState(advanced.value);
-    if (state === undefined) {
-      return fatalTickOutcome([
-        { code: "stageSession.fatal", message: `Feature state must be JSON-compatible plain data: ${module.feature}` },
-      ]);
-    }
-    working.featureStates[index] = Object.freeze({ feature: module.feature, state });
-  }
-  return null;
 }
 
 /** content / invariant 破壊を stage session の fatal latch へ渡す outcome にする。 */

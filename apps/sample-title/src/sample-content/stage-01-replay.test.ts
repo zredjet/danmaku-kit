@@ -66,7 +66,7 @@ async function runStage01(seed: string): Promise<ReplaySummary> {
     weavePeriodTicks: WEAVE_PERIOD_TICKS,
     end: { tick: last.tick, status: last.state.status, score: last.state.score, lives: last.state.player.lives },
     checkpoints,
-    defeats: events.flatMap((event) => event.type === "scoreChanged"
+    defeats: events.flatMap((event) => event.type === "scoreChanged" && event.reason === "enemyDefeated"
       ? [{ tick: event.tick, enemy: event.enemyId, score: event.delta }]
       : []),
     playerHits: events.flatMap((event) => event.type === "playerHit" ? [event.tick] : []),

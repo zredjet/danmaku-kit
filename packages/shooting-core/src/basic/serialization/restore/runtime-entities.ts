@@ -58,12 +58,13 @@ export function validateRestoreRuntimeEntities(
   content: LoadedContentIndex,
   stage: StageDefinition,
   timelineCursor: number,
+  featureAllocations: number,
 ): CoreResult<ValidatedRestoreRuntimeEntities> {
   const spawnBudget = createRestoreSpawnBudget(stage, timelineCursor, content, state.expectedTick, state.difficulty);
   if (!spawnBudget.ok) {
     return spawnBudget;
   }
-  const allocationEnvelope = validateRestoreAllocationEnvelope(state, spawnBudget.value);
+  const allocationEnvelope = validateRestoreAllocationEnvelope(state, spawnBudget.value, featureAllocations);
   if (!allocationEnvelope.ok) {
     return allocationEnvelope;
   }

@@ -60,10 +60,13 @@ const SHOOTING_CORE_LEAF_LAYER_RULES = Object.freeze([
   {
     importer: "extension/",
     allowedTargets: [
+      "content/runtime-budgets.ts",
       "content/types.ts",
       "content/validation/fields.ts",
       "content/validation/references.ts",
       "content/validation/schema-path.ts",
+      "entities/runtime-entity.ts",
+      "events/game-event.ts",
       "result.ts",
       "serialization/types.ts",
       "shared/",

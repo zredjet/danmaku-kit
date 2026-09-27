@@ -1,5 +1,5 @@
 import { deepFreezeClone } from "../shared/immutable.ts";
-import type { BulletId, EnemyId, PathId, PatternId, PlayerId, PlayerShotId, StageId } from "../content/types.ts";
+import type { BulletId, EnemyId, PathId, PatternId, PickupId, PlayerId, PlayerShotId, StageId } from "../content/types.ts";
 import type { EntityId } from "../simulation/entity.ts";
 
 type EnemyBulletSpawnedEventItem = Readonly<{
@@ -14,6 +14,16 @@ type EnemyBulletSpawnedEventItem = Readonly<{
 type PlayerShotSpawnedEventItem = Readonly<{
   entityId: EntityId;
   definitionId: PlayerShotId;
+  position: Readonly<{
+    x: number;
+    y: number;
+  }>;
+}>;
+
+/** pickup feature が出した pickup。 */
+type PickupSpawnedEventItem = Readonly<{
+  entityId: EntityId;
+  definitionId: PickupId;
   position: Readonly<{
     x: number;
     y: number;
@@ -107,6 +117,28 @@ export type GameEvent =
     total: number;
     reason: "enemyDefeated";
     enemyId: EnemyId;
+    entityId: EntityId;
+  }>
+  | Readonly<{
+    /** pickup feature: 撃破された enemy の drops から、この tick に出た pickup（entity id の順）。 */
+    type: "pickupsSpawnedBatch";
+    tick: number;
+    pickups: readonly [PickupSpawnedEventItem, ...PickupSpawnedEventItem[]];
+  }>
+  | Readonly<{
+    /** pickup feature: 自機が回収した pickup。続けて同じ pickup の `scoreChanged`（reason `pickupCollected`）が出る。 */
+    type: "pickupCollected";
+    tick: number;
+    entityId: EntityId;
+    definitionId: PickupId;
+  }>
+  | Readonly<{
+    type: "scoreChanged";
+    tick: number;
+    delta: number;
+    total: number;
+    reason: "pickupCollected";
+    pickupId: PickupId;
     entityId: EntityId;
   }>;
 

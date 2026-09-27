@@ -16,6 +16,7 @@ export type {
   StartStageOptions,
 } from "./api-types.ts";
 export type { ShootingCoreFeature } from "./extension/feature-module.ts";
+export type { ReadonlyFeatureFrameState, ReadonlyPickupState } from "./extension/feature-frame.ts";
 export type { ReadonlyEntityState } from "./entities/runtime-entity.ts";
 export type { ReplayMetadata } from "./replay/metadata.ts";
 export type {

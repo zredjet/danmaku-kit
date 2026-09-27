@@ -27,6 +27,7 @@ export type CoreErrorCode =
   | "path.notFound"
   | "pattern.budgetExceeded"
   | "pattern.notFound"
+  | "pickup.budgetExceeded"
   | "pickup.notFound"
   | "player.defaultNotFound"
   | "player.notFound"

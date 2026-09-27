@@ -77,10 +77,14 @@ export function validateRestorePrngSnapshot(prngState: unknown): CoreResult<Seri
   return okResult(prng.value.snapshot());
 }
 
-/** deterministic payload を検証し、committed 変換前 DTO へ正規化する。 */
+/**
+ * deterministic payload を検証し、committed 変換前 DTO へ正規化する。`featureAllocations` は有効な feature が採番し得る entity id の
+ * 数の上限で、`nextEntityId` の allocation envelope に足す。
+ */
 export function parseRestoreDeterministicPayload(
   state: RestoreTopLevelState,
   content: LoadedContentIndex,
+  featureAllocations: number,
 ): CoreResult<ValidatedRestoreDeterministicPayload> {
   const record = cloneRestorePlainRecord(state.state, "state", [
     "runtimeEntities",
@@ -173,6 +177,7 @@ export function parseRestoreDeterministicPayload(
     content,
     stage,
     record.value.timelineCursor,
+    featureAllocations,
   );
   if (!runtimeEntitiesContract.ok) {
     return runtimeEntitiesContract;

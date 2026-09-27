@@ -15,7 +15,7 @@ import type { SerializedEnabledFeatureState } from "../types.ts";
 export function restoreFeatureStates(
   states: readonly SerializedEnabledFeatureState[],
   features: readonly LoadedFeature[],
-  context: FeatureStageBase & Readonly<{ expectedTick: number }>,
+  context: FeatureStageBase & Readonly<{ expectedTick: number; nextEntityId: number; entityIds: ReadonlySet<number> }>,
 ): CoreResult<readonly CommittedFeatureState[]> {
   if (states.length !== features.length || states.some((state, index) => state.feature !== features[index]!.module.feature)) {
     return coreError(
@@ -40,4 +40,14 @@ export function restoreFeatureStates(
     restored.push(Object.freeze({ feature: module.feature, state: restoredState }));
   }
   return okResult(Object.freeze(restored));
+}
+
+/**
+ * 有効な feature が spawn から `expectedTick` までに採番し得る entity id の数の合計。restore の allocation envelope に足す。
+ */
+export function countFeatureAllocations(
+  features: readonly LoadedFeature[],
+  context: FeatureStageBase & Readonly<{ expectedTick: number }>,
+): number {
+  return features.reduce((total, { module, content }) => total + (module.maxAllocations?.({ ...context, content }) ?? 0), 0);
 }

@@ -135,13 +135,15 @@ export function createRestoreSpawnBudget(
 }
 
 /**
- * nextEntityId が processed timeline、pattern の発射と入力由来 shot の最大生成数から到達可能な範囲か検証する。
+ * nextEntityId が processed timeline、pattern の発射、入力由来 shot と有効な feature（`featureAllocations`）の最大生成数から到達可能な
+ * 範囲か検証する。
  *
  * pattern の発射数は、enemy が撃破されずに path を終えるまで（または `expectedTick` まで）撃ち続けた場合の上限を使う。
  */
 export function validateRestoreAllocationEnvelope(
   state: RestoreTopLevelState,
   spawnBudget: RestoreSpawnBudget,
+  featureAllocations: number,
 ): CoreResult<null> {
   const maxPlayerShotAllocations = state.expectedTick;
   const maxPatternBulletAllocations = spawnBudget.patternFireSources.reduce(
@@ -152,7 +154,8 @@ export function validateRestoreAllocationEnvelope(
     + spawnBudget.enemySpawnCandidates.length
     + spawnBudget.enemyBulletCandidates.length
     + maxPatternBulletAllocations
-    + maxPlayerShotAllocations;
+    + maxPlayerShotAllocations
+    + featureAllocations;
   if (state.nextEntityId > maxReachableNextEntityId) {
     return coreError("state.invalidShape", "nextEntityId exceeds the deterministic allocation envelope");
   }

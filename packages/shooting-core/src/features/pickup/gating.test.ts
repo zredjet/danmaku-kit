@@ -98,7 +98,7 @@ test("rejects unknown feature collections and a content.features that is not an 
   ]);
 });
 
-test("keeps a null pickup feature state through serialize and restore until pickups run in the simulation", () => {
+test("starts a stage with an empty pickup feature state and rejects a malformed one on restore", () => {
   const loaded = createShootingCore({ features: [pickupFeature] })
     .load(definitionFor({ registered: true, enabled: true, pickups: [scoreSmall], dropsPickup: scoreSmall.id }));
   assert.ok(loaded.ok);
@@ -108,11 +108,11 @@ test("keeps a null pickup feature state through serialize and restore until pick
   const restored = loaded.value.restore(snapshot);
 
   assert.deepEqual(snapshot.enabledFeatures, ["pickup"]);
-  assert.deepEqual(snapshot.state.enabledFeatureStates, [{ feature: "pickup", stateVersion: 1, payload: null }]);
+  assert.deepEqual(snapshot.state.enabledFeatureStates, [{ feature: "pickup", stateVersion: 2, payload: { pickups: [] } }]);
   assert.ok(restored.ok);
   const tampered = loaded.value.restore({
     ...snapshot,
-    state: { ...snapshot.state, enabledFeatureStates: [{ feature: "pickup", stateVersion: 1, payload: 0 }] },
+    state: { ...snapshot.state, enabledFeatureStates: [{ feature: "pickup", stateVersion: 2, payload: null }] },
   });
   assert.deepEqual(!tampered.ok && tampered.errors.map((error) => error.code), ["state.invalidShape"]);
 });
