@@ -5,8 +5,10 @@ import {
   createShootingCore,
   type GameDefinition,
   type LoadedGame,
+  type ShootingCore,
   type StageSession,
 } from "@shooting-sample/shooting-core";
+import { pickupFeature } from "@shooting-sample/shooting-core/features/pickup";
 import { formatValidateContentHuman, loadValidatedGameDefinition } from "@shooting-sample/validate-content";
 
 const sampleTitleRoot = fileURLToPath(new URL("../../", import.meta.url));
@@ -23,9 +25,14 @@ export async function loadSampleTitleDefinition(): Promise<GameDefinition> {
   return loaded.definition;
 }
 
+/** `src/main.ts` と同じく、sample content が使う optional feature を登録した Core。 */
+export function createSampleTitleCore(): ShootingCore {
+  return createShootingCore({ features: [pickupFeature] });
+}
+
 /** sample title の content を Core に load した `LoadedGame` を返す。 */
 export async function loadSampleTitleGame(): Promise<LoadedGame> {
-  const game = createShootingCore().load(await loadSampleTitleDefinition());
+  const game = createSampleTitleCore().load(await loadSampleTitleDefinition());
   if (!game.ok) {
     throw new Error(JSON.stringify(game.errors));
   }

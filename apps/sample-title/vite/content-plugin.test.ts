@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { createShootingCore, type GameDefinition } from "@shooting-sample/shooting-core";
+import { pickupFeature } from "@shooting-sample/shooting-core/features/pickup";
 import { loadValidatedGameDefinition } from "@shooting-sample/validate-content";
 
 import {
@@ -49,7 +50,7 @@ test("builds a module that exports the validated sample title definition and ass
   const definition = JSON.parse(definitionLine.slice("export default ".length, -1)) as GameDefinition;
   assert.deepEqual(definition, expected.definition);
   assert.deepEqual(JSON.parse(manifestLine.slice("export const assetManifest = ".length, -1)), expected.assetManifest);
-  assert.equal(createShootingCore().load(definition).ok, true);
+  assert.equal(createShootingCore({ features: [pickupFeature] }).load(definition).ok, true);
 });
 
 test("lists the game definition, the content root and everything under it for build watch mode", async (context) => {

@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-import { countEntitiesByKind } from "../src/runtime/view/entity-counts.ts";
+import { countGameStateEntities } from "../src/runtime/view/entity-counts.ts";
 import { digestSerializedState, runHeadlessReplay, serializedStateDigest } from "../src/test-support/headless-replay.ts";
 import { loadSampleTitleGame } from "../src/test-support/sample-title-game.ts";
 import { readDump, readReplay, startStage, waitForLifecycle, waitForTicks } from "./support.ts";
 
-test("replays the browser's inputs headlessly to the same state, tick, entities and player position", async ({ page }) => {
+test("replays the browser's inputs headlessly to the same state, tick, entities, pickups and player position", async ({ page }) => {
   await startStage(page, "replay-smoke");
   await page.keyboard.down("KeyZ");
   await page.keyboard.down("ArrowLeft");
@@ -32,7 +32,7 @@ test("replays the browser's inputs headlessly to the same state, tick, entities 
   expect(record.stage).toEqual({ stageId: "stage.stage_01", difficulty: "normal", seed: "replay-smoke" });
   expect(record.inputs.length).toBe(dump.tick);
   expect(last.tick + 1).toBe(dump.tick);
-  expect(countEntitiesByKind(last.state.entities)).toEqual(dump.entityCounts);
+  expect(countGameStateEntities(last.state)).toEqual(dump.entityCounts);
   expect(player ? { x: player.position.x, y: player.position.y } : null).toEqual(dump.playerPosition);
   expect(serializedStateDigest(replay.session)).toBe(digestSerializedState(record.state));
   // 入力が実際に効いている（移動と低速移動と shot を含む）ことも確かめる。

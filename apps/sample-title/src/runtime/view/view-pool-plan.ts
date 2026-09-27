@@ -1,6 +1,8 @@
-import type { GameDefinition, PlayerId, ReadonlyEntityState, StageId } from "@shooting-sample/shooting-core";
+import type { GameDefinition, PlayerId, StageId } from "@shooting-sample/shooting-core";
 
-type EntityKind = ReadonlyEntityState["kind"];
+import type { ViewKind } from "./view-entities.ts";
+
+type EntityKind = ViewKind;
 
 /** design 14 の runtime budget。kind ごとの view pool の capacity の上限にする。 */
 export const VIEW_POOL_BUDGET: Readonly<Record<EntityKind, number>> = Object.freeze({
@@ -8,6 +10,7 @@ export const VIEW_POOL_BUDGET: Readonly<Record<EntityKind, number>> = Object.fre
   enemy: 100,
   enemyBullet: 2_000,
   playerShot: 300,
+  pickup: 300,
 });
 
 /** kind ごとの view pool の capacity か、stage を始められない理由。 */
@@ -25,6 +28,8 @@ export type ViewPoolPlan =
  *   stage では同時数が budget を超えた時点で pool が枯渇する。
  * - enemy bullet は、timeline の pattern が `steps` を持つなら Core の active 上限（budget と同じ 2,000）、`fireOnSpawn` だけなら
  *   その spawn 数と budget の小さい方。
+ * - pickup は、pickup feature が有効なら timeline の enemy がすべて落とした場合の数と budget（Core の active 上限と同じ 300）の小さい方、
+ *   有効でなければ 0。
  */
 export function planViewPoolCapacities(definition: GameDefinition, stageId: StageId, playerId: PlayerId): ViewPoolPlan {
   const { content } = definition;
@@ -46,6 +51,13 @@ export function planViewPoolCapacities(definition: GameDefinition, stageId: Stag
   const enemyBullets = spawnedPatterns.some((pattern) => pattern?.steps !== undefined)
     ? VIEW_POOL_BUDGET.enemyBullet
     : Math.min(VIEW_POOL_BUDGET.enemyBullet, spawnedPatterns.filter((pattern) => pattern?.fireOnSpawn !== undefined).length);
+  const dropsByEnemyId = new Map(content.enemies.map((enemy) => [
+    enemy.id,
+    (enemy.drops ?? []).reduce((total, drop) => total + drop.count, 0),
+  ]));
+  const pickups = definition.enabledFeatures.includes("pickup")
+    ? Math.min(VIEW_POOL_BUDGET.pickup, stage.timeline.reduce((total, step) => total + (dropsByEnemyId.get(step.action.enemy) ?? 0), 0))
+    : 0;
   return Object.freeze({
     ok: true,
     capacities: Object.freeze({
@@ -53,6 +65,7 @@ export function planViewPoolCapacities(definition: GameDefinition, stageId: Stag
       enemy: Math.min(VIEW_POOL_BUDGET.enemy, stage.timeline.length),
       enemyBullet: enemyBullets,
       playerShot: playerShots,
+      pickup: pickups,
     }),
   });
 }

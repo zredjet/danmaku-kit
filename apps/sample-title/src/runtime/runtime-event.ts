@@ -1,4 +1,4 @@
-import type { ReadonlyEntityState } from "@shooting-sample/shooting-core";
+import type { ViewKind } from "./view/view-entities.ts";
 
 /**
  * runtime adapter で起きた事実（design 5.4 / 17）。
@@ -10,7 +10,7 @@ export type RuntimeEvent =
   | Readonly<{ type: "assetLoadFailed"; assetKey: string; reason: string }>
   | Readonly<{ type: "assetFallbackUsed"; assetKey: string; fallbackKey: string }>
   | Readonly<{ type: "assetLoadSkipped"; assetKey: string; reason: string }>
-  | Readonly<{ type: "viewPoolExhausted"; kind: ReadonlyEntityState["kind"]; capacity: number; entityId: number }>;
+  | Readonly<{ type: "viewPoolExhausted"; kind: ViewKind; capacity: number; entityId: number }>;
 
 /** debug HUD と log に出す 1 行の説明。 */
 export function describeRuntimeEvent(event: RuntimeEvent): string {

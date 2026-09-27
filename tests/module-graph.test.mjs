@@ -102,6 +102,8 @@ const SHOOTING_CORE_RUNTIME_EXCLUDED_MODULES = Object.freeze(["hash/", "testing/
  */
 const SAMPLE_TITLE_PACKAGE_IMPORT_RULES = Object.freeze([
   { specifier: "@shooting-sample/shooting-core", allowedImporters: ["main.ts", "runtime/", "virtual-modules.d.ts"] },
+  // Core を作る entry だけが optional feature を登録する。
+  { specifier: "@shooting-sample/shooting-core/features/pickup", allowedImporters: ["main.ts"] },
   { specifier: "phaser", allowedImporters: ["main.ts", "runtime/phaser/"] },
   { specifier: "virtual:sample-title/game-definition", allowedImporters: ["main.ts"] },
 ]);

@@ -8,6 +8,7 @@ import type { GameShell, GameShellStep } from "../lifecycle/game-shell.ts";
 import { describeRuntimeEvent } from "../runtime-event.ts";
 import { HIT_SPARK_BUDGET, HitSparks } from "../view/hit-sparks.ts";
 import { isPlayerVisible } from "../view/invincibility-blink.ts";
+import { PickupAttraction, collectViewEntities, type ViewEntity } from "../view/view-entities.ts";
 import type { StageSceneData } from "./boot-scene.ts";
 import { ColliderOverlay } from "./collider-overlay.ts";
 import { EntityViews } from "./entity-views.ts";
@@ -30,7 +31,7 @@ const VIEW_WARMUP_PER_FRAME = 256;
  *
  * loading（boot scene）が渡した texture と見積もりで view pool を作り、1 render frame に `VIEW_WARMUP_PER_FRAME` 個ずつ作り終えたら
  * lifecycle を title へ進める。以後は render frame ごとに `GameShell` を進め、tick を実行した frame と stage を始めた・離れた frame で
- * `GameFrame.state.entities` を view へ同期し、HUD（score、lives、状態の見出し、debug）を更新する。無敵中の自機の点滅と撃破の
+ * `GameFrame.state.entities` と pickup を view へ同期し、HUD（score、lives、状態の見出し、debug）を更新する。無敵中の自機の点滅と撃破の
  * hit spark は render-only の演出として state と event から作り、pause 中は spark を古くしない。debug overlay を表示している間は
  * content の collision radius による collider と debug HUD を出す。
  *
@@ -47,9 +48,11 @@ export class StageScene extends Scene {
   #debugOverlayShown = false;
   #syncedLifecycle: GameLifecycleState | null = null;
   readonly #sparks = new HitSparks();
+  readonly #attraction = new PickupAttraction();
   #warming = false;
   #halted = false;
   #assetNotes: readonly string[] = [];
+  #lastEntities: readonly ViewEntity[] = [];
 
   constructor(options: StageSceneOptions) {
     super("stage");
@@ -102,6 +105,7 @@ export class StageScene extends Scene {
     }
     if (step.stageChanged) {
       this.#sparks.clear();
+      this.#attraction.clear();
     }
     // 撃破された敵の位置は、同期で view を片付ける前に直前の描画から引く。
     this.#sparks.update(step.lifecycle.state === "paused" ? 0 : delta, step.events, (id) => views.positionOf(id));
@@ -113,7 +117,11 @@ export class StageScene extends Scene {
     const debugOverlayChanged = step.debugOverlay !== this.#debugOverlayShown;
     this.#syncedLifecycle = step.lifecycle.state;
     this.#debugOverlayShown = step.debugOverlay;
-    const entities = step.frame?.state.entities ?? [];
+    // pickup feature の pickup も同じ view pool の仕組みで描く。吸い寄せに入った pickup は tick ごとに自機へ寄せる（render-only）。
+    const entities = stateChanged
+      ? collectViewEntities(step.frame?.state ?? null, this.#attraction)
+      : this.#lastEntities;
+    this.#lastEntities = entities;
     if (stateChanged || debugOverlayChanged) {
       this.#colliders?.draw(entities, step.debugOverlay);
     }

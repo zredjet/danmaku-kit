@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createShootingCore, type EnemyId, type GameDefinition, type GameEvent } from "@shooting-sample/shooting-core";
+import type { EnemyId, GameDefinition, GameEvent } from "@shooting-sample/shooting-core";
 
 import { expandInputScript, runHeadlessReplay } from "../test-support/headless-replay.ts";
-import { loadSampleTitleDefinition } from "../test-support/sample-title-game.ts";
+import { createSampleTitleCore, loadSampleTitleDefinition } from "../test-support/sample-title-game.ts";
 
 /** sample の敵を自機の正面に 1 体だけ止めて置く stage に差し替えた definition。敵、shot、自機は sample の定義のまま使う。 */
 async function loadSingleEnemyDefinition(enemy: EnemyId): Promise<GameDefinition> {
@@ -29,7 +29,7 @@ async function loadSingleEnemyDefinition(enemy: EnemyId): Promise<GameDefinition
 
 /** 自機を動かさずに撃ち続け、敵の HP を tick ごとに serialize した state から読む。 */
 async function shootSingleEnemy(enemy: EnemyId) {
-  const loaded = createShootingCore().load(await loadSingleEnemyDefinition(enemy));
+  const loaded = createSampleTitleCore().load(await loadSingleEnemyDefinition(enemy));
   assert.equal(loaded.ok, true);
   if (!loaded.ok) {
     return assert.fail("expected the test definition to load");

@@ -24,7 +24,7 @@ test("shows the stage seed, tick, dropped ticks and entity counts per kind durin
     "shooting-core 0.0.0 / content sample@content.1",
     "playing  audio muted",
     "hard  seed abc  tick 42  dropped 3",
-    "player 1  enemy 1  enemyBullet 1  playerShot 0",
+    "player 1  enemy 1  enemyBullet 1  playerShot 0  pickup 0",
     "hit sparks dropped 2",
   ]);
 });

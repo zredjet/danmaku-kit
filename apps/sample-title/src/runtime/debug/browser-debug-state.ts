@@ -3,7 +3,7 @@ import type { GameFrame } from "@shooting-sample/shooting-core";
 import type { AssetStatus } from "../assets/asset-loading.ts";
 import type { AudioStatus } from "../audio/audio-status.ts";
 import type { GameLifecycleState } from "../lifecycle/game-lifecycle.ts";
-import { countEntitiesByKind, type EntityKind } from "../view/entity-counts.ts";
+import { countGameStateEntities, type EntityKind } from "../view/entity-counts.ts";
 import type { ViewportLayout } from "../view/viewport-layout.ts";
 
 type Point = Readonly<{ x: number; y: number }>;
@@ -15,7 +15,7 @@ type Point = Readonly<{ x: number; y: number }>;
  * 数は含めない。
  */
 export type BrowserDebugStateDump = Readonly<{
-  schemaVersion: "1";
+  schemaVersion: "2";
   kind: "browser";
   /** 現在の stage が次に受け付ける入力 tick（実行済みの tick 数）。stage の外と開始演出中で tick を実行していなければ 0。 */
   tick: number;
@@ -59,12 +59,12 @@ export function buildBrowserDebugStateDump(source: BrowserDebugStateSource): Bro
   const entities = frame?.state.entities ?? [];
   const player = entities.find((entity) => entity.kind === "player");
   return deepFreeze({
-    schemaVersion: "1",
+    schemaVersion: "2",
     kind: "browser",
     tick: frame === null ? 0 : frame.tick + 1,
     seed: source.seed,
     lifecycle: source.lifecycle,
-    entityCounts: countEntitiesByKind(entities),
+    entityCounts: countGameStateEntities(frame?.state ?? null),
     playerPosition: player ? { x: player.position.x, y: player.position.y } : null,
     viewport: {
       logicalWidth: layout.logicalWidth,

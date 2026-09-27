@@ -23,7 +23,7 @@ test("boots to the title with the assets loaded and the debug overlay hidden", a
   await waitForLifecycle(page, "title");
 
   expect(await readDump(page)).toMatchObject({
-    schemaVersion: "1",
+    schemaVersion: "2",
     kind: "browser",
     tick: 0,
     seed: null,

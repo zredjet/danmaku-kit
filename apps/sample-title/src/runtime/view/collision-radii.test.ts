@@ -15,5 +15,7 @@ test("looks up the collision radius of every rendered definition by id", async (
     "bullet.blue_large": 6,
     "bullet.red_small": 4,
     "playerShot.basic": 5,
+    // pickup は回収の半径。
+    "pickup.score_small": 12,
   });
 });

@@ -4,73 +4,77 @@
   "end": {
     "tick": 2216,
     "status": "stageCleared",
-    "score": 3600,
+    "score": 3920,
     "lives": 2
   },
   "checkpoints": [
     {
       "tick": 599,
-      "score": 550,
+      "score": 650,
       "lives": 3,
       "entityCounts": {
         "player": 1,
         "enemy": 0,
         "enemyBullet": 0,
-        "playerShot": 20
+        "playerShot": 20,
+        "pickup": 12
       },
       "player": {
         "x": 352,
         "y": 400
       },
-      "stateDigest": "97934f44114f6e71"
+      "stateDigest": "647fb76a0977fd50"
     },
     {
       "tick": 1199,
-      "score": 1050,
+      "score": 1230,
       "lives": 3,
       "entityCounts": {
         "player": 1,
         "enemy": 0,
         "enemyBullet": 0,
-        "playerShot": 20
+        "playerShot": 20,
+        "pickup": 0
       },
       "player": {
         "x": 192,
         "y": 400
       },
-      "stateDigest": "da033e78ceb321df"
+      "stateDigest": "7986db79070f9331"
     },
     {
       "tick": 1799,
-      "score": 1400,
+      "score": 1720,
       "lives": 3,
       "entityCounts": {
         "player": 1,
         "enemy": 1,
         "enemyBullet": 16,
-        "playerShot": 17
+        "playerShot": 17,
+        "pickup": 0
       },
       "player": {
         "x": 32,
         "y": 400
       },
-      "stateDigest": "7b694db899062e52"
+      "stateDigest": "be954d9b1cd171d0"
     },
     {
       "tick": 2216,
-      "score": 3600,
+      "score": 3920,
       "lives": 2,
       "entityCounts": {
         "player": 1,
         "enemy": 0,
         "enemyBullet": 29,
-        "playerShot": 13
+        "playerShot": 13,
+        "pickup": 0
       },
       "player": {
         "x": 284,
         "y": 400
       },
-      "stateDigest": "d7d12f90566ba439"
+      "stateDigest": "ee8b97ed253e889f"
     }
   ],
   "defeats": [
@@ -205,6 +209,11 @@
       "score": 2000
     }
   ],
+  "pickups": {
+    "dropped": 36,
+    "collected": 32,
+    "score": 320
+  },
   "playerHits": [
     1894
   ],

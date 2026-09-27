@@ -7,8 +7,10 @@ import type { GameDefinition } from "@shooting-sample/shooting-core";
  * 種類ごとの namespace prefix を持つので、全種類を 1 つの表にまとめても衝突しない。
  */
 export function collectDefinitionAssets(definition: GameDefinition): ReadonlyMap<string, string> {
-  const { players, enemies, bullets, playerShots } = definition.content;
-  return new Map<string, string>([...players, ...enemies, ...bullets, ...playerShots].map((item) => [item.id, item.asset]));
+  const { players, enemies, bullets, playerShots, features } = definition.content;
+  return new Map<string, string>(
+    [...players, ...enemies, ...bullets, ...playerShots, ...(features?.pickups ?? [])].map((item) => [item.id, item.asset]),
+  );
 }
 
 /**

@@ -1,15 +1,16 @@
-import type { ReadonlyEntityState } from "@shooting-sample/shooting-core";
 import type { GameObjects, Scene } from "phaser";
 
 import type { RuntimeEvent } from "../runtime-event.ts";
 import { diffEntityViews } from "../view/entity-view-diff.ts";
+import type { ViewEntity, ViewKind } from "../view/view-entities.ts";
 import { ViewPool } from "../view/view-pool.ts";
 
-type EntityKind = ReadonlyEntityState["kind"];
+type EntityKind = ViewKind;
 
-/** 敵弾を自機より手前に置き、弾幕の読みやすさを優先する。 */
+/** 敵弾を自機より手前に置き、弾幕の読みやすさを優先する。pickup は敵の上、自機の shot より下に置く。 */
 const DEPTH_BY_KIND: Readonly<Record<EntityKind, number>> = {
   enemy: 1,
+  pickup: 1.5,
   playerShot: 2,
   player: 3,
   enemyBullet: 4,
@@ -21,6 +22,7 @@ const PLAYER_HITBOX_DEPTH = 5;
 const PLACEHOLDER_TEXTURE = "__DEFAULT";
 
 type EntityView = Readonly<{ kind: EntityKind; image: GameObjects.Image }>;
+type EntityId = ViewEntity["id"];
 
 export type EntityViewsOptions = Readonly<{
   collisionRadii: ReadonlyMap<string, number>;
@@ -32,7 +34,8 @@ export type EntityViewsOptions = Readonly<{
 }>;
 
 /**
- * `GameFrame.state.entities` と Phaser の image を entity id で同期する（design 5.4）。
+ * frame の描画する entity（`GameFrame.state.entities` と pickup、`collectViewEntities()`）と Phaser の image を entity id で同期する
+ * （design 5.4）。
  *
  * kind ごとの view pool を stage start 前に `warm()` で作っておき、stage 中は image を生成・破棄せずに使い回す。消えた entity の view は
  * その render frame で隠して pool へ戻し、新しい entity には pool の image へ definition の texture を当てる。pool を使い切ったら
@@ -42,7 +45,7 @@ export type EntityViewsOptions = Readonly<{
 export class EntityViews {
   readonly #options: EntityViewsOptions;
   readonly #pools: Readonly<Record<EntityKind, ViewPool<GameObjects.Image>>>;
-  readonly #views = new Map<ReadonlyEntityState["id"], EntityView>();
+  readonly #views = new Map<EntityId, EntityView>();
   readonly #playerHitbox: GameObjects.Arc;
 
   constructor(scene: Scene, options: EntityViewsOptions) {
@@ -55,6 +58,7 @@ export class EntityViews {
       playerShot: createPool("playerShot"),
       player: createPool("player"),
       enemyBullet: createPool("enemyBullet"),
+      pickup: createPool("pickup"),
     };
     this.#playerHitbox = scene.add.circle(0, 0, 1, PLAYER_HITBOX_COLOR).setDepth(PLAYER_HITBOX_DEPTH).setVisible(false);
   }
@@ -82,7 +86,7 @@ export class EntityViews {
    * pool を使い切った kind があれば、その entity を表示せずに `viewPoolExhausted` を返す。
    */
   sync(
-    entities: readonly ReadonlyEntityState[],
+    entities: readonly ViewEntity[],
     options: Readonly<{ showPlayerHitbox: boolean; playerVisible: boolean }>,
   ): RuntimeEvent | null {
     const diff = diffEntityViews(this.#views.keys(), entities);
@@ -128,12 +132,12 @@ export class EntityViews {
   }
 
   /** entity を直前の `sync()` で描いた位置。描いていない entity は null。 */
-  positionOf(id: ReadonlyEntityState["id"]): Readonly<{ x: number; y: number }> | null {
+  positionOf(id: EntityId): Readonly<{ x: number; y: number }> | null {
     const image = this.#views.get(id)?.image;
     return image ? { x: image.x, y: image.y } : null;
   }
 
-  #textureOf(entity: ReadonlyEntityState): string {
+  #textureOf(entity: ViewEntity): string {
     const texture = this.#options.textures.get(entity.definitionId);
     if (texture === undefined) {
       throw new Error(`No texture for ${entity.definitionId}`);
@@ -141,7 +145,7 @@ export class EntityViews {
     return texture;
   }
 
-  #collisionRadiusOf(entity: ReadonlyEntityState): number {
+  #collisionRadiusOf(entity: ViewEntity): number {
     const radius = this.#options.collisionRadii.get(entity.definitionId);
     if (radius === undefined) {
       throw new Error(`No collision radius for ${entity.definitionId}`);

@@ -26,8 +26,11 @@ test("sizes the sample stage pools from its content and the runtime budget", asy
 
   assert.deepEqual(planViewPoolCapacities(definition, "stage.stage_01", "player.default"), {
     ok: true,
-    capacities: { player: 1, enemy: 26, enemyBullet: 2_000, playerShot: 21 },
+    // pickup は drone 18 体が 2 個ずつ落とす 36 個。
+    capacities: { player: 1, enemy: 26, enemyBullet: 2_000, playerShot: 21, pickup: 36 },
   });
+  const withoutPickups = planViewPoolCapacities({ ...definition, enabledFeatures: [] }, "stage.stage_01", "player.default");
+  assert.equal(withoutPickups.ok && withoutPickups.capacities.pickup, 0);
 });
 
 test("counts only fireOnSpawn bullets for stages without pattern steps", async () => {
@@ -46,7 +49,7 @@ test("counts only fireOnSpawn bullets for stages without pattern steps", async (
 
   assert.deepEqual(planViewPoolCapacities(fireOnSpawnOnly, "stage.stage_01", "player.default"), {
     ok: true,
-    capacities: { player: 1, enemy: 26, enemyBullet: 26, playerShot: 21 },
+    capacities: { player: 1, enemy: 26, enemyBullet: 26, playerShot: 21, pickup: 36 },
   });
 });
 
@@ -73,6 +76,7 @@ test("maps every entity definition to a loaded texture or names the missing asse
     ["bullet.blue_large", "bullet.blue_large"],
     ["bullet.red_small", "bullet.red_small"],
     ["playerShot.basic", "shot.player_basic"],
+    ["pickup.score_small", "pickup.score_small"],
   ]);
   assert.deepEqual(
     resolveDefinitionTextures(assets, new Map([...assets.values()].map((key) => [key, key === "enemy.scout" ? "sprite.placeholder" : key]))),
@@ -86,11 +90,20 @@ test("maps every entity definition to a loaded texture or names the missing asse
         ["bullet.blue_large", "bullet.blue_large"],
         ["bullet.red_small", "bullet.red_small"],
         ["playerShot.basic", "shot.player_basic"],
+        ["pickup.score_small", "pickup.score_small"],
       ]),
     },
   );
   assert.deepEqual(resolveDefinitionTextures(assets, new Map([["player.default", "player.default"]])), {
     ok: false,
-    missingAssets: ["bullet.blue_large", "bullet.red_small", "enemy.drone", "enemy.gunship", "enemy.scout", "shot.player_basic"],
+    missingAssets: [
+      "bullet.blue_large",
+      "bullet.red_small",
+      "enemy.drone",
+      "enemy.gunship",
+      "enemy.scout",
+      "pickup.score_small",
+      "shot.player_basic",
+    ],
   });
 });

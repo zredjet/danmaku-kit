@@ -1,28 +1,28 @@
-import type { ReadonlyEntityState } from "@shooting-sample/shooting-core";
+import type { ViewEntity } from "./view-entities.ts";
 
 /** 表示中の view と frame の entity を突き合わせた、生成・更新・破棄する view。 */
 export type EntityViewDiff = Readonly<{
   /** まだ view がない entity。frame の並び（entity id 昇順）のまま。 */
-  spawned: readonly ReadonlyEntityState[];
+  spawned: readonly ViewEntity[];
   /** view がある entity。位置などを frame の state に合わせる。 */
-  updated: readonly ReadonlyEntityState[];
+  updated: readonly ViewEntity[];
   /** frame から消えた entity の id。昇順。 */
-  destroyedIds: readonly ReadonlyEntityState["id"][];
+  destroyedIds: readonly ViewEntity["id"][];
 }>;
 
 /**
- * 表示中の view の entity id と `GameFrame.state.entities` から、view の生成・更新・破棄を決める。
+ * 表示中の view の entity id と frame の描画する entity から、view の生成・更新・破棄を決める。
  *
  * view は Core の state を正本にして同期し、spawn / destroy event からは作らない。event は演出だけに使うため、lifetime 切れのように
  * event を伴わない消滅でも view が残らない。entity id は 1 stage 中に再利用されないので、id だけで同じ entity と判定する。
  */
 export function diffEntityViews(
-  viewIds: Iterable<ReadonlyEntityState["id"]>,
-  entities: readonly ReadonlyEntityState[],
+  viewIds: Iterable<ViewEntity["id"]>,
+  entities: readonly ViewEntity[],
 ): EntityViewDiff {
   const remainingViewIds = new Set(viewIds);
-  const spawned: ReadonlyEntityState[] = [];
-  const updated: ReadonlyEntityState[] = [];
+  const spawned: ViewEntity[] = [];
+  const updated: ViewEntity[] = [];
   for (const entity of entities) {
     if (remainingViewIds.delete(entity.id)) {
       updated.push(entity);

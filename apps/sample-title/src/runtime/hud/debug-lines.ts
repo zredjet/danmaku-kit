@@ -2,7 +2,7 @@ import type { Difficulty, GameFrame } from "@shooting-sample/shooting-core";
 
 import type { AudioStatus } from "../audio/audio-status.ts";
 import type { GameLifecycleState } from "../lifecycle/game-lifecycle.ts";
-import { ENTITY_KINDS, countEntitiesByKind } from "../view/entity-counts.ts";
+import { ENTITY_KINDS, countGameStateEntities } from "../view/entity-counts.ts";
 
 export type DebugHudInput = Readonly<{
   /** Core と content の version。 */
@@ -31,7 +31,7 @@ export function buildDebugHudLines(input: DebugHudInput): readonly string[] {
     lines.push(`${input.difficulty ?? "-"}  seed ${input.seed}  tick ${input.frame?.tick ?? "-"}  dropped ${input.droppedTicksTotal}`);
   }
   if (input.frame !== null) {
-    const counts = countEntitiesByKind(input.frame.state.entities);
+    const counts = countGameStateEntities(input.frame.state);
     lines.push(ENTITY_KINDS.map((kind) => `${kind} ${counts[kind]}`).join("  "));
   }
   return Object.freeze([...lines, ...input.notes]);

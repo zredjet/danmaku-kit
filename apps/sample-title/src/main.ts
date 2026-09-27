@@ -1,4 +1,5 @@
 import { createShootingCore } from "@shooting-sample/shooting-core";
+import { pickupFeature } from "@shooting-sample/shooting-core/features/pickup";
 import gameDefinition, { assetManifest } from "virtual:sample-title/game-definition";
 
 import { installDebugStateHook } from "./debug/debug-state-hook.ts";
@@ -28,7 +29,8 @@ const hud = new HudOverlay(stageRoot);
 const viewport = fitStageToViewport({ container: parent, stageRoot });
 const initialLayout = viewport.layout();
 
-const core = createShootingCore();
+// sample content は pickup feature を使う（`config/game-definition.yaml` の `enabledFeatures`）。
+const core = createShootingCore({ features: [pickupFeature] });
 const loaded = core.load(gameDefinition);
 if (!loaded.ok) {
   // content plugin が同じ Core で検証済みのため、ここで失敗するのは Core と content の組み合わせ自体の不整合だけになる。

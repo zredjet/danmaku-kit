@@ -20,6 +20,11 @@ assets:
     path: assets/sprites/enemy-gunship.svg
     required: true
     usage: gameplay
+  pickup.score_small:
+    type: sprite
+    path: assets/sprites/pickup-score-small.svg
+    required: true
+    usage: gameplay
   bullet.red_small:
     type: sprite
     path: assets/sprites/bullet-red-small.svg

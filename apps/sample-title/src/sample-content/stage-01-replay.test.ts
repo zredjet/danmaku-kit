@@ -11,7 +11,7 @@ import {
   weavingShotScript,
 } from "../test-support/headless-replay.ts";
 import { loadSampleTitleGame } from "../test-support/sample-title-game.ts";
-import { countEntitiesByKind } from "../runtime/view/entity-counts.ts";
+import { countGameStateEntities } from "../runtime/view/entity-counts.ts";
 
 const GOLDEN_URL = new URL("./stage-01-replay.golden.json", import.meta.url);
 const UPDATE_GOLDENS = process.env.UPDATE_SAMPLE_TITLE_GOLDENS === "1";
@@ -39,6 +39,8 @@ type ReplaySummary = Readonly<{
   end: Readonly<{ tick: number; status: string; score: number; lives: number }>;
   checkpoints: readonly Checkpoint[];
   defeats: readonly Readonly<{ tick: number; enemy: string; score: number }>[];
+  /** drone が落とした pickup の数と、回収した pickup の score。 */
+  pickups: Readonly<{ dropped: number; collected: number; score: number }>;
   playerHits: readonly number[];
   firstThreeWay: FanShot | null;
 }>;
@@ -69,6 +71,11 @@ async function runStage01(seed: string): Promise<ReplaySummary> {
     defeats: events.flatMap((event) => event.type === "scoreChanged" && event.reason === "enemyDefeated"
       ? [{ tick: event.tick, enemy: event.enemyId, score: event.delta }]
       : []),
+    pickups: {
+      dropped: events.reduce((total, event) => total + (event.type === "pickupsSpawnedBatch" ? event.pickups.length : 0), 0),
+      collected: events.filter((event) => event.type === "pickupCollected").length,
+      score: events.reduce((total, event) => total + (event.type === "scoreChanged" && event.reason === "pickupCollected" ? event.delta : 0), 0),
+    },
     playerHits: events.flatMap((event) => event.type === "playerHit" ? [event.tick] : []),
     firstThreeWay,
   };
@@ -80,7 +87,7 @@ function checkpointOf(frame: GameFrame, session: StageSession): Checkpoint {
     tick: frame.tick,
     score: frame.state.score,
     lives: frame.state.player.lives,
-    entityCounts: countEntitiesByKind(frame.state.entities),
+    entityCounts: countGameStateEntities(frame.state),
     player: player ? { x: player.position.x, y: player.position.y } : null,
     stateDigest: serializedStateDigest(session),
   };
@@ -119,7 +126,8 @@ test("replays sample stage 1 to the golden clear with defeats, score and a 3-way
   assert.deepEqual(summary, golden);
   // golden の値に頼らず、milestone の条件（design 21.6 / 23）をこの run で確かめる。
   assert.equal(summary.end.status, "stageCleared");
-  assert.equal(summary.end.score, summary.defeats.reduce((total, defeat) => total + defeat.score, 0));
+  assert.equal(summary.end.score, summary.defeats.reduce((total, defeat) => total + defeat.score, 0) + summary.pickups.score);
+  assert.ok(summary.pickups.collected > 0 && summary.pickups.collected <= summary.pickups.dropped);
   assert.ok(summary.defeats.some((defeat) => defeat.enemy === "enemy.gunship"));
   assert.ok(summary.firstThreeWay !== null);
   const [left, center, right] = summary.firstThreeWay.angleDeg;

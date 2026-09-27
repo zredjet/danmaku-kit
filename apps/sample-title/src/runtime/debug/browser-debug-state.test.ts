@@ -31,12 +31,12 @@ test("dumps the stage, viewport and runtime state in the schema order", () => {
   const dump = buildBrowserDebugStateDump(source);
 
   assert.deepEqual(dump, {
-    schemaVersion: "1",
+    schemaVersion: "2",
     kind: "browser",
     tick: 120,
     seed: "c0ffee",
     lifecycle: "playing",
-    entityCounts: { player: 1, enemy: 1, enemyBullet: 0, playerShot: 1 },
+    entityCounts: { player: 1, enemy: 1, enemyBullet: 0, playerShot: 1, pickup: 0 },
     playerPosition: { x: 180, y: 400 },
     viewport: { logicalWidth: 384, logicalHeight: 448, scale: 2, devicePixelRatio: 2, letterboxX: 116, letterboxY: 52 },
     inputQueueDepth: 1,
@@ -69,6 +69,6 @@ test("reports tick 0, no player and no seed outside a stage", () => {
 
   assert.deepEqual(
     [dump.tick, dump.seed, dump.playerPosition, dump.entityCounts],
-    [0, null, null, { player: 0, enemy: 0, enemyBullet: 0, playerShot: 0 }],
+    [0, null, null, { player: 0, enemy: 0, enemyBullet: 0, playerShot: 0, pickup: 0 }],
   );
 });

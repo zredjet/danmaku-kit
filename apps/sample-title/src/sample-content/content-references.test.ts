@@ -43,9 +43,13 @@ test("reaches every definition and asset from stage 1 and the default player", a
     collection,
     content[collection as keyof typeof used].map((definition) => definition.id).filter((id) => !(ids as readonly string[]).includes(id)),
   ]));
-  const definitions = [...content.players, ...content.enemies, ...content.bullets, ...content.playerShots];
+  const enemies = content.enemies.filter((enemy) => used.enemies.includes(enemy.id));
+  const droppedPickups = enemies.flatMap((enemy) => (enemy.drops ?? []).map((drop) => drop.pickup));
+  const pickups = content.features?.pickups ?? [];
+  const definitions = [...content.players, ...content.enemies, ...content.bullets, ...content.playerShots, ...pickups];
 
   assert.deepEqual(unused, { stages: [], enemies: [], paths: [], patterns: [], bullets: [], players: [], playerShots: [] });
+  assert.deepEqual(pickups.map((pickup) => pickup.id).filter((id) => !droppedPickups.includes(id)), []);
   assert.deepEqual(
     content.assetKeys.keys.filter((key) => !definitions.some((definition) => definition.asset === key)),
     [],
