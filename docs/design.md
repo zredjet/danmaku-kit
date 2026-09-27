@@ -262,6 +262,11 @@ Phase 2A-8 の sample app の実装:
 - view pool の capacity は stage start 前に kind ごとに見積もる（`src/runtime/view/view-pool-plan.ts`）。player は 1、player shot は 1 回の発射で 1 発なので `floor(lifetimeTicks / intervalTicks) + 1`（budget 300 を超える content は load error）、enemy は timeline の spawn 数と budget 100 の小さい方、enemy bullet は timeline の pattern が `steps` を持てば Core の active 上限 2,000、`fireOnSpawn` だけならその spawn 数とする。enemy の退場は path から静的に見積もらないため、spawn 数が 100 を超える stage では同時数が 100 を超えた時点で枯渇する。
 - stage scene は pool を 1 render frame あたり 256 個までに抑えて作り終えてから stage を始め、stage 中は image を生成・破棄せずに使い回す。消えた entity の view はその frame で隠して pool へ戻す。pool を使い切ったら `RuntimeEvent.viewPoolExhausted` を log と画面に出して stage を止める（Phase 2A は dev と本番を区別しない）。`RuntimeEvent`（`src/runtime/runtime-event.ts`）は app の型で、`GameEvent` や replay / state hash には含めない。
 
+Phase 2A-9 の sample app の演出:
+
+- 無敵中の自機は `GameFrame.state.player.invincibleTicksRemaining` を 4 tick ごとの区間に分け、残りが少ない側から隠す・表示するを交互に繰り返して点滅させる（`src/runtime/view/invincibility-blink.ts`）。`playerHit` event ではなく state から決めるため、restore した stage や event を取りこぼした frame でも同じ見た目になる。
+- 敵の撃破（`entityDestroyed` の reason `defeated`）は render-only の hit spark にする（`src/runtime/view/hit-sparks.ts`）。`entityDestroyed` は位置を持たないため、撃破された敵を直前に描いた位置に出し、一度も描かずに消えた敵（出現した render frame のうちに撃破された敵など）には出さない。1 render frame に 8 個、同時に 32 個を超える分は gameplay view を優先して落とし、落とした数を debug HUD に出す。寿命 240 ms は render frame の経過時間で数え、`paused` 中は進めない。depth は敵の上、自機の shot・自機・敵弾の下とし、敵弾の読みやすさを邪魔しない（15.3）。
+
 ### 5.5 `ui`
 
 DOM overlay として HUD、メニュー、設定、リザルトを担当する。
@@ -272,6 +277,12 @@ DOM overlay として HUD、メニュー、設定、リザルトを担当する�
 - ポーズ、設定、キーコンフィグ
 - ステージ開始/終了、リザルト
 - デバッグ HUD
+
+Phase 2A-9 の sample app の実装:
+
+- `src/ui/hud-overlay.ts` が canvas と同じ大きさの箱（`index.html` の `.stage-root`）に DOM overlay を重ね、score、lives、状態の見出し（LOADING と進み具合、title、READY、PAUSED、STAGE CLEAR、GAME OVER）、debug HUD（Core と content の version、lifecycle、audio status、seed、tick、dropped tick、asset の fallback、hit spark の drop 数）、loading と runtime の error を出す。overlay は pointer event を canvas へ通し、同じ内容の再描画では DOM を触らない。
+- score と lives は `GameFrame.state` を正本にし、event から数え直さない。表示する内容は Phaser と DOM に依存しない `src/runtime/hud/hud-view.ts` の `buildHudView()` が lifecycle と最新の frame から決め、scene は `HudPort` を通して overlay を更新する。`src/runtime/` は `src/ui/` を import しない。
+- canvas と overlay の scale、letterbox、共有の CSS transform root は Phase 2A-10 で扱う。
 
 ## 6. Game lifecycle
 
@@ -309,6 +320,13 @@ type GameLifecycleState =
 `pause` と `playing` / `replayPlayback` 中の focus lost / visibility change は `paused` に遷移させる。Runtime は `pausedFrom` に復帰先 state を保持し、復帰時は `playing` または `replayPlayback` へ戻す。`stageStarting` 中の focus lost / visibility change は開始演出 timer を止め、復帰時に `stageStarting` へ戻す。`loading`、`title`、`stageCleared`、`gameOver`、`result` 中の focus lost / visibility change は lifecycle を変更せず、入力ラッチと accumulator だけを破棄する。
 
 `pause`、ブラウザの focus lost、visibility change が発生した場合、Runtime は accumulator を reset し、未消費の `pressed` / `released` ラッチ、`held`、axis、現在の physical key state をすべて破棄する。復帰時は全キーを up 扱いにし、復帰前から押されている physical key は一度 keyup を観測するまで再ラッチしない。停止中の実時間 delta は Simulation に渡さない。
+
+Phase 2A-9 の sample app の実装:
+
+- `src/runtime/lifecycle/game-lifecycle.ts` の `transitionLifecycle()` が上の遷移を純粋関数として持ち、入力と accumulator を捨てる合図と開始演出 timer を止める合図を返す。Phaser に依存しない `GameShell`（`game-shell.ts`）が UI action、focus lost / visibility change、Core の最終 frame を lifecycle の出来事に変え、合図を入力 adapter、stage loop、timer に実行させる。`result` と `replayPlayback` は型だけを置き、Phase 2A では遷移しない。
+- boot scene が asset の読み込みで `loading` を始め、stage scene が view pool を作り終えたら `title` へ進む。`title` の `confirm`（Enter / Space）で `stageStarting` へ進んで stage session を作り、seed を決める（`?seed=` があれば毎回その seed、なければ開始ごとに乱数）。開始演出（READY）は render frame の経過時間で 1,000 ms 続き、その間は tick を実行しない。
+- `playing` 中の `pause`（P / Esc）と focus lost / visibility change で `paused` へ進み、`pause` で `playing` へ戻る。Core が `stageCleared` / `gameOver` の frame を返した render frame で同じ名前の state へ進み、`confirm` で `title` へ戻る（Phase 2A は `result` 画面を置かない）。
+- `loading` 中に押した UI action は捨てる。`stageStarting` へ進むとき、`paused` の出入り、`title` へ戻るときに入力ラッチと accumulator を捨てるため、開始前から押している key は一度離すまで効かない。
 
 ## 7. 更新ループ
 
@@ -1103,6 +1121,8 @@ MVP の音量カテゴリ:
 pause 時は BGM を pause または duck し、SE は新規再生を止める。visibility change では state 別に扱う。`playing` / `replayPlayback` は `paused` へ遷移し、BGM pause/duck と SE 停止を適用する。`stageStarting` は lifecycle を維持したまま開始演出 timer と BGM start を停止する。`title` / `result` は menu BGM を duck または継続できるが、新規 SE は止める。Audio file の missing/decode は `loading` で検出する。
 
 ブラウザ autoplay 制限、`AudioContext.resume()` 失敗、`HTMLAudioElement.play()` promise rejection、suspended state は loading 後にも起きるため、Runtime は `RuntimeEvent.audioPlaybackFailed` と audio status を持つ。失敗時は user gesture 待ち UI、再試行、無音 degrade を選べるようにし、Simulation の成功/失敗判定には影響させない。
+
+Phase 2A の sample app は audio を読まず（asset loading は audio を `assetLoadSkipped` にする）、audio status を `muted` に固定する（`src/runtime/audio/audio-status.ts`）。status は debug HUD に出し、Phase 2A-10 の `BrowserDebugStateDump.audioStatus` にも使う。audio adapter は Phase 2A の外（Later）とする。
 
 ## 19. Debug / authoring workflow
 
