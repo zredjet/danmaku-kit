@@ -1272,7 +1272,7 @@ Content 制作者向け workflow:
 
 YAML loader と CLI は parse 後の object に `SourceSpan` を付与する。Core が直接ファイルを知らない場合でも、registry validation は validation context 経由で `sourceId`、`path`、`line`、`column`、`schemaPath` を diagnostic に戻せるようにする。cross-file reference error は参照元 span と未解決 target id を必ず含める。
 
-Content 制作者向け docs には `docs/content-authoring/examples/` と `docs/content-authoring/error-guide.md` を用意する。minimal YAML examples は stage、enemy、bullet、player shot、pattern、asset manifest から始め、Phase 2B で pickup と scoring rule を追加する。error guide は diagnostic `code` ごとに原因、修正例、関連 schema path を載せる。
+Content 制作者向け docs には `docs/content-authoring/examples/` と `docs/content-authoring/error-guide.md` を用意する。minimal YAML examples（Phase 2B-11）は game-definition、asset manifest、player、player shot、bullet、enemy（pickup の drops を含む）、path、pattern（`wait` / `fire` / `loop` と、`repeat`、`radial`、`stream`、difficulty の `if`）、pickup、stage を 1 つの content として置き、各 file の comment で field の意味を説明する。scoring rule の例は `advancedScoring` を足すときに加える。error guide は diagnostic `code` ごとに原因、修正例、関連 schema path を載せる。
 
 Preview scene の操作仕様:
 
@@ -2160,7 +2160,7 @@ Phase 2A-11 の sample title（`apps/sample-title/`）の実装:
 - headless replay golden（`src/sample-content/stage-01-replay.test.ts`）は、80 tick ごとに左右へ往復しながら撃ち続ける input script で stage 1 を固定 seed で再生し、checkpoint（score、残機、kind 別 entity 数、自機座標、serialize した state の SHA-256）、撃破と score、被弾、最初の 3-way の角度を golden と比べる。Core の state hash は test 用の内部 helper でだけ求まるため、app は公開の `serialize()` の JSON を hash する。同じ seed で同じ run になることも確かめる。golden は `UPDATE_SAMPLE_TITLE_GOLDENS=1` で作り直す。
 - 3-way の golden（弾数、角度、seed 再現性）は Core の `session/enemy-pattern-tick.test.ts` にもあり、sample の golden は sample content の 3-way（30° に 3 発で隣との差 15°）を確かめる。
 
-Phase 2B では `docs/content-authoring/examples/` を `validate-content` に通し、docs 例と schema の drift を検出する。Preview scene は Browser test で stage/enemy/pattern/path 選択、pause、step 1 tick、seed 変更、difficulty 切替、overlay 表示を確認する。
+Phase 2B では `docs/content-authoring/examples/` を `validate-content` に通し、docs 例と schema の drift を検出する（`tests/content-authoring-examples.test.ts`。診断が 1 つもないこと、Core の公開型から網羅させた collection、definition の field、Pattern DSL の命令と修飾を例が見せていること、入力のない自機で各 stage と difficulty が clear すること、README の索引と file が一致することを確かめる）。Preview scene は Browser test で stage/enemy/pattern/path 選択、pause、step 1 tick、seed 変更、difficulty 切替、overlay 表示を確認する。
 
 ## 22. 開発フェーズ
 
