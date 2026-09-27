@@ -4,8 +4,11 @@ import type { AudioStatus } from "../audio/audio-status.ts";
 import { buildHudView, buildLoadingHudView, type HudPort } from "../hud/hud-view.ts";
 import type { GameShell, GameShellStep } from "../lifecycle/game-shell.ts";
 import { describeRuntimeEvent } from "../runtime-event.ts";
+import { HIT_SPARK_BUDGET, HitSparks } from "../view/hit-sparks.ts";
+import { isPlayerVisibleWhileInvincible } from "../view/invincibility-blink.ts";
 import type { StageSceneData } from "./boot-scene.ts";
 import { EntityViews } from "./entity-views.ts";
+import { HitSparkViews } from "./hit-spark-views.ts";
 
 export type StageSceneOptions = Readonly<{
   shell: GameShell;
@@ -23,7 +26,8 @@ const VIEW_WARMUP_PER_FRAME = 256;
  *
  * loading（boot scene）が渡した texture と見積もりで view pool を作り、1 render frame に `VIEW_WARMUP_PER_FRAME` 個ずつ作り終えたら
  * lifecycle を title へ進める。以後は render frame ごとに `GameShell` を進め、tick を実行した frame と stage を始めた・離れた frame で
- * `GameFrame.state.entities` を view へ同期し、HUD（score、lives、状態の見出し、debug）を更新する。
+ * `GameFrame.state.entities` を view へ同期し、HUD（score、lives、状態の見出し、debug）を更新する。無敵中の自機の点滅と撃破の
+ * hit spark は render-only の演出として state と event から作り、pause 中は spark を古くしない。
  *
  * keyboard event は Phaser の keyboard plugin を使わず window から受けて shell に渡し、割り当てのある key は browser の既定動作を
  * 止める。focus lost と visibility change は lifecycle の focus lost として渡す。Core の error と view pool の枯渇では scene を止めて
@@ -33,6 +37,8 @@ export class StageScene extends Scene {
   readonly #options: StageSceneOptions;
   #data: StageSceneData | null = null;
   #views: EntityViews | null = null;
+  #sparkViews: HitSparkViews | null = null;
+  readonly #sparks = new HitSparks();
   #warming = false;
   #halted = false;
   #assetNotes: readonly string[] = [];
@@ -57,6 +63,7 @@ export class StageScene extends Scene {
       textures: data.textures,
       capacities: data.viewPoolCapacities,
     });
+    this.#sparkViews = new HitSparkViews(this, HIT_SPARK_BUDGET.maxActive);
     this.#warming = true;
     this.#listenToBrowser();
   }
@@ -82,10 +89,17 @@ export class StageScene extends Scene {
       this.#halt("Core error", step.errors.map((error) => `${error.code}: ${error.message}`));
       return;
     }
+    if (step.stageChanged) {
+      this.#sparks.clear();
+    }
+    // 撃破された敵の位置は、同期で view を片付ける前に直前の描画から引く。
+    this.#sparks.update(step.lifecycle.state === "paused" ? 0 : delta, step.events, (id) => views.positionOf(id));
+    this.#sparkViews?.render(this.#sparks.active);
     // tick が進まなかった render frame（高 refresh rate の display や pause 中）は state が変わらないので同期しない。
     if (step.stageChanged || step.ticks > 0) {
       const exhausted = views.sync(step.frame?.state.entities ?? [], {
         showPlayerHitbox: step.latestInput?.held.includes("focus") ?? false,
+        playerVisible: isPlayerVisibleWhileInvincible(step.frame?.state.player.invincibleTicksRemaining ?? 0),
       });
       if (exhausted) {
         console.error(`[sample-title] ${describeRuntimeEvent(exhausted)}`);
@@ -101,6 +115,9 @@ export class StageScene extends Scene {
     const lines = [this.#options.versionLabel, `${step.lifecycle.state}  audio ${this.#options.audioStatus}`];
     if (step.seed !== null) {
       lines.push(`seed ${step.seed}  tick ${step.frame?.tick ?? "-"}  dropped ${step.droppedTicksTotal}`);
+    }
+    if (this.#sparks.droppedTotal > 0) {
+      lines.push(`hit sparks dropped ${this.#sparks.droppedTotal}`);
     }
     return [...lines, ...this.#assetNotes];
   }

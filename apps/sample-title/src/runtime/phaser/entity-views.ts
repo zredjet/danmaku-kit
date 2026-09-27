@@ -34,7 +34,8 @@ export type EntityViewsOptions = Readonly<{
  *
  * kind ごとの view pool を stage start 前に `warm()` で作っておき、stage 中は image を生成・破棄せずに使い回す。消えた entity の view は
  * その render frame で隠して pool へ戻し、新しい entity には pool の image へ definition の texture を当てる。pool を使い切ったら
- * `viewPoolExhausted` を返し、呼び出し側が stage を止める。自機の判定は focus 中だけ本体の上に重ねて表示する。
+ * `viewPoolExhausted` を返し、呼び出し側が stage を止める。自機の判定は focus 中だけ本体の上に重ねて表示し、自機の本体は無敵中の
+ * 点滅のために呼び出し側が隠せる。
  */
 export class EntityViews {
   readonly #options: EntityViewsOptions;
@@ -74,11 +75,14 @@ export class EntityViews {
   }
 
   /**
-   * frame の entity に合わせて view を出し入れ・移動し、focus 中なら自機の判定を表示する。
+   * frame の entity に合わせて view を出し入れ・移動し、自機の本体を `playerVisible` に合わせ、focus 中なら自機の判定を表示する。
    *
    * pool を使い切った kind があれば、その entity を表示せずに `viewPoolExhausted` を返す。
    */
-  sync(entities: readonly ReadonlyEntityState[], options: Readonly<{ showPlayerHitbox: boolean }>): RuntimeEvent | null {
+  sync(
+    entities: readonly ReadonlyEntityState[],
+    options: Readonly<{ showPlayerHitbox: boolean; playerVisible: boolean }>,
+  ): RuntimeEvent | null {
     const diff = diffEntityViews(this.#views.keys(), entities);
     for (const id of diff.destroyedIds) {
       const view = this.#views.get(id);
@@ -104,6 +108,7 @@ export class EntityViews {
     const player = entities.find((entity) => entity.kind === "player");
     this.#playerHitbox.setVisible(options.showPlayerHitbox && player !== undefined);
     if (player) {
+      this.#views.get(player.id)?.image.setVisible(options.playerVisible);
       this.#playerHitbox.setPosition(player.position.x, player.position.y);
       // setRadius は geometry を作り直すため、自機の定義が変わったときだけ呼ぶ。
       const radius = this.#collisionRadiusOf(player);
@@ -112,6 +117,12 @@ export class EntityViews {
       }
     }
     return null;
+  }
+
+  /** entity を直前の `sync()` で描いた位置。描いていない entity は null。 */
+  positionOf(id: ReadonlyEntityState["id"]): Readonly<{ x: number; y: number }> | null {
+    const image = this.#views.get(id)?.image;
+    return image ? { x: image.x, y: image.y } : null;
   }
 
   #textureOf(entity: ReadonlyEntityState): string {
