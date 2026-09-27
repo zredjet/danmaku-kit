@@ -688,7 +688,37 @@ steps:
   - loop: 0
 ```
 
-各 step は `wait`、`fire`、`loop` のどれか 1 つの key だけを持つ。`fire` は `bullet`、`speed`（px / tick、0 より大きく 8 以下）と、向きとして `aim: player` か `angleDeg`（+x を 0°、+y へ回る向きを正とする -360〜360 の 0.25° の倍数）のどちらか一方を持ち、省略できる `origin` は発射する enemy 自身を表す `self` だけを受け付ける。`fan` は `count` 発（1〜64）を基準の向きを中心に並べ、`spreadDeg`（0〜360）は最初と最後の弾の間の角度とする。各弾は基準から `-spread / 2 + i * spread / (count - 1)` だけずれるため、すべての弾が 0.25° 刻みに載るよう、広がりの step 数が 2 と `count - 1` で割り切れることを validation で要求する（`count` が 1 なら `spreadDeg` は 0）。`loop` は前の step の index へ戻り、戻り先から loop までの間に `wait` を含む必要がある。1 pattern の step は 1〜64 個、`wait` は 1〜3,600 tick に制限する。`repeat`、`parallel`、`if`、`randomSpread` は Phase 2B の DSL で扱う。
+各 step は `wait`、`fire`、`loop` のどれか 1 つの key だけを持つ。`fire` は `bullet`、`speed`（px / tick、0 より大きく 8 以下）と、向きとして `aim: player` か `angleDeg`（+x を 0°、+y へ回る向きを正とする -360〜360 の 0.25° の倍数）のどちらか一方を持ち、省略できる `origin` は発射する enemy 自身を表す `self` だけを受け付ける。`fan` は `count` 発（1〜64）を基準の向きを中心に並べ、`spreadDeg`（0〜360）は最初と最後の弾の間の角度とする。各弾は基準から `-spread / 2 + i * spread / (count - 1)` だけずれるため、すべての弾が 0.25° 刻みに載るよう、広がりの step 数が 2 と `count - 1` で割り切れることを validation で要求する（`count` が 1 なら `spreadDeg` は 0）。`loop` は前の step の index へ戻り、戻り先から loop までの間に `wait` を含む必要がある。1 pattern の step は 1〜64 個、`wait` は 1〜3,600 tick に制限する。
+
+Phase 2B-2 で `repeat`、`fire.radial`、`fire.stream` を追加した。
+
+```yaml
+id: pattern.gunship_burst
+version: 1
+steps:
+  - repeat:
+      count: 3
+      steps:
+        - fire:
+            bullet: bullet.blue_large
+            angleDeg: 90
+            radial:
+              count: 12
+            stream:
+              count: 2
+              speedStep: 0.5
+            speed: 1.5
+        - wait: 10
+  - wait: 60
+  - loop: 0
+```
+
+- `repeat` は `steps` を `count` 回（1〜256）続けて実行する。`steps` には `wait`、`fire`、`repeat` を置け（1〜64 個、入れ子は 4 段まで）、`loop` は置けない。load 時に展開するため、展開した後の命令数は 4,096 以下にする。`loop` は top-level の step の index へ戻り、`wait` を含む `repeat` は loop の範囲の `wait` として数える。
+- `fire.radial` は基準の向き（`aim` か `angleDeg`）から 1 周を `count` 等分した向きへ撃つ（1〜64、360° を `count` で割った角度が 0.25° の倍数になる数だけ）。`fan` と `radial` はどちらか一方だけを指定できる。
+- `fire.stream` は各向きに、`speed` から `speedStep` ずつ変えた速さの弾を `count` 発（1〜16）重ねる。`count` が 2 以上なら `speedStep` は 0 以外で、すべての弾の速さが 0 より大きく 8 以下になる必要がある。
+- 1 回の発射の弾は向きごとに速さを並べた順（向きが外側、速さが内側）に採番する。
+
+`parallel`、`set`、`move`、HP / 時間の `if`、`emitEvent`、`randomSpread`、`accel` は後続の DSL で扱う（`docs/implementation-plan.md` の「Phase 2B タスク分割」）。
 
 ### 9.7 Enemy Bullet 定義例
 
@@ -854,7 +884,7 @@ Affinity feature を有効にする Player は、`initialAffinity` と `availabl
 
 PatternProgram の最小 command subset（Phase 2A-5）:
 
-- load 時に `steps` を `PatternProgram`（`patterns/pattern-program.ts`）へ正規化する。角度と fan は整数 step にし、runner が止まる位置（cursor）ごとに、次の `wait` か末尾まで実行する命令のまとまり（run）の発射命令、弾数、実行命令数、次の cursor と待ち tick 数を 1 度だけ求める。命令列に分岐や乱数はないため、tick と restore は同じ run を引く。
+- load 時に `steps` を `PatternProgram`（`patterns/pattern-program.ts`）へ正規化する。`repeat` は展開し（Phase 2B-2）、角度と fan / radial は整数 step にし、stream は弾ごとの速さにする。run を始められる cursor（0、各 `wait` の直後、末尾）ごとに、次の `wait` か末尾まで実行する命令のまとまり（run）の発射命令、弾数、実行命令数、次の cursor と待ち tick 数を 1 度だけ求める。命令列に分岐や乱数はないため、tick と restore は同じ run を引く。cursor は展開した後の命令の位置で、`repeat` のない pattern では step の index と同じになる。
 - runner state は cursor と `waitRemaining`（次の run までに進める tick 数）だけを持つ。runner は enemy を spawn した tick から毎 tick、待ちが 2 tick 以上残っていれば 1 減らし、それ以外は cursor から run を実行する。`wait: N` で止まった run の次の run は N tick 後に実行する。末尾まで実行した runner は cursor を命令数にして止まる。
 - `loop` の戻り先から loop までの間に `wait` があることを validation で保証するため、戻るたびに次に当たる loop の位置が前へ進み、1 回の run は必ず `wait` か末尾で止まる（静的に検出できる無限ループの拒否、design 21.3）。
 - 発射命令は、基準の向き（`angleDeg` の step か、自機への向きに最も近い step）に fan の step 差を足した向きの表の単位 vector に `speed` を掛けて敵弾の速度にする。発射元は enemy の移動前の位置で、敵弾は生成した tick から動く。
@@ -1643,7 +1673,7 @@ Runtime は `tick()` の戻り値に含まれる `GameFrame.events` を読んで
 
 `SerializedPatternRunnerState.payload` と `SerializedEnabledFeatureState.payload` は public な `SerializedJsonValue` だけを許可し、state hash では canonical encoding の対象にする。`number` は finite number のみ有効とし、`NaN` / `Infinity` は restore validation で `state.invalidShape` にする。hash では `-0` を `+0` に正規化し、finite number を IEEE-754 binary64 little-endian bytes として encode する。string は lone surrogate を含む場合に `state.invalidShape` として拒否し、payload の object key は UTF-8 byte sequence の lexicographic order で正規化する。module ごとの `stateVersion` は正の safe integer とし、未対応 version は module ごとの互換性 error で拒否する。Phase 1B-3 は型境界だけを固定し、basic core が実際に `patternRunnerStates: []` と `enabledFeatureStates: []` を出力する処理は Phase 1B-4 の serialize 実装で追加する。restore 時の top-level `enabledFeatures` と feature state の整合検証は Phase 1B-5 で扱う。
 
-Phase 2A-5 で basic core の pattern runner が `patternRunnerStates` を出力するようにした。`steps` を持つ pattern で動く active enemy ごとに 1 件で、`runnerId` は `patternRunner.enemy.<entity id>`、`patternId` は enemy の pattern、`stateVersion` は 1、`payload` は `{ cursor, waitRemaining }`（design 10 の runner state、0 以上の safe integer）とする。state hash の byte 列の定義は変わらず、`steps` を使わない content の state hash も変わらないため、`stateHashVersion` は 3 のままにした。restore は pattern runner の payload を汎用の JSON guard ではなく module の形（`cursor` と `waitRemaining` だけの plain object）で検証し、未対応の `stateVersion` を `state.featureMismatch`、それ以外の不一致を `state.invalidShape` にする。runner の件数上限は timeline step 数（4,096）とする。runner は `steps` を持つ pattern で動く active enemy ごとにちょうど 1 つ必要で、spawn tick から `expectedTick` まで進めた runner と完全一致しなければならない。restore は run を始める cursor の列が命令数 + 1 回以内に繰り返しに入ることを使い、tick を 1 つずつ進めずに run の時刻表から runner と発射を求める（`patterns/pattern-schedule.ts`）。
+Phase 2A-5 で basic core の pattern runner が `patternRunnerStates` を出力するようにした。`steps` を持つ pattern で動く active enemy ごとに 1 件で、`runnerId` は `patternRunner.enemy.<entity id>`、`patternId` は enemy の pattern、`stateVersion` は 1、`payload` は `{ cursor, waitRemaining }`（design 10 の runner state、0 以上の safe integer。cursor は `repeat` を展開した後の命令の位置）とする。state hash の byte 列の定義は変わらず、`steps` を使わない content の state hash も変わらないため、`stateHashVersion` は 3 のままにした。restore は pattern runner の payload を汎用の JSON guard ではなく module の形（`cursor` と `waitRemaining` だけの plain object）で検証し、未対応の `stateVersion` を `state.featureMismatch`、それ以外の不一致を `state.invalidShape` にする。runner の件数上限は timeline step 数（4,096）とする。runner は `steps` を持つ pattern で動く active enemy ごとにちょうど 1 つ必要で、spawn tick から `expectedTick` まで進めた runner と完全一致しなければならない。restore は run を始める cursor の列が命令数 + 1 回以内に繰り返しに入ることを使い、tick を 1 つずつ進めずに run の時刻表から runner と発射を求める（`patterns/pattern-schedule.ts`）。
 
 pattern が撃った敵弾の restore は、生成 tick（`expectedTick - ageTicks`）に処理済み spawn の runner が run を実行し、生成位置がその tick の移動前の enemy 位置（spawn 位置から path を進めた位置）と一致し、弾の定義と fan の何発目かまで一致する発射を 1 度だけ消費する。固定角度の弾は速度まで完全一致を要求する。`aim: player` の向きは発射した tick の自機位置で決まり、自機の位置は入力の履歴によるため snapshot から求め直せない。そのため aim の弾は、表のどれかの向きに `speed` を掛けた速度であることだけを確かめる。撃破された tick も snapshot から分からないため、enemy がいない spawn の弾も、path を終えて cleanup される tick（cleanup されない enemy は `expectedTick - 1`）までの発射として受け付ける。同じ tick の敵弾の採番順は fireOnSpawn、pattern（enemy の spawn 順、命令順、fan 順）の順に検証し、`nextEntityId` の到達可能性の上限には enemy が撃破されずに撃ち続けた場合の pattern の発射数を加える。
 
@@ -1815,7 +1845,8 @@ Parse 後は `PatternProgram` として正規化する（`packages/shooting-core
 type PatternProgram = {
   patternId: PatternId;
   length: number;
-  runs: readonly PatternRun[]; // cursor 0〜length の run
+  stepCount: number; // 元の top-level の step 数
+  runs: ReadonlyMap<number, PatternRun>; // run を始められる cursor（0、wait の直後、length）ごとの run
 };
 
 type PatternRun = {
@@ -1848,7 +1879,7 @@ Phase 2A-5 の最小 subset（`wait` / `fire` / `loop`）では、`loop` が前�
 
 Phase 2B-1 の意味の検証（`content/validation/pattern-semantics.ts`）: shape と参照の検証に通った content の各 pattern を `PatternProgram` にし、spawn から実行する run だけを見て静的な予算を求める。
 
-- 1 run の弾数が敵弾の active 上限（2,000）を超える pattern は、撃った tick に必ず fatal になるため `definition.invalidConstraint` の load error にする。loop より後ろのように spawn から実行されない run は数えない。
+- 1 run の弾数が敵弾の active 上限（2,000）を超える pattern と、1 run の命令数が 1 tick の命令数の上限（2,000）を超える pattern（`repeat` を展開すると起き得る）は、その run の tick に必ず fatal になるため `definition.invalidConstraint` の load error にする。loop より後ろのように spawn から実行されない run は数えない。
 - 一度も撃たない pattern（`pattern.neverFires`）と、spawn からどの run でも実行されない step（`pattern.unreachableStep`、`loop` より後ろの step など）は、動作はするが書き間違いの可能性が高いため warning にする。warning は `CoreResult.warnings` で返し、content に error がある間は返さない。
 - `CoreWarning` は error と同じく optional の `schemaPath` と `referrerId` を持ち、validate-content は warning を YAML の該当 step（never fires は `steps` 全体）へ向けて exit code 0 の schema diagnostic として出す（CLI golden の `pattern-warning`、`pattern-silent`、`pattern-budget-error`）。
 - 静的な予算は runtime の状態を変えないため、state hash と replay は変わらない。
