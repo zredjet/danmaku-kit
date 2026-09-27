@@ -23,7 +23,7 @@
         "x": 352,
         "y": 400
       },
-      "stateDigest": "647fb76a0977fd50"
+      "stateDigest": "ff4f20fd200f979c"
     },
     {
       "tick": 1199,
@@ -40,7 +40,7 @@
         "x": 192,
         "y": 400
       },
-      "stateDigest": "7986db79070f9331"
+      "stateDigest": "a573955bc24e881d"
     },
     {
       "tick": 1799,
@@ -49,7 +49,7 @@
       "entityCounts": {
         "player": 1,
         "enemy": 1,
-        "enemyBullet": 16,
+        "enemyBullet": 26,
         "playerShot": 17,
         "pickup": 0
       },
@@ -57,7 +57,7 @@
         "x": 32,
         "y": 400
       },
-      "stateDigest": "be954d9b1cd171d0"
+      "stateDigest": "775dab6a78cfa43e"
     },
     {
       "tick": 2216,
@@ -66,7 +66,7 @@
       "entityCounts": {
         "player": 1,
         "enemy": 0,
-        "enemyBullet": 29,
+        "enemyBullet": 35,
         "playerShot": 13,
         "pickup": 0
       },
@@ -74,7 +74,7 @@
         "x": 284,
         "y": 400
       },
-      "stateDigest": "ee8b97ed253e889f"
+      "stateDigest": "afa331bedff2b074"
     }
   ],
   "defeats": [
@@ -224,6 +224,28 @@
       72.25,
       87.25,
       102.25
+    ]
+  },
+  "firstRadial": {
+    "tick": 1770,
+    "count": 16,
+    "angleDeg": [
+      90,
+      112.5,
+      135,
+      157.5,
+      180,
+      -157.5,
+      -135,
+      -112.5,
+      -90,
+      -67.5,
+      -45,
+      -22.5,
+      0,
+      22.5,
+      45,
+      67.5
     ]
   }
 }

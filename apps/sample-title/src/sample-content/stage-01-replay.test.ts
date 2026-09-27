@@ -30,8 +30,11 @@ type Checkpoint = Readonly<{
   stateDigest: string;
 }>;
 
-/** 敵弾の生成位置が同じ 1 回の fan の発射。 */
+/** 敵弾の生成位置が同じ 1 回の発射（fan か radial）。 */
 type FanShot = Readonly<{ tick: number; count: number; angleDeg: readonly number[] }>;
+
+/** gunship の radial の輪の弾数。 */
+const RADIAL_COUNT = 16;
 
 type ReplaySummary = Readonly<{
   seed: string;
@@ -43,12 +46,14 @@ type ReplaySummary = Readonly<{
   pickups: Readonly<{ dropped: number; collected: number; score: number }>;
   playerHits: readonly number[];
   firstThreeWay: FanShot | null;
+  firstRadial: FanShot | null;
 }>;
 
 async function runStage01(seed: string): Promise<ReplaySummary> {
   const inputs = expandInputScript(weavingShotScript(WEAVE_PERIOD_TICKS, MAX_TICKS), MAX_TICKS);
   const checkpoints: Checkpoint[] = [];
   let firstThreeWay: FanShot | null = null;
+  let firstRadial: FanShot | null = null;
   const { frames, session } = runHeadlessReplay(
     await loadSampleTitleGame(),
     { stageId: "stage.stage_01", difficulty: "normal", seed },
@@ -57,7 +62,8 @@ async function runStage01(seed: string): Promise<ReplaySummary> {
       if (CHECKPOINT_TICKS.includes(frame.tick)) {
         checkpoints.push(checkpointOf(frame, current));
       }
-      firstThreeWay ??= findThreeWay(frame, current);
+      firstThreeWay ??= findVolley(frame, current, 3);
+      firstRadial ??= findVolley(frame, current, RADIAL_COUNT);
     },
   );
   const last = frames.at(-1)!;
@@ -78,6 +84,7 @@ async function runStage01(seed: string): Promise<ReplaySummary> {
     },
     playerHits: events.flatMap((event) => event.type === "playerHit" ? [event.tick] : []),
     firstThreeWay,
+    firstRadial,
   };
 }
 
@@ -93,14 +100,14 @@ function checkpointOf(frame: GameFrame, session: StageSession): Checkpoint {
   };
 }
 
-/** frame で同じ位置から 3 発まとめて撃たれた敵弾（3-way）を探し、serialize した速度から向きを求める。 */
-function findThreeWay(frame: GameFrame, session: StageSession): FanShot | null {
+/** frame で同じ位置から `count` 発まとめて撃たれた敵弾（3-way や radial）を探し、serialize した速度から向きを求める。 */
+function findVolley(frame: GameFrame, session: StageSession, count: number): FanShot | null {
   const batch = frame.events.find((event) => event.type === "enemyBulletsSpawnedBatch");
   if (batch?.type !== "enemyBulletsSpawnedBatch") {
     return null;
   }
   const byOrigin = Map.groupBy(batch.bullets, (bullet) => `${bullet.position.x},${bullet.position.y}`);
-  const fan = [...byOrigin.values()].find((bullets) => bullets.length === 3);
+  const fan = [...byOrigin.values()].find((bullets) => bullets.length === count);
   if (!fan) {
     return null;
   }
@@ -116,7 +123,7 @@ function findThreeWay(frame: GameFrame, session: StageSession): FanShot | null {
   return { tick: frame.tick, count: fan.length, angleDeg };
 }
 
-test("replays sample stage 1 to the golden clear with defeats, score and a 3-way", async () => {
+test("replays sample stage 1 to the golden clear with defeats, score, a 3-way and a radial ring", async () => {
   const summary = await runStage01(SEED);
   if (UPDATE_GOLDENS) {
     await writeFile(GOLDEN_URL, `${JSON.stringify(summary, null, 2)}\n`);
@@ -132,6 +139,10 @@ test("replays sample stage 1 to the golden clear with defeats, score and a 3-way
   assert.ok(summary.firstThreeWay !== null);
   const [left, center, right] = summary.firstThreeWay.angleDeg;
   assert.deepEqual([center! - left!, right! - center!], [15, 15]);
+  // radial は 1 周を 16 等分した向き（22.5° 間隔）に並ぶ。
+  assert.ok(summary.firstRadial !== null);
+  const ring = [...summary.firstRadial.angleDeg].map((angle) => (angle + 360) % 360).sort((a, b) => a - b);
+  assert.deepEqual(new Set(ring.map((angle, index) => ((ring[(index + 1) % ring.length]! - angle + 360) % 360))), new Set([22.5]));
 });
 
 test("reproduces the same run for the same seed", async () => {
