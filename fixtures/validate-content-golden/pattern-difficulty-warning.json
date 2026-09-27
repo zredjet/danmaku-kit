@@ -5,9 +5,9 @@
   "diagnostics": [
     {
       "kind": "schema",
-      "code": "pattern.unusedDifficulty",
+      "code": "pattern.unusedBranch",
       "severity": "warning",
-      "message": "pattern.steps[].if.difficulty lists hard, which no stage using the pattern supports",
+      "message": "pattern.steps[].if.difficulty lists a difficulty this step never runs on: hard",
       "path": "<content-root>/patterns/scout_three_way.yaml",
       "line": 6,
       "column": 19,

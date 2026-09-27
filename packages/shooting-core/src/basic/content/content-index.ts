@@ -44,21 +44,21 @@ export function createLoadedContentIndex(definition: GameDefinition): LoadedCont
   };
 }
 
-/** 既知の difficulty ごとに PatternProgram を作る。`if` を持たない pattern は 1 度だけ compile して共有する。 */
+/** 既知の difficulty ごとに PatternProgram を作る。`if` を持たない pattern は 1 度だけ compile して全 difficulty の表で共有する。 */
 function compilePatternProgramsByDifficulty(
   definition: GameDefinition,
 ): ReadonlyMap<Difficulty, ReadonlyMap<string, PatternProgram>> {
-  const shared = new Map<string, PatternProgram>();
+  const tables = new Map(KNOWN_DIFFICULTIES.map((difficulty) => [difficulty, new Map<string, PatternProgram>()]));
   for (const pattern of definition.content.patterns) {
-    const program = hasDifficultyBranch(pattern) ? null : compilePatternProgram(pattern, KNOWN_DIFFICULTIES[0]);
-    if (program) {
-      shared.set(pattern.id, program);
+    const shared = hasDifficultyBranch(pattern) ? null : compilePatternProgram(pattern, KNOWN_DIFFICULTIES[0]);
+    for (const [difficulty, table] of tables) {
+      const program = pattern.steps ? shared ?? compilePatternProgram(pattern, difficulty) : null;
+      if (program) {
+        table.set(pattern.id, program);
+      }
     }
   }
-  return new Map(KNOWN_DIFFICULTIES.map((difficulty) => [difficulty, new Map(definition.content.patterns.flatMap((pattern) => {
-    const program = shared.get(pattern.id) ?? (hasDifficultyBranch(pattern) ? compilePatternProgram(pattern, difficulty) : null);
-    return program ? [[pattern.id, program] as const] : [];
-  }))]));
+  return tables;
 }
 
 /** difficulty の PatternProgram の表。`KNOWN_DIFFICULTIES` の difficulty はすべて表を持つ。 */

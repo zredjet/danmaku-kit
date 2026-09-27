@@ -502,8 +502,9 @@ export function createAimedStreamCleanupDefinition(): GameDefinition {
 /**
  * difficulty の `if` で撃ち方が変わる enemy を出す definition。stage は normal と hard を持つ。
  *
- * `pattern.difficulty_branch` は hard だけ spawn tick に自機狙いの 3-way を撃ち、4 tick 待ってから normal は真下へ 1 発、hard は
- * radial 4 方向を 2 回（間に 2 tick）撃って繰り返す。
+ * tick 0 に出る `pattern.difficulty_branch` の enemy は hard だけ spawn tick に自機狙いの 3-way を撃ち、4 tick 待ってから normal は真下へ
+ * 1 発、hard は radial 4 方向を 2 回（間に 2 tick）撃って繰り返す。tick 2 に出る `pattern.hard_only` の enemy は hard だけ spawn tick に
+ * 1 発撃ち、normal では命令のない program になる。
  */
 export function createDifficultyBranchPatternDefinition(): GameDefinition {
   const definition = createMinimumDefinition();
@@ -515,7 +516,10 @@ export function createDifficultyBranchPatternDefinition(): GameDefinition {
       stages: [{
         ...definition.content.stages[0]!,
         difficulties: ["normal", "hard"],
-        timeline: [spawnScoutAt(0, "pattern.difficulty_branch", { x: 192, y: 100 })],
+        timeline: [
+          spawnScoutAt(0, "pattern.difficulty_branch", { x: 192, y: 100 }),
+          spawnScoutAt(2, "pattern.hard_only", { x: 96, y: 60 }),
+        ],
       }],
       patterns: [
         ...definition.content.patterns,
@@ -540,6 +544,7 @@ export function createDifficultyBranchPatternDefinition(): GameDefinition {
             { loop: 1 },
           ],
         },
+        { id: "pattern.hard_only", version: 1, steps: [{ if: { difficulty: ["hard"], then: [{ fire: down }] } }] },
       ],
     },
   };

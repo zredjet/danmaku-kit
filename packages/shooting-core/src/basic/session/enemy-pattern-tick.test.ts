@@ -271,6 +271,7 @@ test("fires the difficulty branch of the stage's difficulty", () => {
   const firedCounts = (frames: readonly GameFrame[]) => spawnedBatches(frames).flatMap((batch, tick) => batch.length > 0 ? [[tick, batch.length]] : []);
 
   // normal は最初の `if` を飛ばし、4 tick ごとに 1 発。hard は spawn tick に 3-way、その後 radial 4 方向を 2 tick おきに 2 回撃って 4 tick 休む。
+  // tick 2 に出る enemy は hard だけ 1 発撃ち、normal では何もしない。
   assert.deepEqual(firedCounts(run("normal")), [[4, 1], [8, 1], [12, 1]]);
-  assert.deepEqual(firedCounts(run("hard")), [[0, 3], [4, 4], [6, 4], [12, 4], [14, 4]]);
+  assert.deepEqual(firedCounts(run("hard")), [[0, 3], [2, 1], [4, 4], [6, 4], [12, 4], [14, 4]]);
 });

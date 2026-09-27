@@ -148,7 +148,7 @@ export type PlayerShotDefinition = {
 /**
  * 敵 pattern の content 定義。
  *
- * `fireOnSpawn` は spawn 直後に 1 batch だけ敵弾を生成する最小形、`steps` は `wait` / `fire` / `loop` / `repeat` の命令列
+ * `fireOnSpawn` は spawn 直後に 1 batch だけ敵弾を生成する最小形、`steps` は `wait` / `fire` / `loop` / `repeat` / `if` の命令列
  * （PatternProgram）で、1 つの pattern ではどちらか一方だけを使う。`parallel`、`set`、`move`、`randomSpread` などは後続の DSL で扱う。
  */
 export type PatternDefinition = {
@@ -170,13 +170,13 @@ export type PatternDefinition = {
   };
 };
 
-/** pattern の 1 命令。1 step は `wait`、`fire`、`loop`、`repeat` のどれか 1 つの key だけを持つ。 */
+/** pattern の 1 命令。1 step は `wait`、`fire`、`loop`、`repeat`、`if` のどれか 1 つの key だけを持つ。 */
 export type PatternStepDefinition =
   | PatternRepeatStepDefinition
   | {
     /**
-     * 同じ tick のうちに戻る top-level の step index。戻った先から loop までの間に `wait` を含む必要がある。`repeat` の `steps` の中には
-     * 置けない。
+     * 同じ tick のうちに戻る top-level の step index。戻った先から loop までの間に `wait` を含む必要がある。`repeat` の `steps` と `if`
+     * の `then` / `else` の中には置けない。
      */
     loop: number;
   };

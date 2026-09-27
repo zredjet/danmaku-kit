@@ -157,3 +157,16 @@ test("expands the difficulty branch of if and counts a branch without commands a
     [5, 0, [], null],
   ]);
 });
+
+test("counts a branch without commands only when the cursor passes it, not when a loop returns past it", () => {
+  const fire = { bullet: "bullet.red_small", angleDeg: 90, speed: 1 } as const;
+  const program = compile([{ wait: 1 }, { if: { difficulty: ["hard"], then: [{ fire }] } }, { fire }, { wait: 3 }, { loop: 2 }]);
+
+  // step 1 と step 2 は同じ位置（cursor 1）から始まるが、loop は step 2 へ戻るので step 1 を通らない。
+  assert.deepEqual([...program.runs].map(([cursor, run]) => [cursor, run.executedSteps]), [
+    [0, [0]],
+    [1, [1, 2, 3]],
+    [3, [2, 3, 4]],
+    [4, []],
+  ]);
+});

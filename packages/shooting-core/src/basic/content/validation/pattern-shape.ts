@@ -1,6 +1,7 @@
 import { patternStreamSpeeds } from "../../patterns/pattern-program.ts";
 import type { CoreError } from "../../result.ts";
 import { KNOWN_DIFFICULTIES, isKnownDifficulty } from "../types.ts";
+import type { Difficulty } from "../types.ts";
 import { asRecord } from "../../shared/guards.ts";
 import { ANGLE_STEPS_PER_TURN, angleStepsFromDegrees } from "../../shared/angle-steps.ts";
 import {
@@ -10,7 +11,7 @@ import {
   MAX_PATTERN_FAN_COUNT,
   MAX_PATTERN_RADIAL_COUNT,
   MAX_PATTERN_REPEAT_COUNT,
-  MAX_PATTERN_REPEAT_DEPTH,
+  MAX_PATTERN_NESTING_DEPTH,
   MAX_PATTERN_STEPS,
   MAX_PATTERN_STREAM_COUNT,
   MAX_PATTERN_WAIT_TICKS,
@@ -51,9 +52,10 @@ export function validatePatternShape(pattern: Record<string, unknown>, errors: C
 /**
  * `steps` の命令列を検証する。
  *
- * `loop` は前の top-level step へだけ戻れ、戻り先から loop までの間に `wait`（`wait` を含む `repeat` も数える）を含む必要がある。これで
- * 1 tick に実行する命令列は必ず `wait` か末尾で止まる（戻るたびに次に当たる loop の位置が前へ進むため）。`repeat` は展開した後の命令数が
- * `MAX_PATTERN_EXPANDED_COMMANDS` 以下である必要がある。
+ * `loop` は前の top-level step へだけ戻れ、戻り先から loop までの間に `wait`（`wait` を含む `repeat` と、両方の枝に `wait` を含む `if`
+ * も数える）を含む必要がある。これで 1 tick に実行する命令列は、どの difficulty でも必ず `wait` か末尾で止まる（戻るたびに次に当たる
+ * loop の位置が前へ進むため）。`repeat` と `if` は、どの difficulty で展開した後の命令数も `MAX_PATTERN_EXPANDED_COMMANDS` 以下である
+ * 必要がある。
  */
 function validatePatternStepsShape(value: unknown, errors: CoreError[]): void {
   const steps = validateObjectArray("pattern.steps", value, errors);
@@ -69,7 +71,8 @@ function validatePatternStepsShape(value: unknown, errors: CoreError[]): void {
     validatePatternStepShape("pattern.steps[]", step, 0, errors, { stepIndex, waitStepIndexes });
     addSchemaContext(errors, stepErrorStart, `pattern.steps[${stepIndex}]`, "pattern.steps[]");
   }
-  const expanded = countExpandedCommands(steps.items.map(({ record }) => record));
+  const records = steps.items.map(({ record }) => record);
+  const expanded = Math.max(...KNOWN_DIFFICULTIES.map((difficulty) => countExpandedCommands(records, difficulty)));
   if (expanded > MAX_PATTERN_EXPANDED_COMMANDS) {
     errors.push({
       code: "definition.invalidConstraint",
@@ -79,12 +82,13 @@ function validatePatternStepsShape(value: unknown, errors: CoreError[]): void {
 }
 
 /**
- * 1 step を検証する。`loop` は top-level（`loop` を渡したとき）だけに置け、`repeat` の中の step は `repeatDepth` で入れ子の深さを数える。
+ * 1 step を検証する。`loop` は top-level（`loop` を渡したとき）だけに置け、`repeat` と `if` の中の step は `nestingDepth` で入れ子の深さを
+ * 数える。
  */
 function validatePatternStepShape(
   path: string,
   step: Record<string, unknown>,
-  repeatDepth: number,
+  nestingDepth: number,
   errors: CoreError[],
   loop?: Readonly<{ stepIndex: number; waitStepIndexes: readonly number[] }>,
 ): void {
@@ -107,10 +111,10 @@ function validatePatternStepShape(
     }
   }
   if (step.repeat !== undefined) {
-    validatePatternRepeatShape(`${path}.repeat`, step.repeat, repeatDepth + 1, errors);
+    validatePatternRepeatShape(`${path}.repeat`, step.repeat, nestingDepth + 1, errors);
   }
   if (step.if !== undefined) {
-    validatePatternIfShape(`${path}.if`, step.if, repeatDepth + 1, errors);
+    validatePatternIfShape(`${path}.if`, step.if, nestingDepth + 1, errors);
   }
 }
 
@@ -158,8 +162,8 @@ function validatePatternIfShape(path: string, value: unknown, depth: number, err
 
 /** `repeat` と `if` の入れ子が深すぎないことを検証する。 */
 function validateNestingDepth(path: string, depth: number, errors: CoreError[]): boolean {
-  if (depth > MAX_PATTERN_REPEAT_DEPTH) {
-    errors.push({ code: "definition.invalidShape", message: `${path} must be nested at most ${MAX_PATTERN_REPEAT_DEPTH} deep` });
+  if (depth > MAX_PATTERN_NESTING_DEPTH) {
+    errors.push({ code: "definition.invalidShape", message: `${path} must be nested at most ${MAX_PATTERN_NESTING_DEPTH} deep` });
     return false;
   }
   return true;
@@ -202,9 +206,9 @@ function stepsContainWait(steps: unknown): boolean {
 }
 
 /**
- * `repeat` を展開した後の命令数（`if` は長い方の枝）。上限を超えた時点で打ち切り、上限 + 1 を返す。形の壊れた step は 1 命令と数える。
+ * difficulty で `repeat` と `if` を展開した後の命令数。上限を超えた時点で打ち切り、上限 + 1 を返す。形の壊れた step は 1 命令と数える。
  */
-function countExpandedCommands(steps: readonly unknown[]): number {
+function countExpandedCommands(steps: readonly unknown[], difficulty: Difficulty): number {
   let total = 0;
   for (const value of steps) {
     const step = asRecord(value);
@@ -212,12 +216,10 @@ function countExpandedCommands(steps: readonly unknown[]): number {
     const branch = asRecord(step?.if);
     if (repeat && Array.isArray(repeat.steps)) {
       const count = typeof repeat.count === "number" && Number.isSafeInteger(repeat.count) && repeat.count > 0 ? repeat.count : 1;
-      total += count * countExpandedCommands(repeat.steps);
+      total += count * countExpandedCommands(repeat.steps, difficulty);
     } else if (branch) {
-      total += Math.max(
-        Array.isArray(branch.then) ? countExpandedCommands(branch.then) : 0,
-        Array.isArray(branch.else) ? countExpandedCommands(branch.else) : 0,
-      );
+      const selected = Array.isArray(branch.difficulty) && branch.difficulty.includes(difficulty) ? branch.then : branch.else;
+      total += Array.isArray(selected) ? countExpandedCommands(selected, difficulty) : 0;
     } else {
       total += 1;
     }

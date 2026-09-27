@@ -122,18 +122,25 @@ export function validatePatternBulletReferences(registry: ContentRegistry, error
   }
 }
 
-/** `fire` の bullet 参照を、`repeat` の中の step まで schema path 付きで集める。 */
+/** `fire` の bullet 参照を、`repeat` と `if` の中の step まで schema path 付きで集める。 */
 function collectStepBulletReferences(
   steps: readonly PatternStepDefinition[],
   schemaPrefix: string,
   localPrefix: string,
 ): { bulletId: BulletId; localPath: string; schemaPath: string }[] {
   return steps.flatMap((step, stepIndex) => {
+    const schemaPath = `${schemaPrefix}[${stepIndex}]`;
     if ("fire" in step) {
-      return [{ bulletId: step.fire.bullet, localPath: `${localPrefix}.fire.bullet`, schemaPath: `${schemaPrefix}[${stepIndex}].fire.bullet` }];
+      return [{ bulletId: step.fire.bullet, localPath: `${localPrefix}.fire.bullet`, schemaPath: `${schemaPath}.fire.bullet` }];
     }
     if ("repeat" in step) {
-      return collectStepBulletReferences(step.repeat.steps, `${schemaPrefix}[${stepIndex}].repeat.steps`, `${localPrefix}.repeat.steps[]`);
+      return collectStepBulletReferences(step.repeat.steps, `${schemaPath}.repeat.steps`, `${localPrefix}.repeat.steps[]`);
+    }
+    if ("if" in step) {
+      return [
+        ...collectStepBulletReferences(step.if.then, `${schemaPath}.if.then`, `${localPrefix}.if.then[]`),
+        ...collectStepBulletReferences(step.if.else ?? [], `${schemaPath}.if.else`, `${localPrefix}.if.else[]`),
+      ];
     }
     return [];
   });

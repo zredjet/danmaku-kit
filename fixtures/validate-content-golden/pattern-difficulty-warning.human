@@ -1,2 +1,2 @@
-<content-root>/patterns/scout_three_way.yaml:6:19-6:25 [WARNING] pattern.unusedDifficulty: pattern.steps[].if.difficulty lists hard, which no stage using the pattern supports (schema=content.patterns[1].steps[1].if.difficulty, source=pattern.scout_three_way)
+<content-root>/patterns/scout_three_way.yaml:6:19-6:25 [WARNING] pattern.unusedBranch: pattern.steps[].if.difficulty lists a difficulty this step never runs on: hard (schema=content.patterns[1].steps[1].if.difficulty, source=pattern.scout_three_way)
 Summary: 0 error(s), 1 warning(s), 0 info(s)

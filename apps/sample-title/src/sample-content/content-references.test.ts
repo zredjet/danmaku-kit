@@ -52,9 +52,17 @@ test("reaches every definition and asset from stage 1 and the default player", a
   );
 });
 
-/** pattern の `fire` が撃つ bullet の id。`repeat` の中の step までたどる。 */
+/** pattern の `fire` が撃つ bullet の id。`repeat` と `if` の中の step までたどる。 */
 function firedBullets(steps: NonNullable<PatternDefinition["steps"]>): string[] {
-  return steps.flatMap((step) => "fire" in step ? [step.fire.bullet] : "repeat" in step ? firedBullets(step.repeat.steps) : []);
+  return steps.flatMap((step) => {
+    if ("fire" in step) {
+      return [step.fire.bullet];
+    }
+    if ("repeat" in step) {
+      return firedBullets(step.repeat.steps);
+    }
+    return "if" in step ? [...firedBullets(step.if.then), ...firedBullets(step.if.else ?? [])] : [];
+  });
 }
 
 /** content の 1 file の最初の `search` を `replace` に置き換えた copy を検証し、diagnostic の要点を返す。 */

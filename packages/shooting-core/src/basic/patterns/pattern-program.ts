@@ -35,7 +35,10 @@ export type PatternRun = Readonly<{
   fires: readonly PatternFireCommand[];
   bulletCount: number;
   executedCommands: number;
-  /** run が実行する top-level step の index（昇順、重複なし。`repeat` の中の命令は `repeat` の step に数える）。到達しない step の検出に使う。 */
+  /**
+   * run が実行する top-level step の index（昇順、重複なし）。`repeat` と `if` の中の命令はその step に数え、difficulty の `if` で命令が
+   * なくなった step は cursor がその位置を通ったときに数える。到達しない step の検出に使う。
+   */
   executedSteps: readonly number[];
   next: Readonly<{ cursor: number; waitTicks: number }> | null;
 }>;
@@ -43,8 +46,9 @@ export type PatternRun = Readonly<{
 /**
  * `PatternDefinition.steps` を正規化した命令列（design 10 の PatternProgram）。
  *
- * `repeat` は load 時に展開するため、cursor は展開した後の命令の位置を指す（`repeat` のない pattern では step の index と同じ）。命令列に
- * 分岐や乱数はないため、cursor ごとの run を load 時に 1 度だけ求めておき、tick と restore は同じ run を引く。
+ * `repeat` と difficulty の `if` は load 時に展開するため、cursor は展開した後の命令の位置を指す（`repeat` と `if` のない pattern では
+ * step の index と同じ）。展開した命令列に分岐や乱数はないため、cursor ごとの run を load 時に 1 度だけ求めておき、tick と restore は
+ * 同じ run を引く。
  */
 export type PatternProgram = Readonly<{
   patternId: PatternId;
@@ -59,11 +63,14 @@ export type PatternProgram = Readonly<{
   runs: ReadonlyMap<number, PatternRun>;
 }>;
 
-/** 展開した命令。`sourceStep` は元の top-level step の index で、`loop` の `target` は展開した後の命令の位置。 */
+/**
+ * 展開した命令。`sourceStep` は元の top-level step の index。`loop` の `target` は展開した後の命令の位置で、`targetStep` は戻り先の
+ * top-level step の index。
+ */
 type NormalizedPatternCommand =
   | Readonly<{ kind: "wait"; ticks: number; sourceStep: number }>
   | Readonly<{ kind: "fire"; command: PatternFireCommand; sourceStep: number }>
-  | Readonly<{ kind: "loop"; target: number; sourceStep: number }>;
+  | Readonly<{ kind: "loop"; target: number; targetStep: number; sourceStep: number }>;
 
 /**
  * 検証済みの pattern から、stage の difficulty で動かす PatternProgram を作る。`steps` を持たない pattern は null を返す。
@@ -117,7 +124,7 @@ function appendNormalizedStep(
   } else if ("fire" in step) {
     out.push(Object.freeze({ kind: "fire", command: normalizePatternFire(step.fire), sourceStep }));
   } else if ("loop" in step) {
-    out.push(Object.freeze({ kind: "loop", target: step.loop, sourceStep }));
+    out.push(Object.freeze({ kind: "loop", target: step.loop, targetStep: step.loop, sourceStep }));
   } else if ("repeat" in step) {
     for (let iteration = 0; iteration < step.repeat.count; iteration += 1) {
       for (const child of step.repeat.steps) {
@@ -199,11 +206,16 @@ function resolvePatternRun(
   const executedSteps = new Set<number>();
   const maxExecutedCommands = (commands.length + 1) * (commands.length + 1);
   let cursor = start;
+  // `loop` で戻った位置では、戻り先の step より前にある命令のない step は通らない。
+  let firstPassedStep = 0;
   let executedCommands = 0;
   for (;;) {
     for (const step of emptyStepsAt.get(cursor) ?? []) {
-      executedSteps.add(step);
+      if (step >= firstPassedStep) {
+        executedSteps.add(step);
+      }
     }
+    firstPassedStep = 0;
     if (cursor >= commands.length) {
       break;
     }
@@ -221,6 +233,7 @@ function resolvePatternRun(
       cursor += 1;
     } else {
       cursor = command.target;
+      firstPassedStep = command.targetStep;
     }
   }
   return createPatternRun(fires, executedCommands, executedSteps, null);

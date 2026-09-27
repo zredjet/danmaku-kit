@@ -71,11 +71,11 @@ export const MAX_PATTERN_STREAM_COUNT = 16;
 /** pattern の `repeat.count` の上限。 */
 export const MAX_PATTERN_REPEAT_COUNT = 256;
 
-/** `repeat` の入れ子の深さの上限。 */
-export const MAX_PATTERN_REPEAT_DEPTH = 4;
+/** `repeat` と `if` の入れ子の深さの上限。 */
+export const MAX_PATTERN_NESTING_DEPTH = 4;
 
 /**
- * `repeat` を展開した後の pattern の命令数の上限。load 時の展開と PatternProgram の run の表の大きさを抑える。
+ * `repeat` と difficulty の `if` を展開した後の pattern の命令数の上限。load 時の展開と PatternProgram の run の表の大きさを抑える。
  */
 export const MAX_PATTERN_EXPANDED_COMMANDS = 4_096;
 
