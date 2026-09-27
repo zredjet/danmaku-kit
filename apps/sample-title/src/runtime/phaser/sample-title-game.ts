@@ -38,8 +38,17 @@ export function startSampleTitleGame(options: SampleTitleGameOptions): Game {
   });
 }
 
-/** content の hot reload で、stage scene に sprite の texture を読み直させる。stage scene がまだ view を作っていなければ false。 */
-export function reloadSampleTitleTextures(game: Game, requests: readonly AssetLoadRequest[]): boolean {
+/**
+ * content の hot reload で、stage scene に sprite の texture を読み直させる（`StageScene.reloadTextures()`）。stage scene がまだ view を
+ * 作っていないか止まっていれば false。
+ */
+export function reloadSampleTitleTextures(game: Game, requests: readonly AssetLoadRequest[], done: (ok: boolean) => void): boolean {
   const scene = game.scene.getScene("stage");
-  return scene instanceof StageScene && scene.reloadTextures(requests);
+  return scene instanceof StageScene && scene.reloadTextures(requests, done);
+}
+
+/** stage scene が Core の error などで止まっているか。stage scene をまだ始めていなければ false。 */
+export function isSampleTitleHalted(game: Game): boolean {
+  const scene = game.scene.getScene("stage");
+  return scene instanceof StageScene && scene.halted;
 }

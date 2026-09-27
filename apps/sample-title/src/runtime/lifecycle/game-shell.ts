@@ -91,6 +91,8 @@ export class GameShell {
   #stageChanged = false;
   #failure: Extract<GameShellStep, { ok: false }> | null = null;
   #debugOverlay: boolean;
+  /** browser の focus を失っているか。focus がない間に始めた stage（content の hot reload）の開始演出は、focus が戻るまで進めない。 */
+  #focusLost = false;
 
   constructor(options: GameShellOptions) {
     this.#options = options;
@@ -150,9 +152,9 @@ export class GameShell {
   }
 
   /**
-   * dev server の content の hot reload。以後の stage は `content` で始め、stage の中なら新しい content と新しい seed で stage を最初から
-   * 始め直す（入力と開始演出は捨て、前の stage の入力の記録には混ぜない）。title と loading では次の stage から使う。Core の error で
-   * 止まった後は何もしない。
+   * dev server の content の hot reload。以後の stage は `content` で始め、stage の中なら新しい content で stage を最初から始め直す（seed
+   * は `nextSeed()` の次の値、入力と開始演出は捨て、前の stage の入力の記録には混ぜない）。title と loading では次の stage から使う。
+   * Core の error で止まった後は何もしない（呼び出し側は page を読み込み直す）。
    */
   replaceContent(content: GameShellContent): void {
     this.#content = content;
@@ -171,6 +173,7 @@ export class GameShell {
 
   /** browser の focus lost と、visibility が hidden になったとき。 */
   loseFocus(): void {
+    this.#focusLost = true;
     this.#apply({ type: "focusLost" });
   }
 
@@ -180,6 +183,7 @@ export class GameShell {
    * lifecycle は変えない。`paused` は focus が戻っただけでは再開せず、`pause` を待つ（design 6）。
    */
   regainFocus(): void {
+    this.#focusLost = false;
     if (!this.#failure) {
       this.#stage?.timer.resume();
     }
@@ -280,6 +284,14 @@ export class GameShell {
     }
   }
 
+  #createStartTimer(): StageStartTimer {
+    const timer = new StageStartTimer(this.#options.startDurationMs ?? STAGE_START_DURATION_MS);
+    if (this.#focusLost) {
+      timer.suspend();
+    }
+    return timer;
+  }
+
   #startStage(): void {
     const seed = this.#options.nextSeed();
     const start = Object.freeze({ ...this.#content.stage, seed });
@@ -292,7 +304,7 @@ export class GameShell {
       start,
       seed,
       loop: new StageLoop(session.value, this.#options.input, { recordInputs: this.#options.recordInputs ?? false }),
-      timer: new StageStartTimer(this.#options.startDurationMs ?? STAGE_START_DURATION_MS),
+      timer: this.#createStartTimer(),
       frame: null,
       latestInput: null,
     };

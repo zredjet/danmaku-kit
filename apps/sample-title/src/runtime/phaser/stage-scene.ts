@@ -21,7 +21,8 @@ export type StageSceneOptions = Readonly<{
   shell: GameShell;
   hud: HudPort;
   collisionRadii: ReadonlyMap<string, number>;
-  versionLabel: string;
+  /** Core と content の version（debug HUD の 1 行目）。content の hot reload で変わる。 */
+  versionLabel: () => string;
   audioStatus: AudioStatus;
 }>;
 
@@ -55,6 +56,7 @@ export class StageScene extends Scene {
   #halted = false;
   #assetNotes: readonly string[] = [];
   #lastEntities: readonly ViewEntity[] = [];
+  #textureReloads = 0;
 
   constructor(options: StageSceneOptions) {
     super("stage");
@@ -149,7 +151,7 @@ export class StageScene extends Scene {
   #debugLines(step: Extract<GameShellStep, { ok: true }>): readonly string[] {
     const sparkNotes = this.#sparks.droppedTotal > 0 ? [`hit sparks dropped ${this.#sparks.droppedTotal}`] : [];
     return buildDebugHudLines({
-      versionLabel: this.#options.versionLabel,
+      versionLabel: this.#options.versionLabel(),
       lifecycle: step.lifecycle.state,
       audioStatus: this.#options.audioStatus,
       seed: step.seed,
@@ -160,26 +162,48 @@ export class StageScene extends Scene {
     });
   }
 
+  /** Core の error、runtime の fatal、view pool の枯渇で scene を止めたか。止めた scene は content の hot reload でも再開しない。 */
+  get halted(): boolean {
+    return this.#halted;
+  }
+
   /**
    * content の hot reload で asset manifest の sprite の path が変わったとき、その texture を読み直して表示中の view に当て直す。stage は
-   * 続ける。view をまだ作っていなければ false を返す（呼び出し側は page を読み込み直す）。
+   * 続ける。読み込みの間も表示中の view が古い texture を描けるよう、一時的な key で読み込み、すべて読めたら古い texture と入れ替える。
+   * 読めない sprite があれば古い texture のまま `done(false)` を呼ぶ（呼び出し側は page を読み込み直す）。view をまだ作っていないか、
+   * scene が止まっていれば読み込まずに false を返す。
    */
-  reloadTextures(requests: readonly AssetLoadRequest[]): boolean {
+  reloadTextures(requests: readonly AssetLoadRequest[], done: (ok: boolean) => void): boolean {
     const views = this.#views;
     if (!views || this.#halted) {
       return false;
     }
-    for (const request of requests) {
-      if (this.textures.exists(request.key)) {
-        this.textures.remove(request.key);
-      }
+    this.#textureReloads += 1;
+    const temporaryKeys = requests.map((request) => `${request.key}#hot-reload-${this.#textureReloads}`);
+    requests.forEach((request, index) => {
       if (request.format === "svg") {
-        this.load.svg(request.key, request.url, { scale: request.rasterScale });
+        this.load.svg(temporaryKeys[index]!, request.url, { scale: request.rasterScale });
       } else {
-        this.load.image(request.key, request.url);
+        this.load.image(temporaryKeys[index]!, request.url);
       }
-    }
-    this.load.once(Loader.Events.COMPLETE, () => views.refreshTextures());
+    });
+    this.load.once(Loader.Events.COMPLETE, () => {
+      if (!temporaryKeys.every((key) => this.textures.exists(key))) {
+        for (const key of temporaryKeys.filter((temporary) => this.textures.exists(temporary))) {
+          this.textures.remove(key);
+        }
+        done(false);
+        return;
+      }
+      requests.forEach((request, index) => {
+        if (this.textures.exists(request.key)) {
+          this.textures.remove(request.key);
+        }
+        this.textures.renameTexture(temporaryKeys[index]!, request.key);
+      });
+      views.refreshTextures();
+      done(true);
+    });
     this.load.start();
     return true;
   }

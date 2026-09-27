@@ -1,20 +1,18 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { decodePng, rgbAt } from "./png.ts";
-import { BACKGROUND_RGB, readDump, startStage, toViewportPoint, waitForLifecycle, waitForTicks } from "./support.ts";
+import {
+  BACKGROUND_RGB,
+  playerCenterRgb,
+  readDump,
+  startStage,
+  toViewportPoint,
+  waitForLifecycle,
+  waitForTicks,
+} from "./support.ts";
 
 // 等倍（scale 1、DPR 1）で表示し、playfield の 1 px が screenshot の 1 px になるようにする。
 test.use({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
-
-/** 自機の中心の画素の色を screenshot から読む。 */
-async function playerCenterRgb(page: Page): Promise<[number, number, number]> {
-  const dump = await readDump(page);
-  if (!dump.playerPosition) {
-    throw new Error("no player in the frame");
-  }
-  const center = toViewportPoint(dump, dump.playerPosition);
-  return rgbAt(decodePng(await page.screenshot()), center.x, center.y);
-}
 
 const isWhite = ([red, green, blue]: readonly number[]) => red! > 230 && green! > 230 && blue! > 230;
 

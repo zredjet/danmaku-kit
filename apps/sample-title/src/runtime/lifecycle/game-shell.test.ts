@@ -307,3 +307,33 @@ test("restarts a running stage with the reloaded content and a new seed, and use
   atTitle.shell.advance(0);
   assert.deepEqual([atTitle.seeds, next.seeds], [[], ["seed-1"]]);
 });
+
+test("keeps the start timer of a stage restarted while the window has no focus stopped until the focus returns", () => {
+  const { shell } = createPlayingShell();
+  shell.loseFocus();
+  assert.equal(shell.lifecycle.state, "paused");
+
+  shell.replaceContent({ loadedGame: createScriptedGame().loadedGame, stage: { stageId: "stage.stage_01", difficulty: "normal" } });
+  shell.advance(0);
+  shell.advance(START_MS * 3);
+  assert.equal(shell.lifecycle.state, "stageStarting");
+  shell.regainFocus();
+  shell.advance(START_MS);
+  shell.advance(START_MS);
+  assert.equal(shell.lifecycle.state, "playing");
+});
+
+test("ignores a content reload after the Core failed", () => {
+  const failing: Pick<LoadedGame, "startStage"> = {
+    startStage: () => ({ ok: false, errors: [{ code: "stage.notFound", message: "no stage" }] }),
+  };
+  const { shell, input } = createShell(failing);
+  shell.beginLoading();
+  shell.finishLoading();
+  press(input, "Enter");
+  assert.equal(shell.advance(0).ok, false);
+  const reloaded = createScriptedGame();
+
+  shell.replaceContent({ loadedGame: reloaded.loadedGame, stage: { stageId: "stage.stage_01", difficulty: "normal" } });
+  assert.deepEqual([shell.advance(0).ok, reloaded.seeds], [false, []]);
+});

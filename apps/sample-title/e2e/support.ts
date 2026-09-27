@@ -5,6 +5,7 @@ import type { BrowserDebugStateDump } from "../src/runtime/debug/browser-debug-s
 import type { BrowserReplayRecord } from "../src/runtime/debug/browser-replay-record.ts";
 import type { GameLifecycleState } from "../src/runtime/lifecycle/game-lifecycle.ts";
 import { PLAYFIELD_BACKGROUND_COLOR } from "../src/runtime/view/playfield.ts";
+import { decodePng, rgbAt } from "./png.ts";
 
 /** playfield の背景色の RGB。canvas に何も描かれていない画素の色。 */
 export const BACKGROUND_RGB: readonly [number, number, number] = Object.freeze([1, 3, 5].map((start) => (
@@ -37,7 +38,8 @@ export async function readReplay(page: Page): Promise<BrowserReplayRecord> {
  */
 export async function waitForLifecycle(page: Page, state: GameLifecycleState): Promise<void> {
   await expect.poll(
-    async () => page.evaluate(() => window.__SHOOTING_DEBUG_STATE__?.().lifecycle ?? null),
+    // 読み込み直しの途中で page の context が入れ替わると evaluate が失敗するので、そのときも待ち続ける。
+    async () => page.evaluate(() => window.__SHOOTING_DEBUG_STATE__?.().lifecycle ?? null).catch(() => null),
     { timeout: 30_000 },
   ).toBe(state);
 }
@@ -63,4 +65,14 @@ export function toViewportPoint(dump: BrowserDebugStateDump, point: Readonly<{ x
     x: dump.overlayTransform.x + point.x * dump.overlayTransform.scale,
     y: dump.overlayTransform.y + point.y * dump.overlayTransform.scale,
   };
+}
+
+/** 自機の中心の画素の色を screenshot から読む。 */
+export async function playerCenterRgb(page: Page): Promise<[number, number, number]> {
+  const dump = await readDump(page);
+  if (!dump.playerPosition) {
+    throw new Error("no player in the frame");
+  }
+  const center = toViewportPoint(dump, dump.playerPosition);
+  return rgbAt(decodePng(await page.screenshot()), center.x, center.y);
 }

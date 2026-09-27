@@ -6,15 +6,9 @@ import type { AssetManifest } from "../assets/asset-manifest.ts";
 export const CONTENT_UPDATE_EVENT = "sample-title:content-update";
 
 /**
- * content の変更を検証して分類した結果（design 19 の hot reload の表）。
- *
- * - `unchanged`: 検証はしたが、`GameDefinition` も asset manifest も変わらない（schema だけ、書式やコメントだけの変更）。
- * - `assets`: asset manifest だけが変わった。
- * - `content`: `GameDefinition` が変わった（stage、enemy、pattern、path、player、shot、feature の定義など）。
- * - `error`: 検証に失敗した。app は古い content のまま動かし、human 形式の診断を出す。
+ * dev server が content の変更を検証した結果。`validated` は検証済みの content 全体で、app が今動かしている content と比べて何が
+ * 変わったかを決める（`decideHotReload()`）。`error` は検証に失敗した human 形式の診断で、app は古い content のまま動かす。
  */
 export type ContentUpdate =
-  | Readonly<{ kind: "unchanged" }>
-  | Readonly<{ kind: "assets"; assetManifest: AssetManifest }>
-  | Readonly<{ kind: "content"; definition: GameDefinition; assetManifest: AssetManifest }>
+  | Readonly<{ kind: "validated"; definition: GameDefinition; assetManifest: AssetManifest }>
   | Readonly<{ kind: "error"; message: string }>;

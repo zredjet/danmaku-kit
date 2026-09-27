@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { EventEmitter } from "node:events";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,12 +12,12 @@ import { loadValidatedGameDefinition } from "@shooting-sample/validate-content";
 
 import {
   GAME_DEFINITION_MODULE_ID,
-  classifyContentUpdate,
   createGameDefinitionModule,
   isContentSourceFile,
   listContentSourcePaths,
   loadValidatedContent,
   sampleTitleContentPlugin,
+  toContentUpdate,
 } from "./content-plugin.ts";
 
 const sampleTitleRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -119,25 +120,66 @@ test("treats the game definition file and files under the content root as conten
   );
 });
 
-test("classifies a re-validated content against the content the app has", async () => {
-  const current = await loadValidatedContent(sampleTitlePaths);
-  assert.ok(current.ok);
-  const { definition, assetManifest } = current;
-  const changedDefinition = { ...definition, content: { ...definition.content, version: "sample-title@content.x" } };
-  const changedManifest = {
-    ...assetManifest,
-    assets: { ...assetManifest.assets, "enemy.drone": { ...assetManifest.assets["enemy.drone"]!, path: "assets/sprites/other.svg" } },
+test("sends the validated content or the validation error as the content update", async () => {
+  const content = await loadValidatedContent(sampleTitlePaths);
+  assert.ok(content.ok);
+
+  assert.deepEqual(toContentUpdate(content), { kind: "validated", definition: content.definition, assetManifest: content.assetManifest });
+  assert.deepEqual(toContentUpdate({ ok: false, error: "broken" }), { kind: "error", message: "broken" });
+});
+
+test("sends content updates to a loaded page and reloads a page that could not load the content", async (context) => {
+  const root = await mkdtemp(path.join(tmpdir(), "sample-title-plugin-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await cp(path.join(sampleTitleRoot, "config"), path.join(root, "config"), { recursive: true });
+  await cp(path.join(sampleTitleRoot, "content"), path.join(root, "content"), { recursive: true });
+  const paths = { gameDefinitionPath: path.join(root, "config/game-definition.yaml"), contentRoot: path.join(root, "content") };
+  const plugin = sampleTitleContentPlugin(paths);
+  const sent: unknown[] = [];
+  const watcher = new EventEmitter();
+  const server = {
+    watcher: Object.assign(watcher, { add: () => watcher }),
+    config: { logger: { warn: () => undefined, error: () => undefined } },
+    environments: {
+      client: {
+        moduleGraph: { getModuleById: () => undefined, invalidateModule: () => undefined },
+        hot: { send: (...message: unknown[]) => sent.push(message.length === 1 ? message[0] : message) },
+      },
+    },
+  };
+  (plugin.configResolved as (config: unknown) => void)({ command: "serve" });
+  (plugin.configureServer as (server: unknown) => void)(server);
+  const load = () => (plugin.load as (this: unknown, id: string) => Promise<unknown>).call({
+    error: (message: string) => {
+      throw new Error(message);
+    },
+    warn: () => undefined,
+    addWatchFile: () => undefined,
+  }, `\0${GAME_DEFINITION_MODULE_ID}`);
+  const change = async (file: string, search: string, replace: string) => {
+    const target = path.join(paths.contentRoot, file);
+    await writeFile(target, (await readFile(target, "utf8")).replace(search, replace));
+    const before = sent.length;
+    watcher.emit("change", target);
+    await waitFor(() => sent.length > before);
+    return sent.at(-1);
   };
 
-  assert.deepEqual(classifyContentUpdate(current, current), { kind: "unchanged" });
-  assert.deepEqual(classifyContentUpdate(current, { ...current, definition: changedDefinition }), {
-    kind: "content",
-    definition: changedDefinition,
-    assetManifest,
-  });
-  assert.deepEqual(classifyContentUpdate(current, { ...current, assetManifest: changedManifest }), {
-    kind: "assets",
-    assetManifest: changedManifest,
-  });
-  assert.deepEqual(classifyContentUpdate(current, { ok: false, error: "broken" }), { kind: "error", message: "broken" });
+  await load();
+  const broken = await change("enemies/drone.yaml", "hp: 5", "hp: fast") as unknown[];
+  assert.equal(broken[0], "sample-title:content-update");
+  assert.equal((broken[1] as { kind: string }).kind, "error");
+  // 壊れた content のまま page を読み込み直すと module の読み込みが失敗し、直した変更は page の読み込み直しになる。
+  await assert.rejects(load());
+  assert.deepEqual(await change("enemies/drone.yaml", "hp: fast", "hp: 5"), { type: "full-reload" });
+  await load();
+  const fixed = await change("enemies/drone.yaml", "score: 50", "score: 70") as unknown[];
+  assert.equal((fixed[1] as { kind: string }).kind, "validated");
 });
+
+async function waitFor(condition: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 200 && !condition(); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.ok(condition(), "the content plugin did not send an update");
+}

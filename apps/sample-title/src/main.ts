@@ -11,7 +11,7 @@ import { KeyboardInputAdapter } from "./runtime/input/keyboard-input.ts";
 import { GameShell } from "./runtime/lifecycle/game-shell.ts";
 import { selectStartStage } from "./runtime/lifecycle/stage-difficulty.ts";
 import { applyRenderScale } from "./runtime/phaser/render-scale.ts";
-import { reloadSampleTitleTextures, startSampleTitleGame } from "./runtime/phaser/sample-title-game.ts";
+import { isSampleTitleHalted, reloadSampleTitleTextures, startSampleTitleGame } from "./runtime/phaser/sample-title-game.ts";
 import { collectCollisionRadii } from "./runtime/view/collision-radii.ts";
 import { collectDefinitionAssets } from "./runtime/view/definition-assets.ts";
 import { planViewPoolCapacities } from "./runtime/view/view-pool-plan.ts";
@@ -59,6 +59,9 @@ const shell = new GameShell({
 });
 
 let assetStatus: AssetStatus = "loading";
+// hot reload で stage を始め直した content。debug HUD の version と、次の変更との比較に使う。
+let current = { definition: gameDefinition, assetManifest };
+const viewPoolPlan = planViewPoolCapacities(gameDefinition, stage.stageId, gameDefinition.defaultPlayerId);
 const game = startSampleTitleGame({
   parent: stageRoot,
   renderScale: initialLayout.renderScale,
@@ -66,7 +69,7 @@ const game = startSampleTitleGame({
     assetManifest,
     baseUrl: import.meta.env.BASE_URL,
     definitionAssets: collectDefinitionAssets(gameDefinition),
-    viewPoolPlan: planViewPoolCapacities(gameDefinition, stage.stageId, gameDefinition.defaultPlayerId),
+    viewPoolPlan,
     svgRasterScale: svgRasterScaleFor(initialLayout.renderScale),
     shell,
     hud,
@@ -78,18 +81,19 @@ const game = startSampleTitleGame({
     shell,
     hud,
     collisionRadii: collectCollisionRadii(gameDefinition),
-    versionLabel: `shooting-core ${core.coreVersion} / content ${gameDefinition.content.version}`,
+    versionLabel: () => `shooting-core ${core.coreVersion} / content ${current.definition.content.version}`,
     audioStatus: PHASE_2A_AUDIO_STATUS,
   },
 });
 viewport.onLayoutChange((layout) => applyRenderScale(game, layout.renderScale));
 
-// dev server の content の hot reload（design 19）。content plugin が検証して分類した変更を受け、stage を新しい content で始め直すか、
-// sprite を読み直すか、page を読み込み直す。検証に失敗した変更は HUD の下端に出し、古い content のまま動かし続ける。
-if (import.meta.hot) {
-  let current = { definition: gameDefinition, assetManifest };
+// dev server の content の hot reload（design 19）。content plugin が検証した content を今の content と比べ、stage を新しい content で
+// 始め直すか、sprite を読み直すか、page を読み込み直す。検証に失敗した変更は HUD の下端に出し、古い content のまま動かし続ける。
+// `current` は app が実際に使っている content だけを指し、使えなかった変更（error）では進めない。
+if (import.meta.hot && viewPoolPlan.ok) {
+  const viewPoolCapacities = viewPoolPlan.capacities;
   import.meta.hot.on(CONTENT_UPDATE_EVENT, (update: ContentUpdate) => {
-    const action = decideHotReload(update, { core, ...current, requestedDifficulty });
+    const action = decideHotReload(update, { core, ...current, viewPoolCapacities, requestedDifficulty, halted: isSampleTitleHalted(game) });
     switch (action.type) {
       case "clearError":
         hud.showContentError(null);
@@ -100,12 +104,18 @@ if (import.meta.hot) {
       case "reloadTextures": {
         const requests = planAssetLoads(action.assetManifest, import.meta.env.BASE_URL, svgRasterScaleFor(initialLayout.renderScale))
           .requests.filter((request) => action.keys.includes(request.key));
-        if (!reloadSampleTitleTextures(game, requests)) {
+        const started = reloadSampleTitleTextures(game, requests, (ok) => {
+          if (!ok) {
+            console.info("[sample-title] content changed: reloading the page because a sprite could not be loaded");
+            window.location.reload();
+            return;
+          }
+          current = { ...current, assetManifest: action.assetManifest };
+          hud.showContentError(null);
+        });
+        if (!started) {
           window.location.reload();
-          break;
         }
-        current = { ...current, assetManifest: action.assetManifest };
-        hud.showContentError(null);
         break;
       }
       case "restartStage":

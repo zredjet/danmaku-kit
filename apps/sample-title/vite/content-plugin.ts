@@ -29,17 +29,18 @@ export type ValidatedContent =
 /**
  * sample title の content を dev server / build 時に validate-content で検証し、`GameDefinition` を virtual module で渡す。
  *
- * validation error は build を失敗させ、dev server では error overlay に出す。warning / info は Vite の warning にする。
- * browser へ YAML parser と filesystem access を持ち込まないよう、検証済みの plain data だけを module にする。
- * dev server では game-definition と content root の変更で content を検証し直し、直前の content と比べて分類した結果
- * （`ContentUpdate`）を HMR の custom event で app へ送る（design 19）。page は再読み込みせず、app が stage の restart や texture の
- * 読み直しを決める。module も無効化するので、page を読み込み直せば新しい content になる。
+ * validation error は build を失敗させ、dev server の最初の読み込みでは Vite の error overlay に出す。warning / info は Vite の warning
+ * にする。browser へ YAML parser と filesystem access を持ち込まないよう、検証済みの plain data だけを module にする。
+ * dev server では game-definition と content root の変更で content を検証し直し、結果（`ContentUpdate`）を HMR の custom event で
+ * app へ送る（design 19）。page は再読み込みせず、app が今の content と比べて stage の restart や texture の読み直しを決め、検証の error
+ * は HUD に出す。module も無効化するので、page を読み込み直せば新しい content になる。page が content を読み込めていない（最初の
+ * 読み込みが検証の error だった）間は event を受ける app がないので、page を読み込み直させる。
  * build では同じ file を watch 対象に登録し、`vite build --watch` が content の変更で再 build するようにする。
  */
 export function sampleTitleContentPlugin(paths: ValidateContentSourcePaths): Plugin {
   let isBuild = false;
-  // dev server が直前に app へ渡した content。変更をこれと比べて分類する。まだ渡していなければ page を読み込み直す。
-  let current: Extract<ValidatedContent, { ok: true }> | null = null;
+  // page が最後に読み込んだ module が content を渡せたか。渡せていなければ、変更の event を受ける app が動いていない。
+  let moduleLoaded = false;
   return {
     name: "sample-title-content",
     configResolved(config) {
@@ -59,13 +60,13 @@ export function sampleTitleContentPlugin(paths: ValidateContentSourcePaths): Plu
         }
       }
       const content = await loadValidatedContent(paths);
+      moduleLoaded = content.ok;
       if (!content.ok) {
         return this.error(content.error);
       }
       if (content.warning !== null) {
         this.warn(content.warning);
       }
-      current = content;
       return gameDefinitionModuleCode(content);
     },
     configureServer(server) {
@@ -81,16 +82,11 @@ export function sampleTitleContentPlugin(paths: ValidateContentSourcePaths): Plu
           if (next.ok && next.warning !== null) {
             server.config.logger.warn(next.warning);
           }
-          if (current === null) {
-            current = next.ok ? next : null;
+          if (!moduleLoaded) {
             server.environments.client.hot.send({ type: "full-reload" });
             return;
           }
-          const update = classifyContentUpdate(current, next);
-          if (next.ok) {
-            current = next;
-          }
-          server.environments.client.hot.send(CONTENT_UPDATE_EVENT, update);
+          server.environments.client.hot.send(CONTENT_UPDATE_EVENT, toContentUpdate(next));
         }).catch((error: unknown) => {
           server.config.logger.error(`[sample-title] content hot reload failed: ${String(error)}`);
         });
@@ -137,25 +133,11 @@ export async function loadValidatedContent(paths: ValidateContentSourcePaths): P
   });
 }
 
-/**
- * 直前に app へ渡した content と検証し直した content を比べ、app へ送る変更（design 19 の hot reload の表）に分類する。
- * `GameDefinition` が変われば `content`、asset manifest だけが変われば `assets`、どちらも同じなら `unchanged`、検証に失敗すれば
- * `error`（app は古い content のまま動く）。
- */
-export function classifyContentUpdate(
-  current: Extract<ValidatedContent, { ok: true }>,
-  next: ValidatedContent,
-): ContentUpdate {
-  if (!next.ok) {
-    return Object.freeze({ kind: "error", message: next.error });
-  }
-  if (JSON.stringify(next.definition) !== JSON.stringify(current.definition)) {
-    return Object.freeze({ kind: "content", definition: next.definition, assetManifest: next.assetManifest });
-  }
-  if (JSON.stringify(next.assetManifest) !== JSON.stringify(current.assetManifest)) {
-    return Object.freeze({ kind: "assets", assetManifest: next.assetManifest });
-  }
-  return Object.freeze({ kind: "unchanged" });
+/** 検証の結果を app へ送る変更にする。 */
+export function toContentUpdate(content: ValidatedContent): ContentUpdate {
+  return content.ok
+    ? Object.freeze({ kind: "validated", definition: content.definition, assetManifest: content.assetManifest })
+    : Object.freeze({ kind: "error", message: content.error });
 }
 
 /** dev server の watcher が通知した file が、game-definition file か content root 配下なら true を返す。 */

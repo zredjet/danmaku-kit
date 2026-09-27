@@ -7,7 +7,7 @@ import { expect, test } from "@playwright/test";
 import { createServer, type ViteDevServer } from "vite";
 
 import { sampleTitleContentPlugin } from "../vite/content-plugin.ts";
-import { readDump, readReplay, waitForLifecycle, waitForTicks } from "./support.ts";
+import { playerCenterRgb, readDump, readReplay, waitForLifecycle, waitForTicks } from "./support.ts";
 
 // content の hot reload（design 19、Phase 2B-8）は dev server だけの機能なので、この file は content を一時 directory へ写した dev
 // server を自分で起こして試す（他の test が使う test build の preview server とは別）。
@@ -26,7 +26,8 @@ test.beforeAll(async () => {
   server = await createServer({
     root: appRoot,
     configFile: false,
-    logLevel: "error",
+    // 壊れた content を試す間の Vite の error log は想定どおりなので出さない。
+    logLevel: "silent",
     plugins: [sampleTitleContentPlugin({ gameDefinitionPath: path.join(workRoot, "config/game-definition.yaml"), contentRoot })],
     server: { host: "127.0.0.1", port: 4190, strictPort: false },
   });
@@ -71,19 +72,32 @@ test("restarts the stage, keeps running on errors and reloads sprites when the c
   await editContent("enemies/drone.yaml", "hp: fast", "hp: 5");
   await expect(page.locator(".hud-content-error")).toBeHidden({ timeout: 15_000 });
 
-  // sprite の path だけの変更は texture を読み直し、stage を続ける。
-  const beforeAssets = await readDump(page);
-  await editContent("assets/manifest.yaml", "path: assets/sprites/pickup-score-small.svg", "path: assets/sprites/bullet-blue-large.svg");
-  await page.waitForTimeout(1_000);
-  const afterAssets = await readDump(page);
-  expect(afterAssets.tick).toBeGreaterThan(beforeAssets.tick);
+  // sprite の path だけの変更は texture を読み直し、stage を続ける。表示中の自機の sprite を scout の sprite に替えると、自機の中心が
+  // 自機の濃い青から scout の中心の黄色になる。
+  expect((await playerCenterRgb(page))[0]).toBeLessThan(100);
+  await editContent("assets/manifest.yaml", "path: assets/sprites/player.svg", "path: assets/sprites/enemy-scout.svg");
+  await expect.poll(async () => (await playerCenterRgb(page))[0], { timeout: 15_000 }).toBeGreaterThan(200);
+  expect((await waitForTicks(page, 30)).lifecycle).toBe("playing");
   expect(await page.evaluate(() => (window as unknown as { hotReloadMarker?: boolean }).hotReloadMarker)).toBe(true);
 
   // 読み込み済みの view pool に収まらない変更（enemy を足す）は page を読み込み直す。
   await editContent("stages/stage_01.yaml", "timeline:\n", "timeline:\n  - tick: 1\n    action:\n      type: spawnEnemy\n      enemy: enemy.drone\n      path: path.drone_dive\n      pattern: pattern.drone_aimed_shot\n      position: { x: 40, y: -16 }\n");
-  await expect.poll(async () => page.evaluate(() => (window as unknown as { hotReloadMarker?: boolean }).hotReloadMarker ?? false), {
-    timeout: 15_000,
-  }).toBe(false);
+  await expect.poll(async () => page.evaluate(() => (window as unknown as { hotReloadMarker?: boolean }).hotReloadMarker ?? false)
+    // 読み込み直しの途中は context がないので、読み込み終わるまで待ち続ける。
+    .catch(() => "navigating"), { timeout: 15_000 }).toBe(false);
   await waitForLifecycle(page, "title");
   expect(pageErrors).toEqual([]);
+});
+
+test("reloads a page that loaded broken content once the content is fixed", async ({ page }) => {
+  await page.goto(`${server.resolvedUrls!.local[0]!}?seed=hot-reload-broken`);
+  await waitForLifecycle(page, "title");
+  await editContent("enemies/drone.yaml", "hp: 5", "hp: fast");
+  await expect(page.locator(".hud-content-error")).toContainText("enemy.hp", { timeout: 15_000 });
+
+  // 壊れた content のまま page を読み込み直すと app は動かない（Vite の error overlay）が、直すと page を読み込み直して戻る。
+  await page.reload();
+  await expect(page.locator("vite-error-overlay")).toHaveCount(1, { timeout: 15_000 });
+  await editContent("enemies/drone.yaml", "hp: fast", "hp: 5");
+  await waitForLifecycle(page, "title");
 });
