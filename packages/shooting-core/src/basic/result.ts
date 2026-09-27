@@ -72,6 +72,10 @@ export type CoreError = {
 export type CoreWarning = {
   code: string;
   message: string;
+  /** warning の原因がある content の位置（`content.patterns[0].steps[3]` など）。 */
+  schemaPath?: string;
+  /** warning の原因がある definition の id。 */
+  referrerId?: string;
 };
 
 /**
@@ -116,5 +120,10 @@ function freezeErrors(errors: readonly CoreError[]): readonly CoreError[] {
 }
 
 function freezeWarnings(warnings: readonly CoreWarning[]): readonly CoreWarning[] {
-  return Object.freeze(warnings.map((warning) => Object.freeze({ code: warning.code, message: warning.message })));
+  return Object.freeze(warnings.map((warning) => Object.freeze({
+    code: warning.code,
+    message: warning.message,
+    ...(warning.schemaPath === undefined ? {} : { schemaPath: warning.schemaPath }),
+    ...(warning.referrerId === undefined ? {} : { referrerId: warning.referrerId }),
+  })));
 }

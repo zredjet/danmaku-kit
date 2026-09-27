@@ -57,11 +57,11 @@ test("resolves each cursor's run up to the next wait or the end", () => {
 
   assert.equal(program.length, 4);
   assert.deepEqual(program.runs, [
-    { fires: [], bulletCount: 0, executedCommands: 1, next: { cursor: 1, waitTicks: 20 } },
-    { fires: [aimedThreeWay], bulletCount: 3, executedCommands: 2, next: { cursor: 3, waitTicks: 50 } },
-    { fires: [], bulletCount: 0, executedCommands: 1, next: { cursor: 3, waitTicks: 50 } },
-    { fires: [aimedThreeWay], bulletCount: 3, executedCommands: 3, next: { cursor: 3, waitTicks: 50 } },
-    { fires: [], bulletCount: 0, executedCommands: 0, next: null },
+    { fires: [], bulletCount: 0, executedCommands: 1, executedSteps: [0], next: { cursor: 1, waitTicks: 20 } },
+    { fires: [aimedThreeWay], bulletCount: 3, executedCommands: 2, executedSteps: [1, 2], next: { cursor: 3, waitTicks: 50 } },
+    { fires: [], bulletCount: 0, executedCommands: 1, executedSteps: [2], next: { cursor: 3, waitTicks: 50 } },
+    { fires: [aimedThreeWay], bulletCount: 3, executedCommands: 3, executedSteps: [1, 2, 3], next: { cursor: 3, waitTicks: 50 } },
+    { fires: [], bulletCount: 0, executedCommands: 0, executedSteps: [], next: null },
   ]);
   assert.equal(Object.isFrozen(program.runs[1]!.fires), true);
 });

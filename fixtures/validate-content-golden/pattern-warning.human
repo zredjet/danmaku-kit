@@ -1,0 +1,2 @@
+<content-root>/patterns/scout_three_way.yaml:15:5-16:1 [WARNING] pattern.unreachableStep: pattern.steps[4] is never executed from the spawn (schema=content.patterns[1].steps[4], source=pattern.scout_three_way)
+Summary: 0 error(s), 1 warning(s), 0 info(s)

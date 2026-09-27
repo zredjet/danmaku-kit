@@ -1,7 +1,7 @@
 import type { ShootingCore } from "./api-types.ts";
 import { createLoadedContentIndex } from "./content/content-index.ts";
 import type { GameDefinition } from "./content/types.ts";
-import { validateGameDefinition } from "./content/validation.ts";
+import { validateGameDefinitionWithWarnings } from "./content/validation.ts";
 import type { StageSessionTestingHookOptions } from "./instrumentation/stage-session-testing-hooks.ts";
 import { assertInternalTestHooksEnabled } from "./instrumentation/test-hooks-guard.ts";
 import { coreError, errorResult, okResult } from "./result.ts";
@@ -42,11 +42,14 @@ function createShootingCoreInternal(
       if (!plainDefinition) {
         return coreError("definition.invalidShape", "GameDefinition must be JSON-compatible plain data");
       }
-      const errors = validateGameDefinition(plainDefinition);
+      const { errors, warnings } = validateGameDefinitionWithWarnings(plainDefinition);
       if (errors.length > 0) {
         return errorResult(errors);
       }
-      return okResult(createLoadedGame(createLoadedContentIndex(plainDefinition as GameDefinition), coreVersion, testingHooks));
+      return okResult(
+        createLoadedGame(createLoadedContentIndex(plainDefinition as GameDefinition), coreVersion, testingHooks),
+        warnings,
+      );
     },
   });
 }

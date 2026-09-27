@@ -24,6 +24,8 @@ export type PatternRun = Readonly<{
   fires: readonly PatternFireCommand[];
   bulletCount: number;
   executedCommands: number;
+  /** run が実行する step の index（昇順、重複なし）。到達しない step の検出に使う。 */
+  executedSteps: readonly number[];
   next: Readonly<{ cursor: number; waitTicks: number }> | null;
 }>;
 
@@ -102,6 +104,7 @@ function requireAngleSteps(degrees: number | undefined): number {
  */
 function resolvePatternRun(commands: readonly NormalizedPatternCommand[], start: number): PatternRun {
   const fires: PatternFireCommand[] = [];
+  const executedSteps = new Set<number>();
   const maxExecutedCommands = (commands.length + 1) * (commands.length + 1);
   let cursor = start;
   let executedCommands = 0;
@@ -111,8 +114,9 @@ function resolvePatternRun(commands: readonly NormalizedPatternCommand[], start:
     }
     const command = commands[cursor]!;
     executedCommands += 1;
+    executedSteps.add(cursor);
     if (command.kind === "wait") {
-      return createPatternRun(fires, executedCommands, Object.freeze({ cursor: cursor + 1, waitTicks: command.ticks }));
+      return createPatternRun(fires, executedCommands, executedSteps, Object.freeze({ cursor: cursor + 1, waitTicks: command.ticks }));
     }
     if (command.kind === "fire") {
       fires.push(command.command);
@@ -121,18 +125,20 @@ function resolvePatternRun(commands: readonly NormalizedPatternCommand[], start:
       cursor = command.target;
     }
   }
-  return createPatternRun(fires, executedCommands, null);
+  return createPatternRun(fires, executedCommands, executedSteps, null);
 }
 
 function createPatternRun(
   fires: readonly PatternFireCommand[],
   executedCommands: number,
+  executedSteps: ReadonlySet<number>,
   next: PatternRun["next"],
 ): PatternRun {
   return Object.freeze({
     fires: Object.freeze([...fires]),
     bulletCount: fires.reduce((count, fire) => count + fire.fanOffsetSteps.length, 0),
     executedCommands,
+    executedSteps: Object.freeze([...executedSteps].sort((left, right) => left - right)),
     next,
   });
 }

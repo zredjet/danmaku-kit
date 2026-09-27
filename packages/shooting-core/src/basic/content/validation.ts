@@ -1,4 +1,4 @@
-import type { CoreError } from "../result.ts";
+import type { CoreError, CoreWarning } from "../result.ts";
 import { deepFreezePlainData } from "../shared/immutable.ts";
 import {
   validateAssetReferences,
@@ -8,6 +8,7 @@ import {
   validateStageTimelineReferences,
   validateUniqueIds,
 } from "./validation/references.ts";
+import { validatePatternSemantics } from "./validation/pattern-semantics.ts";
 import { validateDefinitionShape } from "./validation/shape.ts";
 
 /**
@@ -15,17 +16,27 @@ import { validateDefinitionShape } from "./validation/shape.ts";
  *
  * まず runtime shape を確定し、その後で ID の一意性や参照解決のような semantic
  * validation を行う。shape 不正のまま semantic validation に進むと例外になりやすいため、
- * `validateDefinitionShape()` が失敗した場合はそこで止める。
+ * `validateDefinitionShape()` が失敗した場合はそこで止める。warning は `validateGameDefinitionWithWarnings()` で受け取る。
  */
 export function validateGameDefinition(definition: unknown): CoreError[] {
+  return [...validateGameDefinitionWithWarnings(definition).errors];
+}
+
+/**
+ * `validateGameDefinition()` の本体。error がなければ、動作はするが content 制作者へ知らせたい warning（pattern の意味の検証など）も
+ * 返す。
+ */
+export function validateGameDefinitionWithWarnings(
+  definition: unknown,
+): Readonly<{ errors: readonly CoreError[]; warnings: readonly CoreWarning[] }> {
   const errors: CoreError[] = [];
   const plainDefinition = deepFreezePlainData(definition);
   if (!plainDefinition) {
-    return [{ code: "definition.invalidShape", message: "GameDefinition must be JSON-compatible plain data" }];
+    return { errors: [{ code: "definition.invalidShape", message: "GameDefinition must be JSON-compatible plain data" }], warnings: [] };
   }
   const validated = validateDefinitionShape(plainDefinition, errors);
   if (!validated) {
-    return errors;
+    return { errors, warnings: [] };
   }
 
   validateUniqueIds("player", "players", validated.content.players, errors);
@@ -57,5 +68,10 @@ export function validateGameDefinition(definition: unknown): CoreError[] {
   validatePlayerShotReferences(validated.content, errors);
   validatePatternBulletReferences(validated.content, errors);
   validateStageTimelineReferences(validated.content, errors);
-  return errors;
+  if (errors.length > 0) {
+    return { errors, warnings: [] };
+  }
+  // pattern の意味の検証は、shape と参照がすべて正しい content の program だけを見る。
+  const semantics = validatePatternSemantics(validated.content.patterns);
+  return { errors: [...semantics.errors], warnings: semantics.errors.length > 0 ? [] : semantics.warnings };
 }

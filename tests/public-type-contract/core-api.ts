@@ -5,6 +5,7 @@ import type {
   CoreError,
   CoreErrorCode,
   CoreResult,
+  CoreWarning,
   InputFrame,
   LoadedGame,
   SerializedGameState,
@@ -32,6 +33,13 @@ const contextualCoreError: CoreError = {
   schemaPath: "content.stages[0].timeline[0].action.enemy",
   referrerId: "stage.stage_01",
   targetId: "enemy.missing",
+};
+// load の warning は error と同じく content の位置を持てる（pattern の意味の検証など）。
+const contextualCoreWarning: CoreWarning = {
+  code: "pattern.unreachableStep",
+  message: "pattern.steps[4] is never executed from the spawn",
+  schemaPath: "content.patterns[1].steps[4]",
+  referrerId: "pattern.scout_three_way",
 };
 const errorCode: CoreErrorCode = "input.invalidShape";
 const bulletErrorCode: CoreErrorCode = "bullet.notFound";
@@ -135,6 +143,7 @@ void invalidStartOptions;
 void invalidCoreErrorCode;
 void invalidDebugStateHashErrorCode;
 void contextualCoreError;
+void contextualCoreWarning;
 void invalidEntityAllocatorRestoreErrorCode;
 void restorePrngInvalidErrorCode;
 void restoreRegistryInvalidErrorCode;
