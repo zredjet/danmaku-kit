@@ -1,0 +1,37 @@
+import { defineConfig, devices } from "@playwright/test";
+
+const PORT = 4173;
+
+/**
+ * browser smoke test（design 21.5、Phase 2A-12）。`npm run test:browser` で実行し、node:test の `npm test` とは分ける。
+ *
+ * debug state dump の hook は production build に入らないため、`vite build --mode test` の bundle を `vite preview` で配って試す。
+ * screenshot diff は補助で、font の描画が OS で違うため baseline は platform ごとに commit する。baseline のない platform では最初の
+ * 実行が失敗して baseline を書き出すので、中身を確かめてから commit する（`npm run test:browser -- --update-snapshots` でも作れる）。
+ */
+export default defineConfig({
+  testDir: "./e2e",
+  testMatch: "**/*.spec.ts",
+  outputDir: "./test-results",
+  snapshotPathTemplate: "{testDir}/__screenshots__/{testFilePath}/{arg}-{platform}{ext}",
+  fullyParallel: true,
+  forbidOnly: Boolean(process.env.CI),
+  reporter: [["list"]],
+  timeout: 60_000,
+  expect: {
+    timeout: 15_000,
+    toHaveScreenshot: { maxDiffPixelRatio: 0.02, animations: "disabled" },
+  },
+  use: {
+    ...devices["Desktop Chrome"],
+    baseURL: `http://127.0.0.1:${PORT}`,
+    trace: "retain-on-failure",
+  },
+  projects: [{ name: "chromium" }],
+  webServer: {
+    command: "npm run build:test && npm run preview:test",
+    url: `http://127.0.0.1:${PORT}`,
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
+});
