@@ -2,6 +2,9 @@ import type { RuntimeEvent } from "../runtime-event.ts";
 import { resolveAssetUrl } from "./asset-manifest.ts";
 import type { AssetManifest, AssetManifestEntry } from "./asset-manifest.ts";
 
+/** loading の asset の状態。`error` は stage を始められない失敗（required の asset など）。 */
+export type AssetStatus = "loading" | "ready" | "error";
+
 /**
  * loading で読み込む画像 1 つ。`format` は Phaser の loader の選び分けに使う。
  *

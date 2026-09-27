@@ -1,6 +1,8 @@
 import { createShootingCore } from "@shooting-sample/shooting-core";
 import gameDefinition, { assetManifest } from "virtual:sample-title/game-definition";
 
+import { installDebugStateHook } from "./debug/debug-state-hook.ts";
+import type { AssetStatus } from "./runtime/assets/asset-loading.ts";
 import { PHASE_2A_AUDIO_STATUS } from "./runtime/audio/audio-status.ts";
 import { KeyboardInputAdapter } from "./runtime/input/keyboard-input.ts";
 import { GameShell } from "./runtime/lifecycle/game-shell.ts";
@@ -49,6 +51,7 @@ const shell = new GameShell({
   debugOverlay: import.meta.env.DEV,
 });
 
+let assetStatus: AssetStatus = "loading";
 const game = startSampleTitleGame({
   parent: stageRoot,
   renderScale: initialLayout.renderScale,
@@ -60,6 +63,9 @@ const game = startSampleTitleGame({
     svgRasterScale: svgRasterScaleFor(initialLayout.renderScale),
     shell,
     hud,
+    reportAssetStatus: (status) => {
+      assetStatus = status;
+    },
   },
   stage: {
     shell,
@@ -70,6 +76,18 @@ const game = startSampleTitleGame({
   },
 });
 viewport.onLayoutChange((layout) => applyRenderScale(game, layout.renderScale));
+
+// debug state dump の hook は dev server と test build（`vite build --mode test`）にだけ置く。production build では MODE が
+// "production" に置き換わって分岐ごと消え、hook の module も bundle に入らない（vite/debug-state-hook-build.test.ts）。
+if (import.meta.env.MODE !== "production") {
+  installDebugStateHook({
+    shell,
+    layout: viewport.layout,
+    assetStatus: () => assetStatus,
+    audioStatus: PHASE_2A_AUDIO_STATUS,
+    overlay: hud.element,
+  });
+}
 
 /** `?seed=` があれば毎回その seed で stage を始める。seed は debug HUD に出し、同じ入力の再現に使う。 */
 function readRequestedSeed(): string | null {

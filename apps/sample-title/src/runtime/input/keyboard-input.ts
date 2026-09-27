@@ -112,6 +112,11 @@ export class KeyboardInputAdapter {
     })));
   }
 
+  /** まだ tick や render frame に渡していない、ラッチ済みの押下・解放 edge の数（gameplay と UI の合計）。 */
+  get latchedEdgeCount(): number {
+    return this.#pressedActions.size + this.#releasedActions.size + this.#pressedUiActions.size;
+  }
+
   /** 前回の呼び出し以降に押された UI action を押した順に返し、消費する。 */
   takeUiInput(): UiInputFrame {
     const pressed = Object.freeze([...this.#pressedUiActions]);

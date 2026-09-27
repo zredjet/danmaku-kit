@@ -11,7 +11,7 @@ import {
 } from "./game-lifecycle.ts";
 import { StageStartTimer, STAGE_START_DURATION_MS } from "./stage-start-timer.ts";
 
-type ShellInput = Pick<KeyboardInputAdapter, "handleKeyEvent" | "sampleTicks" | "reset" | "takeUiInput">;
+type ShellInput = Pick<KeyboardInputAdapter, "handleKeyEvent" | "sampleTicks" | "reset" | "takeUiInput" | "latchedEdgeCount">;
 
 export type GameShellOptions = Readonly<{
   loadedGame: Pick<LoadedGame, "startStage">;
@@ -84,6 +84,21 @@ export class GameShell {
 
   get debugOverlay(): boolean {
     return this.#debugOverlay;
+  }
+
+  /** 現在の stage の seed。stage の外では null。 */
+  get seed(): string | null {
+    return this.#stage?.seed ?? null;
+  }
+
+  /** 現在の stage で直近に実行した tick の frame。 */
+  get latestFrame(): GameFrame | null {
+    return this.#stage?.frame ?? null;
+  }
+
+  /** まだ tick や render frame に渡していない入力の edge の数。 */
+  get inputQueueDepth(): number {
+    return this.#options.input.latchedEdgeCount;
   }
 
   /** keyboard event を入力 adapter へ渡し、割り当てのある key なら true を返す（呼び出し側が既定動作を止める）。 */

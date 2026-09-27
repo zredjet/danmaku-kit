@@ -231,3 +231,16 @@ test("produces frames that the Core stage session accepts as player input", asyn
   assert.ok(playerPositions[4]!.x > playerPositions[0]!.x);
   assert.deepEqual(playerPositions[7], playerPositions[6]);
 });
+
+test("counts latched edges until a tick or a render frame consumes them", () => {
+  const input = new KeyboardInputAdapter();
+  input.handleKeyEvent({ type: "keydown", code: "KeyZ", repeat: false, metaKey: false });
+  input.handleKeyEvent({ type: "keyup", code: "KeyZ", repeat: false, metaKey: false });
+  input.handleKeyEvent({ type: "keydown", code: "KeyP", repeat: false, metaKey: false });
+  assert.equal(input.latchedEdgeCount, 3);
+
+  input.sampleTicks(0, 1);
+  assert.equal(input.latchedEdgeCount, 1);
+  input.takeUiInput();
+  assert.equal(input.latchedEdgeCount, 0);
+});

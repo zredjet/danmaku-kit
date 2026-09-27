@@ -6,6 +6,8 @@ import type { HudPort, HudView } from "../runtime/hud/hud-view.ts";
  * Phaser の scene からは `HudPort` として呼ばれ、同じ内容の再描画では DOM を触らない。pointer event は canvas へ通す。
  */
 export class HudOverlay implements HudPort {
+  /** overlay の root。canvas と同じ transform root に置く。 */
+  readonly element: HTMLElement;
   readonly #score: HTMLElement;
   readonly #lives: HTMLElement;
   readonly #banner: HTMLElement;
@@ -31,6 +33,7 @@ export class HudOverlay implements HudPort {
     this.#error.hidden = true;
     root.append(top, this.#banner, this.#debug, this.#error);
     container.append(root);
+    this.element = root;
     this.render({ score: null, lives: null, banner: null });
   }
 

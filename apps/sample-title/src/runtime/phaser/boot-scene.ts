@@ -1,7 +1,7 @@
 import { Loader, Scene } from "phaser";
 
 import { planAssetLoads, resolveAssetLoadResults } from "../assets/asset-loading.ts";
-import type { AssetLoadRequest } from "../assets/asset-loading.ts";
+import type { AssetLoadRequest, AssetStatus } from "../assets/asset-loading.ts";
 import type { AssetManifest } from "../assets/asset-manifest.ts";
 import { buildLoadingHudView, type HudPort } from "../hud/hud-view.ts";
 import type { GameShell } from "../lifecycle/game-shell.ts";
@@ -21,6 +21,8 @@ export type BootSceneOptions = Readonly<{
   svgRasterScale: number;
   shell: Pick<GameShell, "beginLoading">;
   hud: HudPort;
+  /** asset を読み終えて stage を始められる（`ready`）か、始められない（`error`）と分かったときに呼ぶ。 */
+  reportAssetStatus: (status: Exclude<AssetStatus, "loading">) => void;
 }>;
 
 /** loading が済んだ stage scene へ渡す、texture と view pool の見積もり。 */
@@ -89,19 +91,20 @@ export class BootScene extends Scene {
       console.warn(`[sample-title] ${describeRuntimeEvent(event)}`);
     }
     if (!outcome.ok) {
-      this.#options.hud.showError("Asset load failed", outcome.events.map(describeRuntimeEvent));
+      this.#fail("Asset load failed", outcome.events.map(describeRuntimeEvent));
       return;
     }
     const textures = resolveDefinitionTextures(this.#options.definitionAssets, outcome.loadedKeys);
     if (!textures.ok) {
-      this.#options.hud.showError("Entity sprites are missing", textures.missingAssets);
+      this.#fail("Entity sprites are missing", textures.missingAssets);
       return;
     }
     const plan = this.#options.viewPoolPlan;
     if (!plan.ok) {
-      this.#options.hud.showError("View pool budget exceeded", [plan.error]);
+      this.#fail("View pool budget exceeded", [plan.error]);
       return;
     }
+    this.#options.reportAssetStatus("ready");
     const data: StageSceneData = {
       textures: textures.textures,
       textureScales: new Map(this.#requests.map((request) => [request.key, request.rasterScale])),
@@ -109,5 +112,10 @@ export class BootScene extends Scene {
       assetEvents: outcome.events,
     };
     this.scene.start("stage", data);
+  }
+
+  #fail(title: string, lines: readonly string[]): void {
+    this.#options.reportAssetStatus("error");
+    this.#options.hud.showError(title, lines);
   }
 }
