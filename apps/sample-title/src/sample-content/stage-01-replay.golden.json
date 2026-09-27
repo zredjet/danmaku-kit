@@ -1,0 +1,220 @@
+{
+  "seed": "stage-01-golden",
+  "weavePeriodTicks": 80,
+  "end": {
+    "tick": 2216,
+    "status": "stageCleared",
+    "score": 3600,
+    "lives": 2
+  },
+  "checkpoints": [
+    {
+      "tick": 599,
+      "score": 550,
+      "lives": 3,
+      "entityCounts": {
+        "player": 1,
+        "enemy": 0,
+        "enemyBullet": 0,
+        "playerShot": 20
+      },
+      "player": {
+        "x": 352,
+        "y": 400
+      },
+      "stateDigest": "97934f44114f6e71"
+    },
+    {
+      "tick": 1199,
+      "score": 1050,
+      "lives": 3,
+      "entityCounts": {
+        "player": 1,
+        "enemy": 0,
+        "enemyBullet": 0,
+        "playerShot": 20
+      },
+      "player": {
+        "x": 192,
+        "y": 400
+      },
+      "stateDigest": "da033e78ceb321df"
+    },
+    {
+      "tick": 1799,
+      "score": 1400,
+      "lives": 3,
+      "entityCounts": {
+        "player": 1,
+        "enemy": 1,
+        "enemyBullet": 16,
+        "playerShot": 17
+      },
+      "player": {
+        "x": 32,
+        "y": 400
+      },
+      "stateDigest": "7b694db899062e52"
+    },
+    {
+      "tick": 2216,
+      "score": 3600,
+      "lives": 2,
+      "entityCounts": {
+        "player": 1,
+        "enemy": 0,
+        "enemyBullet": 29,
+        "playerShot": 13
+      },
+      "player": {
+        "x": 284,
+        "y": 400
+      },
+      "stateDigest": "d7d12f90566ba439"
+    }
+  ],
+  "defeats": [
+    {
+      "tick": 100,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 113,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 126,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 138,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 151,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 380,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 385,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 392,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 463,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 469,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 476,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 686,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 756,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 823,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 991,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 1017,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 1326,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1336,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1350,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1379,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1393,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1404,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1414,
+      "enemy": "enemy.drone",
+      "score": 50
+    },
+    {
+      "tick": 1825,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 1896,
+      "enemy": "enemy.scout",
+      "score": 100
+    },
+    {
+      "tick": 2216,
+      "enemy": "enemy.gunship",
+      "score": 2000
+    }
+  ],
+  "playerHits": [
+    1894
+  ],
+  "firstThreeWay": {
+    "tick": 660,
+    "count": 3,
+    "angleDeg": [
+      72.25,
+      87.25,
+      102.25
+    ]
+  }
+}
