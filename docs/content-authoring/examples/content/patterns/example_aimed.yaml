@@ -5,11 +5,11 @@ steps:
   - wait: 30
   - fire:
       bullet: bullet.example
-      # aim: player は発射した tick の自機の向き。angleDeg なら +x を 0°、下へ回る向きが正。
+      # aim: player は、撃つ tick の敵の位置から自機の位置への向き。angleDeg で向きを決めるなら +x が 0°、90 が真下。
       aim: player
       speed: 3
       # fan は基準の向きを中心に count 発を、両端の間が spreadDeg になるよう並べる。
       fan: { count: 3, spreadDeg: 30 }
   - wait: 40
-  # loop は top-level の step index へ戻る。戻った先から loop までに wait が要る。
+  # loop は top-level の step の index（0 始まり。ここでは 1 の fire）へ戻る。戻った先から loop までに wait が要る。
   - loop: 1

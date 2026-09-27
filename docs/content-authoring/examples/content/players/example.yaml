@@ -3,7 +3,7 @@ id: player.example
 version: 1
 asset: player.example
 movement:
-  # 1 tick に動く px。focusSpeed は低速移動（Shift）の速さ。
+  # 1 tick に動く px。focusSpeed は focus の action（sample app では Shift）を押している間の速さ。
   speed: 4
   focusSpeed: 1.8
 collision:

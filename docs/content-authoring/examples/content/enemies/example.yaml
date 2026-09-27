@@ -6,7 +6,7 @@ collision:
   radius: 10
 hp: 10
 score: 100
-# 撃破したときに落とす pickup（pickup feature）。spread は落とす位置の広がり（px）。
+# 撃破したときに落とす pickup（pickup feature）。spread は、撃破した位置を中心に横へ count 個を等間隔に並べる幅（px）。
 drops:
   - pickup: pickup.example
     count: 2

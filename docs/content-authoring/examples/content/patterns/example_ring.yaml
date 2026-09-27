@@ -11,7 +11,7 @@ steps:
             bullet: bullet.example
             angleDeg: 90
             speed: 2
-            # radial は 1 周を count 等分した向きに並べる（360 / count が 0.25° の倍数になる数）。
+            # radial は基準の向きから 1 周を count 等分した向きに並べる（360 / count が 0.25° の倍数になる数）。
             radial: { count: 12 }
         - wait: 20
   # if は stage の difficulty で命令を選ぶ。else は省略できる。
@@ -22,7 +22,7 @@ steps:
             bullet: bullet.example
             aim: player
             speed: 2
-            # stream は各向きに、speed から speedStep ずつ速くした弾を count 発重ねる。
+            # stream は各向きに、speed から speedStep ずつ変えた速さの弾を count 発重ねる（負の speedStep なら遅くなる）。
             stream: { count: 3, speedStep: 0.5 }
       else:
         - fire:
