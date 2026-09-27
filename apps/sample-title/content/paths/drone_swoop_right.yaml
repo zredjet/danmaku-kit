@@ -1,0 +1,9 @@
+id: path.drone_swoop_right
+version: 1
+segments:
+  - type: velocity
+    duration: 50
+    velocity: { x: 0, y: 3 }
+  - type: velocity
+    duration: 200
+    velocity: { x: 2.5, y: 1 }

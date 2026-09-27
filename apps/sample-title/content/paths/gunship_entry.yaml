@@ -1,0 +1,13 @@
+id: path.gunship_entry
+version: 1
+segments:
+  - type: velocity
+    duration: 100
+    velocity: { x: 0, y: 1 }
+  - type: velocity
+    duration: 600
+    velocity: { x: 0, y: 0 }
+    offset: { type: sine, axis: x, amplitude: 80, periodTicks: 240 }
+  - type: velocity
+    duration: 200
+    velocity: { x: 0, y: -1 }

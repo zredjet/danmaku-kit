@@ -1,0 +1,7 @@
+id: enemy.gunship
+version: 1
+asset: enemy.gunship
+collision:
+  radius: 22
+hp: 200
+score: 2000

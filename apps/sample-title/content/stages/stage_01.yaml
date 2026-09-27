@@ -3,12 +3,191 @@ version: 1
 difficulties:
   - normal
 timeline:
-  - tick: 60
+  # wave 1: 自機の列へまっすぐ降りる drone が 1 発ずつ狙って撃つ
+  - tick: 90
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_dive
+      pattern: pattern.drone_aimed_shot
+      position: { x: 96, y: -16 }
+  - tick: 105
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_dive
+      pattern: pattern.drone_aimed_shot
+      position: { x: 144, y: -16 }
+  - tick: 120
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_dive
+      pattern: pattern.drone_aimed_shot
+      position: { x: 192, y: -16 }
+  - tick: 135
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_dive
+      pattern: pattern.drone_aimed_shot
+      position: { x: 240, y: -16 }
+  - tick: 150
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_dive
+      pattern: pattern.drone_aimed_shot
+      position: { x: 288, y: -16 }
+  # wave 2: 左右から弧を描いて横切る drone
+  - tick: 330
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_swoop_right
+      pattern: pattern.drone_aimed_shot
+      position: { x: 64, y: -16 }
+  - tick: 345
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_swoop_right
+      pattern: pattern.drone_aimed_shot
+      position: { x: 64, y: -16 }
+  - tick: 360
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_swoop_right
+      pattern: pattern.drone_aimed_shot
+      position: { x: 64, y: -16 }
+  - tick: 420
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_swoop_left
+      pattern: pattern.drone_aimed_shot
+      position: { x: 320, y: -16 }
+  - tick: 435
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_swoop_left
+      pattern: pattern.drone_aimed_shot
+      position: { x: 320, y: -16 }
+  - tick: 450
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_swoop_left
+      pattern: pattern.drone_aimed_shot
+      position: { x: 320, y: -16 }
+  # wave 3: 画面の横から波打って横切る scout が 3-way を撃つ
+  - tick: 600
+    action:
+      type: spawnEnemy
+      enemy: enemy.scout
+      path: path.scout_sweep_right
+      pattern: pattern.scout_three_way
+      position: { x: -24, y: 64 }
+  - tick: 660
+    action:
+      type: spawnEnemy
+      enemy: enemy.scout
+      path: path.scout_sweep_left
+      pattern: pattern.scout_three_way
+      position: { x: 408, y: 112 }
+  - tick: 720
+    action:
+      type: spawnEnemy
+      enemy: enemy.scout
+      path: path.scout_sweep_right
+      pattern: pattern.scout_three_way
+      position: { x: -24, y: 160 }
+  # wave 4: 降りて左右に揺れてから退場する scout
+  - tick: 960
+    action:
+      type: spawnEnemy
+      enemy: enemy.scout
+      path: path.enter_hover_exit_left
+      pattern: pattern.scout_three_way
+      position: { x: 112, y: -16 }
+  - tick: 990
     action:
       type: spawnEnemy
       enemy: enemy.scout
       path: path.enter_hover_exit
       pattern: pattern.scout_three_way
-      position:
-        x: 192
-        y: -16
+      position: { x: 272, y: -16 }
+  # wave 5: V 字の隊形で降りる drone
+  - tick: 1320
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_dive
+      pattern: pattern.drone_aimed_shot
+      position: { x: 192, y: -16 }
+  - tick: 1335
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_dive
+      pattern: pattern.drone_aimed_shot
+      position: { x: 160, y: -16 }
+  - tick: 1335
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_dive
+      pattern: pattern.drone_aimed_shot
+      position: { x: 224, y: -16 }
+  - tick: 1350
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_dive
+      pattern: pattern.drone_aimed_shot
+      position: { x: 128, y: -16 }
+  - tick: 1350
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_dive
+      pattern: pattern.drone_aimed_shot
+      position: { x: 256, y: -16 }
+  - tick: 1365
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_dive
+      pattern: pattern.drone_aimed_shot
+      position: { x: 96, y: -16 }
+  - tick: 1365
+    action:
+      type: spawnEnemy
+      enemy: enemy.drone
+      path: path.drone_dive
+      pattern: pattern.drone_aimed_shot
+      position: { x: 288, y: -16 }
+  # wave 6: 揺れながら留まる gunship の扇状弾と狙い弾、scout の護衛
+  - tick: 1620
+    action:
+      type: spawnEnemy
+      enemy: enemy.gunship
+      path: path.gunship_entry
+      pattern: pattern.gunship_barrage
+      position: { x: 192, y: -40 }
+  - tick: 1800
+    action:
+      type: spawnEnemy
+      enemy: enemy.scout
+      path: path.scout_sweep_right
+      pattern: pattern.scout_three_way
+      position: { x: -24, y: 176 }
+  - tick: 1860
+    action:
+      type: spawnEnemy
+      enemy: enemy.scout
+      path: path.scout_sweep_left
+      pattern: pattern.scout_three_way
+      position: { x: 408, y: 208 }

@@ -1,0 +1,37 @@
+id: pattern.gunship_barrage
+version: 1
+steps:
+  - wait: 90
+  - fire:
+      bullet: bullet.blue_large
+      angleDeg: 90
+      fan:
+        count: 7
+        spreadDeg: 90
+      speed: 2
+  - wait: 30
+  - fire:
+      bullet: bullet.red_small
+      aim: player
+      fan:
+        count: 3
+        spreadDeg: 20
+      speed: 3.5
+  - wait: 30
+  - fire:
+      bullet: bullet.blue_large
+      angleDeg: 90
+      fan:
+        count: 6
+        spreadDeg: 75
+      speed: 2
+  - wait: 30
+  - fire:
+      bullet: bullet.red_small
+      aim: player
+      fan:
+        count: 3
+        spreadDeg: 20
+      speed: 3.5
+  - wait: 30
+  - loop: 1

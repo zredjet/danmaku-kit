@@ -1,0 +1,8 @@
+id: pattern.drone_aimed_shot
+version: 1
+steps:
+  - wait: 45
+  - fire:
+      bullet: bullet.red_small
+      aim: player
+      speed: 2.5

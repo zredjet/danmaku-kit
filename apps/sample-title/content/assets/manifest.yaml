@@ -5,14 +5,29 @@ assets:
     path: assets/sprites/player.svg
     required: true
     usage: gameplay
+  enemy.drone:
+    type: sprite
+    path: assets/sprites/enemy-drone.svg
+    required: true
+    usage: gameplay
   enemy.scout:
     type: sprite
     path: assets/sprites/enemy-scout.svg
     required: true
     usage: gameplay
+  enemy.gunship:
+    type: sprite
+    path: assets/sprites/enemy-gunship.svg
+    required: true
+    usage: gameplay
   bullet.red_small:
     type: sprite
     path: assets/sprites/bullet-red-small.svg
+    required: true
+    usage: gameplay
+  bullet.blue_large:
+    type: sprite
+    path: assets/sprites/bullet-blue-large.svg
     required: true
     usage: gameplay
   shot.player_basic:

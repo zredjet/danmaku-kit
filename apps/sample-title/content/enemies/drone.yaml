@@ -1,0 +1,7 @@
+id: enemy.drone
+version: 1
+asset: enemy.drone
+collision:
+  radius: 10
+hp: 5
+score: 50

@@ -26,7 +26,7 @@ test("sizes the sample stage pools from its content and the runtime budget", asy
 
   assert.deepEqual(planViewPoolCapacities(definition, "stage.stage_01", "player.default"), {
     ok: true,
-    capacities: { player: 1, enemy: 1, enemyBullet: 2_000, playerShot: 21 },
+    capacities: { player: 1, enemy: 26, enemyBullet: 2_000, playerShot: 21 },
   });
 });
 
@@ -46,7 +46,7 @@ test("counts only fireOnSpawn bullets for stages without pattern steps", async (
 
   assert.deepEqual(planViewPoolCapacities(fireOnSpawnOnly, "stage.stage_01", "player.default"), {
     ok: true,
-    capacities: { player: 1, enemy: 1, enemyBullet: 1, playerShot: 21 },
+    capacities: { player: 1, enemy: 26, enemyBullet: 26, playerShot: 21 },
   });
 });
 
@@ -67,7 +67,10 @@ test("maps every entity definition to a loaded texture or names the missing asse
 
   assert.deepEqual([...assets], [
     ["player.default", "player.default"],
+    ["enemy.drone", "enemy.drone"],
+    ["enemy.gunship", "enemy.gunship"],
     ["enemy.scout", "enemy.scout"],
+    ["bullet.blue_large", "bullet.blue_large"],
     ["bullet.red_small", "bullet.red_small"],
     ["playerShot.basic", "shot.player_basic"],
   ]);
@@ -77,7 +80,10 @@ test("maps every entity definition to a loaded texture or names the missing asse
       ok: true,
       textures: new Map([
         ["player.default", "player.default"],
+        ["enemy.drone", "enemy.drone"],
+        ["enemy.gunship", "enemy.gunship"],
         ["enemy.scout", "sprite.placeholder"],
+        ["bullet.blue_large", "bullet.blue_large"],
         ["bullet.red_small", "bullet.red_small"],
         ["playerShot.basic", "shot.player_basic"],
       ]),
@@ -85,6 +91,6 @@ test("maps every entity definition to a loaded texture or names the missing asse
   );
   assert.deepEqual(resolveDefinitionTextures(assets, new Map([["player.default", "player.default"]])), {
     ok: false,
-    missingAssets: ["bullet.red_small", "enemy.scout", "shot.player_basic"],
+    missingAssets: ["bullet.blue_large", "bullet.red_small", "enemy.drone", "enemy.gunship", "enemy.scout", "shot.player_basic"],
   });
 });

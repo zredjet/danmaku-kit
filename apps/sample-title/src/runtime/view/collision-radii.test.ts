@@ -9,7 +9,10 @@ test("looks up the collision radius of every rendered definition by id", async (
 
   assert.deepEqual(Object.fromEntries(radii), {
     "player.default": 3,
+    "enemy.drone": 10,
+    "enemy.gunship": 22,
     "enemy.scout": 12,
+    "bullet.blue_large": 6,
     "bullet.red_small": 4,
     "playerShot.basic": 5,
   });
