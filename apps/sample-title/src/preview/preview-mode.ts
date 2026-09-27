@@ -38,9 +38,10 @@ export type PreviewModeOptions = Readonly<{
 /**
  * Preview（design 19、Phase 2B-9）の panel と overlay。dev server と test build で `?preview` を付けたときだけ `src/main.ts` が作る。
  *
- * panel は対象（stage、enemy と path と pattern、pattern、path）、seed、difficulty の選択と、restart（R）、pause（P）、pause 中の 1 tick
- * 送り（N）を持ち、選択を変えると `PreviewSelection` の合成した content で stage を始め直し、選択を URL（`?preview=`、`seed`、
- * `difficulty`）に書いて、page を読み込み直しても同じ選択で開く。playfield の overlay は player、enemy、pickup の entity id と、これから
+ * panel は対象（stage、enemy と path と pattern、pattern、path）、seed、difficulty、dev-only の cheat（invincible と stage の jump、
+ * Phase 2B-10）の選択と、restart（R）、pause（P）、pause 中の 1 tick 送り（N）を持ち、選択を変えると `PreviewSelection` の合成した
+ * content で stage を始め直し、選択を URL（`?preview=`、`seed`、`difficulty`、`invincible`、`jump`）に書いて、page を読み込み直しても
+ * 同じ選択で開く。playfield の overlay は player、enemy、pickup の entity id と、これから
  * 出る spawn の位置を出し、panel は tick、PRNG state、pattern runner の cursor を出す（公開の `serialize()` から読む）。Preview の操作は
  * Runtime の操作で、Core へ渡す入力には混ぜない。
  */
@@ -110,10 +111,13 @@ export class PreviewMode {
   /** 選択を URL に書く（history は増やさない）。`src/main.ts` が page の読み込みで同じ parameter を読む。 */
   #writeUrl(): void {
     const { selection } = this.#options;
+    const { cheats } = selection;
     const url = new URL(window.location.href);
     url.searchParams.set("preview", formatPreviewTarget(selection.target));
     url.searchParams.set("seed", selection.seed);
     url.searchParams.set("difficulty", selection.difficulty ?? "");
+    setOrDelete(url.searchParams, "invincible", cheats.invincible ? "1" : null);
+    setOrDelete(url.searchParams, "jump", cheats.jumpTick > 0 ? String(cheats.jumpTick) : null);
     window.history.replaceState(window.history.state, "", url);
   }
 
@@ -145,12 +149,20 @@ export class PreviewMode {
     seed.spellcheck = false;
     this.#seedInput = seed;
     const difficulty = select(selection.difficulties(), selection.difficulty ?? "", "preview-difficulty");
+    const invincible = element("input", "preview-invincible") as HTMLInputElement;
+    invincible.type = "checkbox";
+    invincible.checked = selection.cheats.invincible;
+    const jumpTicks = selection.jumpTicks();
+    const jump = select(jumpTicks.map(String), String(selection.cheats.jumpTick), "preview-jump");
     this.#panel.replaceChildren(
       field("target", kind),
       field("id", id),
       ...(target.kind === "enemy" ? [field("path", path), field("pattern", pattern)] : []),
       field("seed", seed),
       field("difficulty", difficulty),
+      field("invincible", invincible),
+      // stage jump は stage の対象だけが持つ（timeline の spawn の tick から選ぶ）。
+      ...(jumpTicks.length > 0 ? [field("jump", jump)] : []),
       buttons([
         button("Restart (R)", "preview-restart", () => this.restart()),
         button("Pause (P)", "preview-pause", () => this.#options.shell.togglePause()),
@@ -187,6 +199,14 @@ export class PreviewMode {
       selection.setDifficulty(difficulty.value);
       this.restart();
     });
+    onChange(invincible, () => {
+      selection.setInvincible(invincible.checked);
+      this.restart();
+    });
+    onChange(jump, () => {
+      selection.setJumpTick(Number(jump.value));
+      this.restart();
+    });
   }
 
   #renderFrame(): void {
@@ -209,8 +229,13 @@ export class PreviewMode {
     if (infoKey !== this.#infoKey) {
       this.#infoKey = infoKey;
       const { selection } = this.#options;
+      const { cheats } = selection;
       this.#info.textContent = [
-        `seed ${selection.seed}  ${selection.difficulty ?? "-"}`,
+        [
+          `seed ${selection.seed}  ${selection.difficulty ?? "-"}`,
+          ...(cheats.invincible ? ["invincible"] : []),
+          ...(cheats.jumpTick > 0 ? [`jump ${cheats.jumpTick}`] : []),
+        ].join("  "),
         ...describePreviewState(shell.serializeStage()),
         ...(this.#error ? [this.#error] : []),
       ].join("\n");
@@ -262,6 +287,14 @@ function onChange(control: HTMLInputElement | HTMLSelectElement, handle: () => v
     control.blur();
     handle();
   });
+}
+
+function setOrDelete(parameters: URLSearchParams, name: string, value: string | null): void {
+  if (value === null) {
+    parameters.delete(name);
+  } else {
+    parameters.set(name, value);
+  }
 }
 
 function field(text: string, control: HTMLElement): HTMLElement {
@@ -325,6 +358,7 @@ function previewStyle(): HTMLStyleElement {
     }
     .preview-field { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 4px; }
     .preview-field > select, .preview-field > input { min-width: 0; font: inherit; }
+    .preview-field > input[type="checkbox"] { justify-self: start; margin: 0; }
     .preview-buttons { display: flex; gap: 4px; }
     .preview-buttons > button { flex: 1; font: inherit; }
     .preview-overlay { position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }

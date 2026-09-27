@@ -5,8 +5,15 @@ import { fileURLToPath } from "node:url";
 import { build, type Rolldown } from "vite";
 
 const sampleTitleRoot = fileURLToPath(new URL("../", import.meta.url));
-/** debug state dump の hook と、Preview（panel の class 名と合成する stage の id）。 */
-const DEV_ONLY_MARKERS = ["__SHOOTING_DEBUG_STATE__", "__SHOOTING_DEBUG_REPLAY__", "preview-panel", "stage.preview"];
+/** debug state dump の hook と、Preview（panel の class 名と合成する stage の id）と、その dev-only の cheat（Phase 2B-10）。 */
+const DEV_ONLY_MARKERS = [
+  "__SHOOTING_DEBUG_STATE__",
+  "__SHOOTING_DEBUG_REPLAY__",
+  "preview-panel",
+  "stage.preview",
+  "preview-invincible",
+  "_jump",
+];
 
 /** sample app を `mode` で build し、出力した JavaScript をつなげて返す（file には書かない）。 */
 async function buildJavaScript(mode: string): Promise<string> {

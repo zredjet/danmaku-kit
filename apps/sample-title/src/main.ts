@@ -53,9 +53,12 @@ const requestedSeed = readRequestedSeed();
 // 置き換わって分岐ごと消え、Preview の module も bundle に入らない（vite/dev-only-build.test.ts）。
 const previewSelection = import.meta.env.MODE !== "production" && new URLSearchParams(window.location.search).has("preview")
   ? new PreviewSelection(gameDefinition, {
-    targetParameter: new URLSearchParams(window.location.search).get("preview") ?? "",
+    targetParameter: readQueryParameter("preview") ?? "",
     seed: requestedSeed ?? createRandomSeed(),
     requestedDifficulty,
+    // dev-only の cheat（Phase 2B-10）。Preview の panel が選んだ値を URL に書く。
+    invincible: readQueryParameter("invincible") === "1",
+    jumpTickParameter: readQueryParameter("jump"),
   })
   : null;
 const previewStart = previewSelection?.compose(core);

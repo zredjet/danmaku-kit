@@ -1,4 +1,4 @@
-import type { HudPort, HudView } from "../runtime/hud/hud-view.ts";
+import { formatLives, type HudPort, type HudView } from "../runtime/hud/hud-view.ts";
 
 /**
  * canvas の上に重ねる DOM overlay の HUD（design 5.5）。score、lives、状態の見出し、debug HUD、error を出す。
@@ -47,7 +47,7 @@ export class HudOverlay implements HudPort {
     }
     this.#lastView = key;
     this.#score.textContent = view.score === null ? "" : `SCORE ${String(view.score).padStart(7, "0")}`;
-    this.#lives.textContent = view.lives === null ? "" : `LIVES ${"▲".repeat(view.lives)}`;
+    this.#lives.textContent = view.lives === null ? "" : formatLives(view.lives);
     this.#banner.hidden = view.banner === null;
     this.#banner.dataset.tone = view.banner?.tone ?? "";
     this.#bannerTitle.textContent = view.banner?.title ?? "";

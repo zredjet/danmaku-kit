@@ -51,6 +51,14 @@ export function buildHudView(lifecycle: GameLifecycleState, frame: GameFrame | n
   });
 }
 
+/** lives を機数ぶんの印で出す上限。Preview の invincible のように多いときは、印 1 つと数で出す。 */
+const MAX_LIFE_MARKS = 5;
+
+/** HUD の lives の表示（`LIVES ▲▲▲`、多ければ `LIVES ▲×60000`）。 */
+export function formatLives(lives: number): string {
+  return `LIVES ${lives > MAX_LIFE_MARKS ? `▲×${lives}` : "▲".repeat(lives)}`;
+}
+
 /** loading 中の HUD。`detail` に asset や view pool の準備の進み具合を出す。 */
 export function buildLoadingHudView(detail: string): HudView {
   return Object.freeze({

@@ -76,7 +76,7 @@ export function previewDifficulties(definition: GameDefinition): readonly Diffic
 }
 
 /** `base` が `definitions` の id になければ `base`、あれば `_2` から順に suffix を付けて、ない id にする。 */
-function unusedId<T extends string>(base: T, definitions: readonly Readonly<{ id: string }>[]): T {
+export function unusedId<T extends string>(base: T, definitions: readonly Readonly<{ id: string }>[]): T {
   const used = new Set(definitions.map((definition) => definition.id));
   let id = base;
   for (let suffix = 2; used.has(id); suffix += 1) {

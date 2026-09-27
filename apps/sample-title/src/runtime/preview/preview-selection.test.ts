@@ -3,7 +3,9 @@ import test from "node:test";
 
 import type { GameDefinition, ShootingCore } from "@shooting-sample/shooting-core";
 
+import { expandInputScript, runHeadlessReplay } from "../../test-support/headless-replay.ts";
 import { createSampleTitleCore, loadSampleTitleDefinition } from "../../test-support/sample-title-game.ts";
+import { PREVIEW_INVINCIBLE_LIVES } from "./preview-cheats.ts";
 import { PREVIEW_STAGE_ID } from "./preview-definition.ts";
 import { PreviewSelection, firstPreviewTarget } from "./preview-selection.ts";
 
@@ -126,4 +128,37 @@ test("picks the first ids of the content when the kind changes", async () => {
   });
   assert.deepEqual(firstPreviewTarget("path", definition), { kind: "path", pathId: paths[0]!.id });
   assert.deepEqual(firstPreviewTarget("stage", { ...definition, content: { ...definition.content, stages: [] } }), null);
+});
+
+test("applies the stage jump to stage targets only and the invincible player to any target", async () => {
+  const definition = await loadSampleTitleDefinition();
+  const core = createSampleTitleCore();
+  const selection = new PreviewSelection(definition, { ...OPTIONS, jumpTickParameter: "7" });
+  const ticks = selection.jumpTicks();
+
+  // URL の jump が stage の spawn の tick でなければ jump しない。
+  assert.deepEqual(selection.cheats, { invincible: false, jumpTick: 0 });
+  assert.equal(selection.setJumpTick(ticks[2]! + 1), false);
+  assert.equal(selection.setJumpTick(ticks[2]!), true);
+  const jumped = selection.compose(core);
+  assert.ok(jumped.ok);
+  assert.deepEqual([jumped.content.stage.stageId, jumped.stage.timeline[0]!.tick], ["stage.stage_01_jump", 0]);
+
+  // 対象を変えると jump を外し、stage 以外の対象は jump を持たない。
+  selection.selectTarget("pattern:pattern.drone_aimed_shot");
+  assert.deepEqual([selection.jumpTicks(), selection.cheats.jumpTick], [[], 0]);
+  selection.selectTarget("stage:stage.stage_01");
+  assert.equal(selection.cheats.jumpTick, 0);
+
+  selection.selectTarget("pattern:pattern.drone_aimed_shot");
+  selection.setInvincible(true);
+  const invincible = selection.compose(core);
+  assert.ok(invincible.ok);
+  const { frames } = runHeadlessReplay(
+    invincible.content.loadedGame,
+    { ...invincible.content.stage, seed: selection.seed },
+    expandInputScript([{ fromTick: 0 }], 1),
+  );
+  assert.equal(frames[0]!.state.player.lives, PREVIEW_INVINCIBLE_LIVES);
+  assert.equal(new PreviewSelection(definition, { ...OPTIONS, invincible: true, jumpTickParameter: String(ticks[1]) }).cheats.jumpTick, ticks[1]);
 });

@@ -58,3 +58,35 @@ test("previews a pattern alone, steps it while paused and restarts it with anoth
   await expect.poll(async () => (await readDump(page)).lifecycle).toBe("stageStarting");
   expect(pageErrors).toEqual([]);
 });
+
+test("jumps into the stage with an invincible player and reopens the same cheats after a reload", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.goto("/?preview=stage:stage.stage_01&seed=preview-cheat");
+  await waitForLifecycle(page, "playing");
+  await expect(page.locator(".hud-lives")).toHaveText("LIVES ▲▲▲");
+
+  // invincible は自機の lives を大きくした definition で始め直す（入力には混ぜない）。
+  await page.locator(".preview-invincible").check();
+  await waitForLifecycle(page, "playing");
+  await expect(page.locator(".hud-lives")).toHaveText("LIVES ▲×60000");
+  expect((await readReplay(page)).stage.stageId).toBe("stage.stage_01");
+
+  // stage jump は選んだ tick より前の spawn を除いて詰めた stage を始める。
+  const jumpTick = (await page.locator(".preview-jump option").allTextContents())[2]!;
+  await page.locator(".preview-jump").selectOption(jumpTick);
+  await expect.poll(async () => (await readReplay(page)).stage.stageId).toBe("stage.stage_01_jump");
+  await waitForLifecycle(page, "playing");
+  await expect.poll(async () => (await readDump(page)).entityCounts.enemy).toBeGreaterThan(0);
+  await expect(page.locator(".preview-info")).toContainText(`invincible  jump ${jumpTick}`);
+  expect(previewParameters(page)).toEqual({ preview: "stage:stage.stage_01", seed: "preview-cheat", difficulty: "normal" });
+  expect(new URL(page.url()).searchParams.get("invincible")).toBe("1");
+  expect(new URL(page.url()).searchParams.get("jump")).toBe(jumpTick);
+
+  await page.reload();
+  await waitForLifecycle(page, "playing");
+  expect((await readReplay(page)).stage).toEqual({ stageId: "stage.stage_01_jump", difficulty: "normal", seed: "preview-cheat" });
+  await expect(page.locator(".preview-invincible")).toBeChecked();
+  await expect(page.locator(".preview-jump")).toHaveValue(jumpTick);
+  expect(pageErrors).toEqual([]);
+});

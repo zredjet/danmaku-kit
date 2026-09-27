@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createTestFrame } from "../../test-support/game-frames.ts";
-import { buildHudView, buildLoadingHudView } from "./hud-view.ts";
+import { buildHudView, buildLoadingHudView, formatLives } from "./hud-view.ts";
 
 const frame = createTestFrame(120, { lives: 2, score: 300 });
 
@@ -41,4 +41,9 @@ test("shows the loading progress in the loading banner", () => {
     lives: null,
     banner: { title: "LOADING", detail: "assets 50%", tone: "info" },
   });
+});
+
+test("marks each life and switches to a count for many lives", () => {
+  assert.deepEqual([formatLives(0), formatLives(3), formatLives(5)], ["LIVES ", "LIVES ▲▲▲", "LIVES ▲▲▲▲▲"]);
+  assert.equal(formatLives(60_000), "LIVES ▲×60000");
 });

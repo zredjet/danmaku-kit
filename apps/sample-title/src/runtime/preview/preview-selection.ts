@@ -2,6 +2,7 @@ import type { Difficulty, GameDefinition, ShootingCore, StageDefinition } from "
 
 import type { GameShellContent } from "../lifecycle/game-shell.ts";
 import { selectStageDifficulty } from "../lifecycle/stage-difficulty.ts";
+import { applyPreviewCheats, stageJumpTicks, type PreviewCheats } from "./preview-cheats.ts";
 import {
   composePreviewDefinition,
   formatPreviewTarget,
@@ -16,6 +17,10 @@ export type PreviewSelectionOptions = Readonly<{
   targetParameter: string;
   seed: string;
   requestedDifficulty: string | null;
+  /** `?invincible=1`。 */
+  invincible?: boolean;
+  /** `?jump=` の値。stage の対象で、その stage の `stageJumpTicks()` にある tick だけを使う。 */
+  jumpTickParameter?: string | null;
 }>;
 
 /** 選んだ対象を合成して load した結果。 */
@@ -24,20 +29,25 @@ export type PreviewComposition =
   | Readonly<{ ok: false; errors: readonly string[] }>;
 
 /**
- * Preview（design 19）の選択（対象、seed、difficulty）。DOM と Phaser に依存せず、panel はこれを変えて `compose()` の content で stage を
- * 始め直す。difficulty は対象で選べるもの（`difficulties()`）に合わせる（なければ最初の difficulty）。
+ * Preview（design 19）の選択（対象、seed、difficulty、dev-only の cheat）。DOM と Phaser に依存せず、panel はこれを変えて `compose()` の
+ * content で stage を始め直す。difficulty は対象で選べるもの（`difficulties()`）に合わせる（なければ最初の difficulty）。stage jump は
+ * stage の対象だけに当て、対象を変えると 0 に戻す。
  */
 export class PreviewSelection {
   #definition: GameDefinition;
   #target: PreviewTarget;
   #seed: string;
   #difficulty: string | null;
+  #invincible: boolean;
+  #jumpTick: number;
 
   constructor(definition: GameDefinition, options: PreviewSelectionOptions) {
     this.#definition = definition;
     this.#target = parsePreviewTarget(options.targetParameter, definition) ?? firstStageTarget(definition);
     this.#seed = options.seed;
     this.#difficulty = options.requestedDifficulty;
+    this.#invincible = options.invincible ?? false;
+    this.#jumpTick = Number(options.jumpTickParameter ?? 0);
   }
 
   get definition(): GameDefinition {
@@ -57,14 +67,47 @@ export class PreviewSelection {
     return this.#difficulty;
   }
 
+  /** 当てる cheat。stage jump は今の対象で選べる tick でなければ 0 にする。 */
+  get cheats(): PreviewCheats {
+    return Object.freeze({
+      invincible: this.#invincible,
+      jumpTick: this.jumpTicks().includes(this.#jumpTick) ? this.#jumpTick : 0,
+    });
+  }
+
   /** `?preview=` の値の形の対象を選ぶ。content にない対象なら選択を変えず false を返す。 */
   selectTarget(value: string): boolean {
     const target = parsePreviewTarget(value, this.#definition);
     if (target === null) {
       return false;
     }
+    if (formatPreviewTarget(target) !== formatPreviewTarget(this.#target)) {
+      this.#jumpTick = 0;
+    }
     this.#target = target;
     return true;
+  }
+
+  setInvincible(invincible: boolean): void {
+    this.#invincible = invincible;
+  }
+
+  /** stage jump の tick を選ぶ。今の対象で選べない tick なら選択を変えず false を返す。 */
+  setJumpTick(tick: number): boolean {
+    if (!this.jumpTicks().includes(tick)) {
+      return false;
+    }
+    this.#jumpTick = tick;
+    return true;
+  }
+
+  /** stage jump で選べる tick（panel の選択肢）。stage の対象だけが持つ。 */
+  jumpTicks(): readonly number[] {
+    const target = this.#target;
+    const stage = target.kind === "stage"
+      ? this.#definition.content.stages.find((candidate) => candidate.id === target.stageId)
+      : undefined;
+    return stage ? stageJumpTicks(stage) : [];
   }
 
   /** 空白だけの seed は受けない。 */
@@ -110,7 +153,8 @@ export class PreviewSelection {
     if (difficulty === null) {
       return Object.freeze({ ok: false, errors: Object.freeze([`${formatPreviewTarget(this.#target)} has no difficulty to preview`]) });
     }
-    const composed = composePreviewDefinition(this.#definition, this.#target, difficulty);
+    const target = composePreviewDefinition(this.#definition, this.#target, difficulty);
+    const composed = applyPreviewCheats(target.definition, target.stageId, this.cheats);
     const stage = composed.definition.content.stages.find((candidate) => candidate.id === composed.stageId);
     if (!stage) {
       return Object.freeze({ ok: false, errors: Object.freeze([`${composed.stageId} is not in the content`]) });
