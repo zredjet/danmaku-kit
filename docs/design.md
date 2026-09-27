@@ -264,7 +264,7 @@ Phase 2A-8 の sample app の実装:
 
 Phase 2A-9 の sample app の演出:
 
-- 無敵中の自機は `GameFrame.state.player.invincibleTicksRemaining` を 4 tick ごとの区間に分け、残りが少ない側から隠す・表示するを交互に繰り返して点滅させる（`src/runtime/view/invincibility-blink.ts`）。`playerHit` event ではなく state から決めるため、restore した stage や event を取りこぼした frame でも同じ見た目になる。
+- 無敵中の自機は `GameFrame.state.player.invincibleTicksRemaining` を 4 tick ごとの区間に分け、残りが少ない側から隠す・表示するを交互に繰り返して点滅させる（`src/runtime/view/invincibility-blink.ts`）。`playerHit` event ではなく state から決めるため、restore した stage や event を取りこぼした frame でも同じ見た目になる。点滅は tick が進む `playing` の間だけにし、`paused` や stage の終了で止まったときは自機を表示する。
 - 敵の撃破（`entityDestroyed` の reason `defeated`）は render-only の hit spark にする（`src/runtime/view/hit-sparks.ts`）。`entityDestroyed` は位置を持たないため、撃破された敵を直前に描いた位置に出し、一度も描かずに消えた敵（出現した render frame のうちに撃破された敵など）には出さない。1 render frame に 8 個、同時に 32 個を超える分は gameplay view を優先して落とし、落とした数を debug HUD に出す。寿命 240 ms は render frame の経過時間で数え、`paused` 中は進めない。depth は敵の上、自機の shot・自機・敵弾の下とし、敵弾の読みやすさを邪魔しない（15.3）。
 
 ### 5.5 `ui`
@@ -282,7 +282,7 @@ Phase 2A-9 の sample app の実装:
 
 - `src/ui/hud-overlay.ts` が canvas と同じ大きさの箱（`index.html` の `.stage-root`）に DOM overlay を重ね、score、lives、状態の見出し（LOADING と進み具合、title、READY、PAUSED、STAGE CLEAR、GAME OVER）、debug HUD（Core と content の version、lifecycle、audio status、seed、tick、dropped tick、asset の fallback、hit spark の drop 数）、loading と runtime の error を出す。overlay は pointer event を canvas へ通し、同じ内容の再描画では DOM を触らない。
 - score と lives は `GameFrame.state` を正本にし、event から数え直さない。表示する内容は Phaser と DOM に依存しない `src/runtime/hud/hud-view.ts` の `buildHudView()` が lifecycle と最新の frame から決め、scene は `HudPort` を通して overlay を更新する。`src/runtime/` は `src/ui/` を import しない。
-- canvas と overlay の scale、letterbox、共有の CSS transform root は Phase 2A-10 で扱う。
+- canvas と overlay は同じ CSS transform root（`.stage-root`）に入れ、scale と letterbox は root の transform でまとめて当てる（12）。debug HUD は debug overlay を表示している間だけ出す（19）。
 
 ## 6. Game lifecycle
 
@@ -863,6 +863,9 @@ UI / lifecycle action:
 | `pause` | Runtime lifecycle を `paused` に切り替える |
 | `confirm` / `cancel` | UI 操作 |
 | `menuUp` / `menuDown` | UI 操作 |
+| `toggleDebug` | debug overlay（collider と debug HUD）の表示を切り替える |
+
+Phase 2A の sample app は `pause`（Escape / P）、`confirm`（Enter / Space）、`toggleDebug`（Backquote / F3）を割り当てる。`cancel` と `menuUp` / `menuDown` は menu を置く slice で足す。
 
 MVP の入力デバイスは keyboard のみとする。gamepad と touch は Phase 3 以降の runtime adapter 拡張で対応する。Input recording は physical key ではなく action 化された `InputFrame` を保存するため、key config が変わっても replay は変化しない。
 
@@ -916,6 +919,13 @@ settings 保存時に quota exceeded、security exception、private mode など�
 ## 12. 画面スケーリング
 
 MVP の内部解像度は `384x448` とする。ブラウザ表示は integer scale を優先し、余白は letterbox で埋める。viewport が `384x448` 未満の場合だけ fractional downscale を許可し、canvas と DOM overlay を同じ CSS transform root で縮小する。clip や scroll は使わない。devicePixelRatio は Phaser renderer の解像度調整に使うが、Simulation 座標系には影響させない。画面サイズ変更時も playfield 内座標、collision、replay は変化しない。
+
+Phase 2A-10 の sample app の実装:
+
+- `src/runtime/view/viewport-layout.ts` の `computeViewportLayout()` が表示先の大きさと devicePixelRatio から配置を決める純粋関数で、node:test で検査する。収まる最大の整数倍で表示し、余りを上下左右へ半分ずつの letterbox（整数 px へ切り捨て）にする。どちらかの軸が内部解像度より小さいときだけ収まる小数倍へ縮小する。大きさを測れない（0 や非有限）ときは等倍で原点に置く。
+- canvas と DOM overlay は内部解像度の大きさの transform root（`.stage-root`）に入れ、`src/ui/viewport-fit.ts` が root に `translate(letterbox) scale(scale)` を当てる。表示先の大きさの変化は ResizeObserver、devicePixelRatio の変化（browser zoom や別の display への移動）は `resolution` の media query で受け、配置が変わったときだけ当て直す。
+- devicePixelRatio は canvas を描く解像度の倍率（render scale）にだけ使う。render scale は表示される device pixel 数（`scale × devicePixelRatio`）を 1/4 刻みで切り上げ、1 以上 4 以下に収める。1/4 刻みなら内部解像度との積が整数になる。canvas の画素数を render scale 倍にし、CSS の大きさは内部解像度のままにして、各 scene の camera の zoom で playfield 座標を canvas いっぱいに映す（`src/runtime/phaser/render-scale.ts`）。Simulation と entity の view の座標は内部解像度のまま変わらない。
+- SVG の sprite は起動時の render scale を整数へ切り上げた倍率で rasterize し、描画では同じ倍率で割って内部解像度の大きさに戻す。texture は作り直さないため、起動後に render scale が上がった分は texture の拡大で補う。
 
 ## 13. 当たり判定
 
@@ -1126,23 +1136,24 @@ Phase 2A の sample app は audio を読まず（asset loading は audio を `as
 
 ## 19. Debug / authoring workflow
 
-Debug HUD は以下を表示する。
+Debug HUD（browser）は以下を表示する。
 
 - lifecycle state
 - tick
 - seed
 - content version
-- state hash
-- PRNG state hash（state hash と同じ canonical encoding / xxHash64 seed / output format を使う）
 - dropped tick
-- entity 数
-- enemy bullet 数
-- player shot 数
-- collision candidate 数
+- kind 別の entity 数（player、enemy、enemy bullet、player shot）
 - simulation events / tick
 - render events / tick
-- pattern commands / tick
 - object pool 使用量
+
+state hash、PRNG state hash（state hash と同じ canonical encoding / xxHash64 seed / output format を使う）、collision candidate 数、pattern commands / tick は Core 内部の diagnostics なので browser へ公開せず（21.5）、headless debug dump と test helper で見る。
+
+Phase 2A-10 の sample app の実装:
+
+- debug overlay は `toggleDebug`（Backquote / F3）でどの lifecycle でも切り替え、dev server では最初から表示する。表示中は content の collision radius による collider の円を entity ごとに描き（`src/runtime/phaser/collider-overlay.ts`）、debug HUD に Core と content の version、lifecycle、audio status、seed、tick、dropped tick、kind 別の entity 数、asset の fallback と hit spark の drop 数を出す（`src/runtime/hud/debug-lines.ts`）。
+- simulation events / tick、render events / tick、object pool 使用量は Phase 2A では出さない。
 
 Content 制作者向け workflow:
 
@@ -1880,7 +1891,7 @@ Phase 1C の debug state dump は headless/core dump とし、root package へ�
 
 collision / event metrics は test serializer が登録された session でだけ収集する。通常の `createShootingCore()` session では collision counter、event count object、freeze を tick hot path に生成せず、Core の本番性能へ test-only diagnostics の費用を持ち込まない。
 
-Browser Test では Phase 2A 以降に `apps/sample-title` が `BrowserDebugStateDump` を所有し、最新の public `GameFrame` と runtime adapter の lifecycle / viewport / input / asset / audio / overlay state から `window.__SHOOTING_DEBUG_STATE__()` を組み立てる。この global hook は dev / test build にだけ設置し、production build では定義しない。browser schema は headless dump を継承せず、Core 内部の `stateHash`、`prngHash`、`collisionCandidates` を含めないため、非公開 helper のdeep importや新しいCore diagnostics portを必要としない。
+Browser Test では Phase 2A 以降に `apps/sample-title` が `BrowserDebugStateDump` を所有し、最新の public `GameFrame` と runtime adapter の lifecycle / viewport / input / asset / audio / overlay state から `window.__SHOOTING_DEBUG_STATE__()` を組み立てる。この global hook は dev / test build にだけ設置し、production build では定義しない。sample app は Vite の mode が `production` でないとき（dev server と `vite build --mode test`）だけ `src/debug/debug-state-hook.ts` で hook を置き、production build では分岐ごと消える。`apps/sample-title/vite/debug-state-hook-build.test.ts` が production と test の mode で app を build し、hook 名が test の bundle にだけ含まれることを検査する。browser schema は headless dump を継承せず、Core 内部の `stateHash`、`prngHash`、`collisionCandidates` を含めないため、非公開 helper のdeep importや新しいCore diagnostics portを必要としない。
 
 CI artifact path は `artifacts/debug-state/<test-name>-tick-<tick>.json` とする。`test-name` は 1..128 文字の lower-case ASCII slug とし、英数字の区間を `.`, `_`, `-` のいずれか1文字で区切る。test helper はこの規則と non-negative safe integer tick を検証し、`/`、`\\`、`..` を artifact path へ流さない。JSON artifact は schema 固定の property order、2-space indent、末尾 LF で固定し、caller object の property 挿入順へ依存させない。
 
@@ -1938,8 +1949,16 @@ type BrowserDebugStateDump = Readonly<{
   assetStatus: "loading" | "ready" | "error";
   audioStatus: "muted" | "suspended" | "running" | "error";
   overlayTransform: Readonly<{ x: number; y: number; scale: number }>;
+  debugOverlay: boolean;
 }>;
 ```
+
+Phase 2A-10 の sample app の実装（`src/runtime/debug/browser-debug-state.ts`）:
+
+- `tick` は headless dump と同じく現在の stage が次に受け付ける入力 tick（実行済みの tick 数）とし、stage の外と開始演出中でまだ tick を実行していなければ 0 にする。`seed` は現在の stage の seed、stage の外では `null`。`entityCounts` と `playerPosition` は直近の `GameFrame.state` から作る。
+- `viewport` は `computeViewportLayout()` の配置、`overlayTransform` は DOM overlay の実際の `getBoundingClientRect()` の位置と内部解像度からの倍率で、canvas と overlay が同じ transform root にあれば両者は一致する。
+- `inputQueueDepth` はまだ tick や render frame に渡していないラッチ済みの押下・解放 edge の数、`assetStatus` は loading の asset の状態（stage を始められない失敗なら `error`）、`audioStatus` は Phase 2A では `muted`。
+- `debugOverlay` は debug overlay を表示しているかで、Phase 2A-12 の browser smoke test が切り替えを確かめるために加えた。
 
 ### 21.6 初期マイルストーン受け入れテスト
 
