@@ -35,31 +35,47 @@ export type FeatureDefeatedEnemy = Readonly<{
 }>;
 
 /**
- * feature の system に渡す 1 tick の文脈。
+ * feature が出せる gameplay event。basic の event（stage の終了、`tickAdvanced`、enemy の score など）は出せない。event の `tick` は
+ * 文脈の `tick` と同じにする（違えば stage session は fatal になる）。
+ */
+export type FeatureGameEvent = Extract<
+  GameEvent,
+  { type: "pickupsSpawnedBatch" | "pickupCollected" } | { type: "scoreChanged"; reason: "pickupCollected" }
+>;
+
+/**
+ * feature の system に渡す 1 tick の文脈（`spawn` と `scoring` の共通部分）。
  *
- * `entities` は basic の entity（`spawn` では spawn の後、`scoring` では collision resolution の後で cleanup の前、id の順）。
- * `defeatedEnemies` は `scoring` だけが持ち、`spawn` では空。entity id は basic と同じ allocator から採番し、score と event は basic の
- * 値に続けて足す（event は frame の event の順に並ぶ）。
+ * `entities` は basic の entity（`spawn` では spawn の後、`scoring` では collision resolution の後で cleanup の前、id の順）。entity id は
+ * basic と同じ allocator から採番し、event は basic の event に続けて frame の event の順に並ぶ。
  */
 export type FeatureTickContext<Content> = FeatureStageContext<Content> & Readonly<{
   tick: number;
   entities: readonly ReadonlyEntityState[];
-  defeatedEnemies: readonly FeatureDefeatedEnemy[];
   /** `count` 個の entity id を採番する。足りなければ何も採番せずに error を返す。 */
   allocateEntityIds(count: number): CoreResult<readonly number[]>;
-  /** score に `delta`（0 以上の整数）を足し、足した後の合計を返す。 */
+  emitEvent(event: FeatureGameEvent): void;
+}>;
+
+/**
+ * `scoring` の system に渡す文脈。`defeatedEnemies` はこの tick に撃破された enemy で、score は basic の scoring の後に足す（design 7.1
+ * の scoring より前の `spawn` では score を足せない）。
+ */
+export type FeatureScoringContext<Content> = FeatureTickContext<Content> & Readonly<{
+  defeatedEnemies: readonly FeatureDefeatedEnemy[];
+  /** score に `delta`（0 以上の safe integer）を足し、足した後の合計を返す。不正な `delta` は stage session を fatal にする。 */
   addScore(delta: number): number;
-  emitEvent(event: GameEvent): void;
 }>;
 
 /**
  * restore で feature の state を作るときの文脈。`expectedTick` は snapshot が次に受け付ける tick、`nextEntityId` は snapshot の次に
- * 採番する id、`entityIds` は restore した basic の entity の id。
+ * 採番する id、`entityAllocationTicks` は restore した basic の entity の id と、その id を採番した tick（自機は stage の開始前の -1）。
+ * feature が同じ tick に採番した id は、その tick の basic の採番の後に来る。
  */
 export type FeatureRestoreContext<Content> = FeatureStageContext<Content> & Readonly<{
   expectedTick: number;
   nextEntityId: number;
-  entityIds: ReadonlySet<number>;
+  entityAllocationTicks: ReadonlyMap<number, number>;
 }>;
 
 /** restore の allocation envelope を見積もるときの文脈。 */
@@ -69,7 +85,13 @@ export type FeatureAllocationContext<Content> = FeatureStageContext<Content> & R
 export type FeatureFrameContext<Content> = FeatureStageContext<Content> & Readonly<{ tick: number }>;
 
 /** 1 tick の決まった位置で feature の state を進める。error を返すと stage session は fatal になる。 */
-export type FeatureSystem<State, Content> = (state: State, context: FeatureTickContext<Content>) => CoreResult<State>;
+export type FeatureSystem<State, Context> = (state: State, context: Context) => CoreResult<State>;
+
+/** tick の位置ごとの system。 */
+export type FeatureSystems<State, Content> = Readonly<{
+  spawn?: FeatureSystem<State, FeatureTickContext<Content>>;
+  scoring?: FeatureSystem<State, FeatureScoringContext<Content>>;
+}>;
 
 /**
  * optional feature が basic core に差し込む処理（design 20）。
@@ -92,7 +114,7 @@ export type FeatureModule<State extends SerializedJsonValue, Content> = Readonly
   /** `startStage()` で feature の state の初期値を作る。 */
   createInitialState(context: FeatureStageContext<Content>): State;
   /** tick の位置ごとの system。 */
-  systems: Readonly<Partial<Record<FeatureTickSlot, FeatureSystem<State, Content>>>>;
+  systems: FeatureSystems<State, Content>;
   /** public serialize の payload。 */
   serializeState(state: State): SerializedJsonValue;
   /** state hash に入れる値。serialize と契約が異なるため、本文が同じでも別に持つ。 */
@@ -109,6 +131,11 @@ export type FeatureModule<State extends SerializedJsonValue, Content> = Readonly
   maxAllocations?(context: FeatureAllocationContext<Content>): number;
   /** frame の `state.features` に出す値。出さない feature は省略する。 */
   projectFrameState?(state: State, context: FeatureFrameContext<Content>): ReadonlyFeatureFrameState;
+  /**
+   * timeline を処理し終えて enemy がいなくなっても、feature の entity が残っている間は stage を clear にしない（pickup が回収か cleanup
+   * されるまで待つ）。gameOver は待たない。restore も同じ規則で stage の状態を検証する。
+   */
+  holdsStageClear?(state: State): boolean;
 }>;
 
 /** state と content の型を消した feature module。Core の中ではこの形で持つ。 */
@@ -147,7 +174,7 @@ export function defineFeature<State extends SerializedJsonValue, Content>(module
       throw new TypeError(`Feature module ${name} must be a function: ${module.feature}`);
     }
   }
-  for (const name of ["maxAllocations", "projectFrameState"] as const) {
+  for (const name of ["maxAllocations", "projectFrameState", "holdsStageClear"] as const) {
     if (module[name] !== undefined && typeof module[name] !== "function") {
       throw new TypeError(`Feature module ${name} must be a function: ${module.feature}`);
     }
@@ -208,4 +235,12 @@ export function selectEnabledFeatureModules(
   enabledFeatures: readonly EnabledFeature[],
 ): readonly AnyFeatureModule[] {
   return Object.freeze(modules.filter((module) => enabledFeatures.includes(module.feature)));
+}
+
+/** timeline を処理し終えて enemy がいなくなっても stage の clear を待たせる feature の entity が残っているか。 */
+export function featuresHoldStageClear(
+  featureStates: readonly Readonly<{ state: SerializedJsonValue }>[],
+  features: readonly LoadedFeature[],
+): boolean {
+  return features.some(({ module }, index) => module.holdsStageClear?.(featureStates[index]!.state) ?? false);
 }

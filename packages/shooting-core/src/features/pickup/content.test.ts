@@ -45,7 +45,7 @@ test("rejects malformed pickups with their schema paths", () => {
     ["definition.invalidShape", "content.features.pickups[0].magnetRadius", "pickup.magnetRadius must be less than or equal to 256"],
     ["definition.invalidShape", "content.features.pickups[1].collectRadius", "pickup.collectRadius must be less than or equal to 64"],
     ["definition.invalidShape", "content.features.pickups[1].velocity.x", "pickup.velocity.x must be between -8 and 8"],
-    ["definition.invalidShape", "content.features.pickups[1].velocity.y", "pickup.velocity.y must be a positive number"],
+    ["definition.invalidShape", "content.features.pickups[1].velocity.y", "pickup.velocity.y must be at least 0.5"],
     ["definition.invalidShape", "content.features.pickups[2].version", "pickup.version must be a positive integer"],
     ["definition.invalidShape", "content.features.pickups[2].asset", "pickup.asset must be a string"],
     ["definition.invalidShape", "content.features.pickups[2].velocity", "pickup.velocity must be an object"],
@@ -86,8 +86,8 @@ test("requires the pickup collection, falling pickups and a magnet wider than th
     { ...scoreSmall, id: "pickup.rising", velocity: { x: 0, y: -1 } },
     { ...scoreSmall, id: "pickup.magnet", magnetRadius: 10 },
   ])).map(([, schemaPath, message]) => [schemaPath, message]), [
-    ["content.features.pickups[0].velocity.y", "pickup.velocity.y must be a positive number"],
-    ["content.features.pickups[1].velocity.y", "pickup.velocity.y must be a positive number"],
+    ["content.features.pickups[0].velocity.y", "pickup.velocity.y must be at least 0.5"],
+    ["content.features.pickups[1].velocity.y", "pickup.velocity.y must be at least 0.5"],
     ["content.features.pickups[2].magnetRadius", "pickup.magnetRadius must be greater than pickup.collectRadius"],
   ]);
 });

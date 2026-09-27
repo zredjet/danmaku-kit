@@ -15,7 +15,7 @@ import type { SerializedEnabledFeatureState } from "../types.ts";
 export function restoreFeatureStates(
   states: readonly SerializedEnabledFeatureState[],
   features: readonly LoadedFeature[],
-  context: FeatureStageBase & Readonly<{ expectedTick: number; nextEntityId: number; entityIds: ReadonlySet<number> }>,
+  context: FeatureStageBase & Readonly<{ expectedTick: number; nextEntityId: number; entityAllocationTicks: ReadonlyMap<number, number> }>,
 ): CoreResult<readonly CommittedFeatureState[]> {
   if (states.length !== features.length || states.some((state, index) => state.feature !== features[index]!.module.feature)) {
     return coreError(

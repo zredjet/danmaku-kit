@@ -70,6 +70,7 @@ const SHOOTING_CORE_LEAF_LAYER_RULES = Object.freeze([
       "result.ts",
       "serialization/types.ts",
       "shared/",
+      "simulation/entity.ts",
     ],
   },
 ]);

@@ -3,12 +3,18 @@ import test from "node:test";
 
 import type { GameFrame, LoadedGame } from "../../basic/api-types.ts";
 import { createShootingCore } from "../../basic/core.ts";
+import type { InputFrame } from "../../basic/input/input-frame.ts";
+import { enableInternalTestHooksForTestFile } from "../../basic/test-support/internal-test-hooks.ts";
+import { captureHeadlessDebugStateForTest } from "../../basic/testing/debug-state.ts";
+import { createShootingCoreWithTestingHooksForTest } from "../../basic/testing/testing-hooks.ts";
 import type { GameDefinition } from "../../basic/content/types.ts";
 import { createEmptyInputFrame } from "../../basic/input/input-frame.ts";
-import { createShotInputFrame } from "../../basic/test-support/input-frames.ts";
+import { createMoveInputFrame, createShotInputFrame } from "../../basic/test-support/input-frames.ts";
 import { assertSerializeOk, assertTickOk, startStageFromLoadedGame } from "../../basic/test-support/stage-harness.ts";
 import { pickupFeature } from "./index.ts";
-import { createDroppingEnemyDefinition } from "./test-support/pickup-definitions.ts";
+import { createDroppingEnemyDefinition, createPickupFloodDefinition } from "./test-support/pickup-definitions.ts";
+
+enableInternalTestHooksForTestFile();
 
 function loadGame(definition: GameDefinition): LoadedGame {
   const loaded = createShootingCore({ features: [pickupFeature] }).load(definition);
@@ -103,4 +109,57 @@ test("leaves frames without a features field when no feature is enabled", () => 
 
   const [first] = runFrames(basic, 1);
   assert.equal("features" in first!.state, false);
+});
+
+test("keeps the stage open until the dropped pickups are collected or cleaned up", () => {
+  const falling = runFrames(loadGame(createDroppingEnemyDefinition({ keepRunning: false })), 68);
+  const attracted = runFrames(loadGame(createDroppingEnemyDefinition({ keepRunning: false, magnetRadius: 40 })), 13);
+
+  // 最後の enemy を tick 0 に撃破しても、pickup が残る間は playing のまま。
+  assert.deepEqual([falling[0]!.state.status, falling[66]!.state.status, falling[67]!.state.status], ["playing", "playing", "stageCleared"]);
+  assert.deepEqual([attracted[11]!.state.status, attracted[12]!.state.status, attracted[12]!.state.score], ["playing", "stageCleared", 400]);
+  assert.equal(falling[67]!.events.at(-2)?.type, "stageCleared");
+});
+
+test("restores a stage held open by pickups and rejects a cleared status while pickups remain", () => {
+  const game = loadGame(createDroppingEnemyDefinition({ keepRunning: false }));
+  const session = startStageFromLoadedGame(game);
+  for (let tick = 0; tick < 30; tick += 1) {
+    assertTickOk(session.tick(tick === 0 ? createShotInputFrame(0) : createEmptyInputFrame(tick)), `tick ${tick}`);
+  }
+  const snapshot = assertSerializeOk(session.serialize(), "serialize");
+  const cleared = game.restore({ ...snapshot, state: { ...snapshot.state, stageStatus: "stageCleared" } });
+
+  assert.equal(game.restore(snapshot).ok, true);
+  assert.deepEqual(!cleared.ok && cleared.errors.map((error) => error.code), ["state.invalidShape"]);
+});
+
+test("latches a fatal error when the drops would exceed the active pickup budget", () => {
+  const session = startStageFromLoadedGame(loadGame(createPickupFloodDefinition()));
+  const held = (tick: number): InputFrame => createMoveInputFrame(tick, 0, 0, ["shot"]);
+  for (let tick = 0; tick < 54; tick += 1) {
+    assertTickOk(session.tick(held(tick)), `tick ${tick}`);
+  }
+  const failed = session.tick(held(54));
+
+  assert.equal(!failed.ok && failed.errors[0]!.code, "stageSession.fatal");
+  assert.match(!failed.ok ? failed.errors[0]!.message : "", /pickup\.budgetExceeded: active pickups would exceed 300: 288 active and 16 dropped/);
+});
+
+test("hashes the pickup state and counts pickup events in the headless debug dump", () => {
+  const loaded = createShootingCoreWithTestingHooksForTest("0.0.0", {}, [pickupFeature]).load(createDroppingEnemyDefinition());
+  assert.ok(loaded.ok);
+  const session = startStageFromLoadedGame(loaded.value);
+  assertTickOk(session.tick(createShotInputFrame(0)), "tick 0");
+  const captured = captureHeadlessDebugStateForTest(session);
+  assert.ok(captured.ok);
+  const other = startStageFromLoadedGame(loaded.value);
+  assertTickOk(other.tick(createEmptyInputFrame(0)), "tick 0 without a shot");
+  const withoutPickups = captureHeadlessDebugStateForTest(other);
+  assert.ok(withoutPickups.ok);
+
+  assert.deepEqual(captured.value.state.enabledFeatureStates.map((state) => [state.feature, state.stateVersion]), [["pickup", 2]]);
+  assert.equal((captured.value.state.enabledFeatureStates[0]!.payload as { pickups: unknown[] }).pickups.length, 3);
+  assert.equal(captured.value.dump.eventCounts?.pickupsSpawnedBatch, 1);
+  assert.notEqual(captured.value.dump.stateHash, withoutPickups.value.dump.stateHash);
 });

@@ -3,6 +3,7 @@ import { defineFeature } from "../extension/feature-module.ts";
 import type {
   FeatureStageContext,
   FeatureSystem,
+  FeatureTickContext,
   FeatureTickSlot,
   ShootingCoreFeature,
 } from "../extension/feature-module.ts";
@@ -29,6 +30,8 @@ export type CounterFeatureOptions = Readonly<{
   failScoringAtTick?: number;
   /** この tick の spawn system が JSON 互換でない state を返す。 */
   returnNonPlainStateAtTick?: number;
+  /** scoring system が文脈の使い方を誤る（違う tick の event を出すか、負の score を足す）。 */
+  misuse?: "eventTick" | "negativeScore";
 }>;
 
 /**
@@ -39,7 +42,10 @@ export function createCounterFeature(feature: EnabledFeature, options: CounterFe
   const record = (hook: string, context: FeatureStageContext<CounterContent>) => {
     options.contexts?.push(`${hook} ${context.stage.id} ${context.player.id} ${context.difficulty} ${context.content.label}`);
   };
-  const count = (slot: FeatureTickSlot, field: keyof CounterState): FeatureSystem<CounterState, CounterContent> => (state, context) => {
+  const count = (
+    slot: FeatureTickSlot,
+    field: keyof CounterState,
+  ): FeatureSystem<CounterState, FeatureTickContext<CounterContent>> => (state, context) => {
     options.calls?.push(`${feature}:${slot}:${context.tick}`);
     record(slot, context);
     if (slot === "scoring" && context.tick === options.failScoringAtTick) {
@@ -61,7 +67,17 @@ export function createCounterFeature(feature: EnabledFeature, options: CounterFe
       record("createInitialState", context);
       return { spawns: 0, scorings: 0 };
     },
-    systems: { spawn: count("spawn", "spawns"), scoring: count("scoring", "scorings") },
+    systems: {
+      spawn: count("spawn", "spawns"),
+      scoring: (state, context) => {
+        if (options.misuse === "negativeScore") {
+          context.addScore(-1);
+        } else if (options.misuse === "eventTick") {
+          context.emitEvent({ type: "pickupCollected", tick: context.tick + 1, entityId: 1, definitionId: "pickup.counter" });
+        }
+        return count("scoring", "scorings")(state, context);
+      },
+    },
     serializeState: (state) => state,
     // hash には serialize と違う形で入れ、serialize と hash の projection の取り違えを test で見分けられるようにする。
     hashState: (state) => [state.spawns, state.scorings],

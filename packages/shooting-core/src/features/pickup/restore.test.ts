@@ -100,14 +100,15 @@ test("rejects pickups that the spawn and the tick schedule cannot reach", () => 
   ));
 
   const cases: readonly (readonly [string, LoadedGame, SerializedGameState, RegExp])[] = [
-    ["id of the player", game, edit(0, { id: 1 }), /pickups\[0\]\.id must be ascending/],
-    ["id at nextEntityId", game, edit(2, { id: snapshot.nextEntityId }), /pickups\[2\]\.id must be ascending/],
-    ["ids out of order", game, withPickups(snapshot, (pickups) => pickups.reverse()), /pickups\[1\]\.id must be ascending/],
-    ["future spawn", game, edit(0, { spawnTick: 3 }), /pickups\[0\]\.spawnTick must be before expectedTick/],
-    ["unknown pickup", game, edit(0, { definitionId: "pickup.missing" }), /pickups\[0\] must be a pickup that an enemy/],
+    ["id of the player", game, edit(0, { id: 1 }), /pickups\[0\]\.id must be below nextEntityId and follow the entities/],
+    ["id at nextEntityId", game, edit(2, { id: snapshot.nextEntityId }), /pickups\[2\]\.id must be below nextEntityId/],
+    ["ids out of order", game, withPickups(snapshot, (pickups) => pickups.reverse()), /pickups\[1\] must follow the previous pickup/],
+    ["spawn ticks out of order", game, edit(0, { spawnTick: 1 }), /pickups\[1\] must follow the previous pickup/],
+    ["future spawn", game, withPickups(snapshot, (pickups) => pickups.map((pickup) => ({ ...pickup, spawnTick: 3 }))), /pickups\[0\]\.spawnTick must be before expectedTick/],
+    ["unknown pickup", game, edit(0, { definitionId: "pickup.missing" }), /pickups\[0\]\.definitionId must be a pickup in the content/],
     ["attracted without a magnet", game, edit(0, { attractedTick: 1 }), /pickups\[0\]\.attractedTick/],
     ["attraction before spawn", magnetGame, withPickups(magnetSnapshot, (pickups) => [{ ...pickups[0]!, spawnTick: 1 }, ...pickups.slice(1)]), /pickups\[0\]\.attractedTick/],
-    ["spawn outside the bounds", game, edit(0, { spawnPosition: { x: 182, y: 490 } }), /pickups\[0\] must stay inside the cleanup bounds/],
+    ["spawn below the bounds", game, edit(0, { spawnPosition: { x: 182, y: 490 } }), /pickups\[0\] must not have been cleaned up/],
     ["extra key", game, edit(0, { velocity: { x: 0, y: 1 } }), /pickups\[0\] must have id, definitionId/],
   ];
   for (const [label, target, state, expected] of cases) {
@@ -134,4 +135,35 @@ test("widens the entity id envelope by the pickups the processed timeline can dr
     "state.invalidShape",
     "nextEntityId exceeds the deterministic allocation envelope",
   ]);
+});
+
+test("rejects pickups that break the allocation order or the drop budget of the processed timeline", () => {
+  const game = loadGame(createDroppingEnemyDefinition());
+  const snapshot = serializeAfter(game, 3);
+  const extraPickup = { id: 3, definitionId: "pickup.score_small", spawnTick: 0, spawnPosition: { x: 50, y: 50 }, attractedTick: null };
+  const errorOf = (state: SerializedGameState) => {
+    const restored = game.restore(state);
+    return restored.ok ? "restored" : restored.errors[0]!.message;
+  };
+
+  // shot（id 3）を採番した tick 0 の後に pickup を 4〜6 で採番したので、id 3 の pickup は作れない。scout 1 体は 3 個しか落とさない。
+  assert.match(
+    errorOf(withPickups(snapshot, (pickups) => [extraPickup, ...pickups])),
+    /pickups must not exceed the pickup\.score_small drops of the enemies spawned by tick 0/,
+  );
+  assert.match(
+    errorOf(withPickups(snapshot, (pickups) => [...pickups.slice(1), { ...pickups[0]!, id: 7 }])),
+    /pickups\[2\]\.id must be below nextEntityId/,
+  );
+  // tick 8 に撃った shot（id 7）より後の id の pickup は、tick 8 より前に出たとはいえない。
+  const session = startStageFromLoadedGame(game);
+  for (const input of [...inputs.slice(0, 8), createShotInputFrame(8), createEmptyInputFrame(9)]) {
+    assertTickOk(session.tick(input), `tick ${input.tick}`);
+  }
+  const withShot = assertSerializeOk(session.serialize(), "serialize with a shot");
+  assert.deepEqual(withShot.state.runtimeEntities.map((entity) => [entity.kind, entity.id]), [["player", 1], ["playerShot", 7]]);
+  assert.match(
+    errorOf(withPickups({ ...withShot, nextEntityId: 9 }, (pickups) => [...pickups, { ...pickups[0]!, id: 8, spawnPosition: { x: 100, y: 100 } }])),
+    /^pickups\[2\]\.id must be below nextEntityId and follow the entities allocated by spawnTick$/,
+  );
 });

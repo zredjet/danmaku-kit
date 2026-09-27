@@ -55,6 +55,8 @@ type ValidatedRestoreEnabledFeatureState = SerializedEnabledFeatureState;
 
 export type ValidatedRestoreDeterministicPayload = Readonly<{
   activeEntities: readonly RuntimeEntityState[];
+  /** active entity の id と、その id を採番した tick。 */
+  entityAllocationTicks: ReadonlyMap<number, number>;
   enabledFeatureStates: readonly ValidatedRestoreEnabledFeatureState[];
   pendingEvents: readonly CommittedPendingEvent[];
   patternRunners: readonly EnemyPatternRunner[];
@@ -182,16 +184,6 @@ export function parseRestoreDeterministicPayload(
   if (!runtimeEntitiesContract.ok) {
     return runtimeEntitiesContract;
   }
-  const stageStatusContract = validateRestoreStageStatus(
-    stageStatus,
-    state.expectedTick,
-    stage,
-    record.value.timelineCursor,
-    runtimeEntitiesContract.value.activeEntities,
-  );
-  if (!stageStatusContract.ok) {
-    return stageStatusContract;
-  }
   const enabledFeatureStateContract = validateRestoreEnabledFeatureStates(
     enabledFeatureStates.value,
     createRestoreJsonBudget(),
@@ -202,6 +194,7 @@ export function parseRestoreDeterministicPayload(
 
   return okResult(Object.freeze({
     activeEntities: runtimeEntitiesContract.value.activeEntities,
+    entityAllocationTicks: runtimeEntitiesContract.value.allocationTicks,
     enabledFeatureStates: enabledFeatureStateContract.value,
     pendingEvents: pendingEventsContract.value,
     patternRunners: runtimeEntitiesContract.value.patternRunners,
@@ -220,12 +213,13 @@ function isStageStatus(value: unknown): value is StageStatus {
  *
  * startStage 直後（`expectedTick === 0`）はまだ tick の終わりを迎えていないため `playing` に限る。
  */
-function validateRestoreStageStatus(
+export function validateRestoreStageStatus(
   stageStatus: StageStatus,
   expectedTick: number,
   stage: StageDefinition,
   timelineCursor: number,
   activeEntities: readonly RuntimeEntityState[],
+  featuresHoldClear: boolean,
 ): CoreResult<null> {
   const player = activeEntities.find((entity) => entity.kind === "player");
   const expected = expectedTick === 0 || !player || player.kind !== "player"
@@ -235,6 +229,7 @@ function validateRestoreStageStatus(
       timelineCursor,
       timelineLength: stage.timeline.length,
       entities: activeEntities,
+      featuresHoldClear,
     });
   if (stageStatus !== expected) {
     return coreError("state.invalidShape", "state.stageStatus must match the player lives, timeline and enemies of the snapshot");

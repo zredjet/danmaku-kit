@@ -22,5 +22,11 @@ export const MAX_ACTIVE_PICKUPS = 300;
 /** 吸い寄せに入った pickup を回収するまでの tick 数。この間、pickup は位置を止め、描画は自機へ寄せる演出にしてよい。 */
 export const PICKUP_ATTRACT_TICKS = 12;
 
-/** pickup の中心が playfield からこの幅より外に出た tick に、event を出さずに取り除く（px）。 */
+/** pickup の中心が playfield からこの幅より外に出て離れていく tick に、event を出さずに取り除く（px）。 */
 export const PICKUP_CLEANUP_PLAYFIELD_MARGIN = 32;
+
+/**
+ * pickup の落ちる速さの下限（px / tick）。回収されない pickup が playfield の下から出るまでの tick を抑える（回収されていない pickup
+ * は stage の clear を待たせるため）。
+ */
+export const MIN_PICKUP_FALL_SPEED = 0.5;

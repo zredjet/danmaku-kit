@@ -212,3 +212,16 @@ test("latches a feature state that is not JSON-compatible plain data as a stage 
   const failed = session.tick(createEmptyInputFrame(1));
   assert.match(!failed.ok ? failed.errors[0]!.message : "", /Feature state must be JSON-compatible plain data: rank/);
 });
+
+test("latches a feature that emits an event for another tick or adds an invalid score", () => {
+  for (const [misuse, message] of [
+    ["eventTick", /rank feature emitted an event for tick 1/],
+    ["negativeScore", /rank feature added an invalid score: -1/],
+  ] as const) {
+    const session = startStageFromLoadedGame(loadGame([createCounterFeature("rank", { misuse })], ["rank"]));
+    const failed = session.tick(createEmptyInputFrame(0));
+
+    assert.equal(!failed.ok && failed.errors[0]!.code, "stageSession.fatal", misuse);
+    assert.match(!failed.ok ? failed.errors[0]!.message : "", message);
+  }
+});

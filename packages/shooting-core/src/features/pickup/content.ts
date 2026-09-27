@@ -24,6 +24,7 @@ import {
   MAX_PICKUP_DROPS_PER_ENEMY,
   MAX_PICKUP_MAGNET_RADIUS,
   MAX_PICKUP_SPEED_PER_AXIS,
+  MIN_PICKUP_FALL_SPEED,
 } from "./budgets.ts";
 import type { PickupContent } from "./model.ts";
 
@@ -99,7 +100,9 @@ function validatePickupShape(pickup: Record<string, unknown>, errors: CoreError[
   validateAllowedKeys("pickup.velocity", velocity, ["x", "y"], errors);
   validateFiniteNumberWithinAbs("pickup.velocity.x", velocity.x, MAX_PICKUP_SPEED_PER_AXIS, errors);
   // pickup は下へ落ちて、回収されなければ playfield の下から出て消える（止まったまま残り続けない）。
-  validatePositiveNumber("pickup.velocity.y", velocity.y, errors);
+  if (typeof velocity.y !== "number" || !Number.isFinite(velocity.y) || velocity.y < MIN_PICKUP_FALL_SPEED) {
+    errors.push({ code: "definition.invalidShape", message: `pickup.velocity.y must be at least ${MIN_PICKUP_FALL_SPEED}` });
+  }
   validateNumberAtMost("pickup.velocity.y", velocity.y, MAX_PICKUP_SPEED_PER_AXIS, String(MAX_PICKUP_SPEED_PER_AXIS), errors);
 }
 

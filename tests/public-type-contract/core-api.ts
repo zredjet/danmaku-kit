@@ -112,6 +112,10 @@ if (loaded.ok) {
 // @ts-expect-error stageId must use the stage.* namespace.
 const invalidStartOptions: StartStageOptions = { stageId: "enemy.scout", difficulty: "normal", seed: "seed-1" };
 
+// Phase 2B-5 / 2B-6: pickup feature の参照切れと active pickup の上限。
+const pickupErrorCodes: readonly CoreErrorCode[] = ["pickup.notFound", "pickup.budgetExceeded", "feature.disabled"];
+void pickupErrorCodes;
+
 // @ts-expect-error entity.notFound is an internal invariant, not a public CoreErrorCode.
 const invalidCoreErrorCode: CoreErrorCode = "entity.notFound";
 

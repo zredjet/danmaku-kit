@@ -22,4 +22,6 @@ export const pickupFeature = defineFeature<PickupFeatureState, PickupContent>({
   restoreState: restorePickupState,
   maxAllocations: maxPickupAllocations,
   projectFrameState: projectPickupFrame,
+  // 回収か cleanup されるまで、最後の enemy を撃破した後も stage を clear にしない。
+  holdsStageClear: (state) => state.pickups.length > 0,
 });

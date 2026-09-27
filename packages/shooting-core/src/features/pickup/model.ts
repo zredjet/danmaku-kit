@@ -42,12 +42,15 @@ export function pickupPositionAt(pickup: PickupEntityState, definition: PickupDe
   };
 }
 
-/** pickup の中心が cleanup 境界（playfield から `PICKUP_CLEANUP_PLAYFIELD_MARGIN` 外）より外にあるか。 */
-export function isOutsidePickupBounds(position: Position): boolean {
-  return position.x < -PICKUP_CLEANUP_PLAYFIELD_MARGIN
-    || position.x > PLAYFIELD_WIDTH + PICKUP_CLEANUP_PLAYFIELD_MARGIN
-    || position.y < -PICKUP_CLEANUP_PLAYFIELD_MARGIN
-    || position.y > PLAYFIELD_HEIGHT + PICKUP_CLEANUP_PLAYFIELD_MARGIN;
+/**
+ * pickup を cleanup で取り除くか。pickup は下へ落ちるので、playfield の下の境界を越えたか、左右の境界の外にいて playfield へ戻らない
+ * （外へ向かうか横に動かない）ときに取り除く。上の境界の外にいる pickup は落ちて playfield に入るので残す。どの条件も一度成り立てば
+ * その後も成り立つ（等速で動くため）。
+ */
+export function isPickupGone(position: Position, velocity: Position): boolean {
+  return position.y > PLAYFIELD_HEIGHT + PICKUP_CLEANUP_PLAYFIELD_MARGIN
+    || (position.x < -PICKUP_CLEANUP_PLAYFIELD_MARGIN && velocity.x <= 0)
+    || (position.x > PLAYFIELD_WIDTH + PICKUP_CLEANUP_PLAYFIELD_MARGIN && velocity.x >= 0);
 }
 
 /** drop の `count` 個を、撃破した位置を中心に横へ `spread` px の幅で等間隔に並べた x の差。 */

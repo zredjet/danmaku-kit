@@ -4,6 +4,7 @@ import type { PlayerDefinition, PlayerId, StageDefinition } from "../content/typ
 import type { PlayerRuntimeEntity } from "../entities/player/model.ts";
 import { toReadonlyEntityState } from "../entities/runtime-entity.ts";
 import type { RuntimeEntityState } from "../entities/runtime-entity.ts";
+import { featuresHoldStageClear } from "../extension/feature-module.ts";
 import type { FeatureStageBase, LoadedFeature } from "../extension/feature-module.ts";
 import type { InputFrame } from "../input/input-frame.ts";
 import { consumeWorkingMutationFailureForTesting } from "../instrumentation/stage-session-testing-hooks.ts";
@@ -235,6 +236,7 @@ export function runStageTick(
     timelineCursor: working.timelineCursor,
     timelineLength: content.stage.timeline.length,
     entities: orderedEntities,
+    featuresHoldClear: featuresHoldStageClear(working.featureStates, content.features),
   });
   if (stageStatus !== "playing") {
     working.eventLog.push({ type: stageStatus, tick: working.expectedTick, stageId: content.stage.id });

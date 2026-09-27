@@ -28,6 +28,9 @@ const pickupScoreEvent: GameEvent = {
 };
 // @ts-expect-error pickup score changes name the pickup, not an enemy.
 const invalidPickupScoreEvent: GameEvent = { ...pickupScoreEvent, enemyId: "enemy.scout" };
+// feature が有効でない content の frame は `features` を持たないため、読むときは optional chaining にする。
+const firstPickupAttracted = (state: ReadonlyGameState): boolean | undefined => state.features?.pickups?.[0]?.attracted;
+void firstPickupAttracted;
 void featureFrame;
 void invalidPickupState;
 void pickupCollectedEvent;

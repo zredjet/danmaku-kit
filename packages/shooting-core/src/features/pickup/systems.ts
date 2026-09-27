@@ -1,9 +1,9 @@
 import type { ReadonlyFeatureFrameState } from "../../basic/extension/feature-frame.ts";
-import type { FeatureFrameContext, FeatureTickContext } from "../../basic/extension/feature-module.ts";
+import type { FeatureFrameContext, FeatureScoringContext } from "../../basic/extension/feature-module.ts";
 import { coreError, okResult } from "../../basic/result.ts";
 import type { CoreResult } from "../../basic/result.ts";
 import { MAX_ACTIVE_PICKUPS, PICKUP_ATTRACT_TICKS } from "./budgets.ts";
-import { dropOffsets, isOutsidePickupBounds, pickupPositionAt } from "./model.ts";
+import { dropOffsets, isPickupGone, pickupPositionAt } from "./model.ts";
 import type { PickupContent, PickupEntityState, PickupFeatureState } from "./model.ts";
 
 /**
@@ -11,14 +11,15 @@ import type { PickupContent, PickupEntityState, PickupFeatureState } from "./mod
  *
  * 1. この tick に撃破された enemy の drops から、collision resolution の順、drop の順、横の並びの順に pickup を出して採番する。
  *    active な pickup が上限を超えるなら何も出さずに fatal にする。
- * 2. すべての pickup を id の順に見る。吸い寄せに入った pickup は `PICKUP_ATTRACT_TICKS` tick 後に回収する。それ以外は、cleanup 境界の
- *    外なら event を出さずに取り除き、自機の中心から `collectRadius` 以内なら回収し、`magnetRadius` 以内なら吸い寄せに入る。
+ * 2. すべての pickup を id の順に見る。吸い寄せに入った pickup は `PICKUP_ATTRACT_TICKS` tick 後に回収する。それ以外は、cleanup で
+ *    取り除く（`isPickupGone()`）なら event を出さずに取り除き、自機の中心から `collectRadius` 以内なら回収し、`magnetRadius` 以内なら
+ *    吸い寄せに入る。
  *
  * 回収した pickup は `pickupCollected` と、score を足した `scoreChanged`（reason `pickupCollected`）を出す。
  */
 export function advancePickups(
   state: PickupFeatureState,
-  context: FeatureTickContext<PickupContent>,
+  context: FeatureScoringContext<PickupContent>,
 ): CoreResult<PickupFeatureState> {
   const spawned = spawnDrops(state, context);
   if (!spawned.ok) {
@@ -43,7 +44,7 @@ export function advancePickups(
       continue;
     }
     const position = pickupPositionAt(pickup, definition, context.tick);
-    if (isOutsidePickupBounds(position)) {
+    if (isPickupGone(position, definition.velocity)) {
       continue;
     }
     const dx = position.x - player.position.x;
@@ -63,7 +64,7 @@ export function advancePickups(
 /** この tick に撃破された enemy の drops から pickup を出す。出した pickup は `pickupsSpawnedBatch` で知らせる。 */
 function spawnDrops(
   state: PickupFeatureState,
-  context: FeatureTickContext<PickupContent>,
+  context: FeatureScoringContext<PickupContent>,
 ): CoreResult<readonly PickupEntityState[]> {
   const drops = context.defeatedEnemies.flatMap((enemy) => (context.content.dropsByEnemyId.get(enemy.definitionId) ?? [])
     .flatMap((drop) => dropOffsets(drop).map((offset) => ({
@@ -93,7 +94,7 @@ function spawnDrops(
   return okResult(pickups);
 }
 
-function collect(pickup: PickupEntityState, score: number, context: FeatureTickContext<PickupContent>): void {
+function collect(pickup: PickupEntityState, score: number, context: FeatureScoringContext<PickupContent>): void {
   context.emitEvent({ type: "pickupCollected", tick: context.tick, entityId: pickup.id, definitionId: pickup.definitionId });
   const total = context.addScore(score);
   context.emitEvent({

@@ -1,4 +1,5 @@
 import type { LoadedContentIndex } from "../../content/content-index.ts";
+import { featuresHoldStageClear } from "../../extension/feature-module.ts";
 import type { AnyFeatureModule, LoadedFeature } from "../../extension/feature-module.ts";
 import { coreError, okResult } from "../../result.ts";
 import type { CoreResult } from "../../result.ts";
@@ -14,7 +15,11 @@ import {
 import type { StageSessionSerializationMetadata } from "../metadata.ts";
 import { cloneRestoreTopLevelPlainRecord } from "../restore-plain-data.ts";
 import type { SerializedGameState } from "../types.ts";
-import { parseRestoreDeterministicPayload, validateRestorePrngSnapshot } from "./deterministic-payload.ts";
+import {
+  parseRestoreDeterministicPayload,
+  validateRestorePrngSnapshot,
+  validateRestoreStageStatus,
+} from "./deterministic-payload.ts";
 import { countFeatureAllocations, restoreFeatureStates } from "./feature-states.ts";
 import type { ValidatedRestoreDeterministicPayload } from "./deterministic-payload.ts";
 import {
@@ -123,10 +128,22 @@ export function restoreStageState(
   const featureStates = restoreFeatureStates(payload.value.enabledFeatureStates, features, Object.freeze({
     ...featureContext,
     nextEntityId: state.value.nextEntityId,
-    entityIds: new Set(payload.value.activeEntities.map((entity) => entity.id)),
+    entityAllocationTicks: payload.value.entityAllocationTicks,
   }));
   if (!featureStates.ok) {
     return featureStates;
+  }
+  // stage の状態は、clear を待たせる feature の entity まで見て決まるため、feature の state を restore した後に検証する。
+  const stageStatus = validateRestoreStageStatus(
+    payload.value.stageStatus,
+    state.value.expectedTick,
+    featureContext.stage,
+    payload.value.timelineCursor,
+    payload.value.activeEntities,
+    featuresHoldStageClear(featureStates.value, features),
+  );
+  if (!stageStatus.ok) {
+    return stageStatus;
   }
   const serializationMetadata = createRestoreSerializationMetadata(fullMetadata, compatibilityMetadata.value, content);
   const restoredState = createRestoreCommittedState(

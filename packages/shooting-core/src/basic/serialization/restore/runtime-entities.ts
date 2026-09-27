@@ -48,6 +48,8 @@ const RESTORE_RUNTIME_ENTITY_ALL_KEYS = Object.freeze([
 export type ValidatedRestoreRuntimeEntities = Readonly<{
   activeEntities: readonly RuntimeEntityState[];
   patternRunners: readonly EnemyPatternRunner[];
+  /** active entity の id と、その id を採番した tick（自機は stage の開始前の -1）。feature の restore が採番順の検証に使う。 */
+  allocationTicks: ReadonlyMap<number, number>;
 }>;
 
 /** runtimeEntities の ID order、kind 別 shape、registry reference と、enemy ごとの pattern runner state を検証する。 */
@@ -186,5 +188,11 @@ export function validateRestoreRuntimeEntities(
   return okResult(Object.freeze({
     activeEntities: Object.freeze(activeEntities),
     patternRunners: patternRunners.value,
+    allocationTicks: new Map([
+      ...activeEntities.filter((entity) => entity.kind === "player").map((player) => [player.id, -1] as const),
+      ...activeEnemyMatches.map((match) => [match.id, match.tick] as const),
+      ...activeEnemyBulletMatches.map((match) => [match.id, match.tick] as const),
+      ...activePlayerShotMatches.map((match) => [match.id, match.spawnTick] as const),
+    ]),
   }));
 }
