@@ -298,7 +298,7 @@ Phaser adapter の view lifecycle:
 
 Phase 2A-8 の sample app の実装:
 
-- loading（`BootScene`）は manifest の sprite を `import.meta.env.BASE_URL` と合成した URL で preload し（`.svg` は SVG として）、design 17 の規則で開始できるかを決めてから stage scene を始める。Phaser は取得の失敗だけを `FILE_LOAD_ERROR` で知らせ、decode できなかった file（dev server が存在しない path に `index.html` を返す場合を含む）は texture に加えずに捨てるため、読み込み後に texture ができていない asset も失敗として扱う。
+- loading（`BootScene`）は manifest の sprite を `import.meta.env.BASE_URL` と合成した URL で preload し（`.svg` は SVG として）、design 17 の規則で開始できるかを決めてから stage scene を始める。Phaser は取得の失敗だけを `FILE_LOAD_ERROR` で知らせ、decode できなかった file（dev server が存在しない path に `index.html` を返す場合を含む）は texture に加えずに捨てるため、読み込み後に texture ができていない asset も失敗として扱う。SVG は rasterize の倍率を渡すと Phaser が応答を XML として解析し、`<svg>` 要素のない応答（`index.html` など）や壊れた XML では例外で loader が止まるため、`src/runtime/phaser/svg-file.ts` がその例外を file の処理の失敗に変えて loader を進める（content の hot reload の texture の読み直しも同じ）。
 - view pool の capacity は stage start 前に kind ごとに見積もる（`src/runtime/view/view-pool-plan.ts`）。player は 1、player shot は 1 回の発射で 1 発なので `floor(lifetimeTicks / intervalTicks) + 1`（budget 300 を超える content は load error）、enemy は timeline の spawn 数と budget 100 の小さい方、enemy bullet は timeline の pattern が `steps` を持てば Core の active 上限 2,000、`fireOnSpawn` だけならその spawn 数とする。enemy の退場は path から静的に見積もらないため、spawn 数が 100 を超える stage では同時数が 100 を超えた時点で枯渇する。
 - stage scene は pool を 1 render frame あたり 256 個までに抑えて作り終えてから stage を始め、stage 中は image を生成・破棄せずに使い回す。消えた entity の view はその frame で隠して pool へ戻す。pool を使い切ったら `RuntimeEvent.viewPoolExhausted` を log と画面に出して stage を止める（Phase 2A は dev と本番を区別しない）。`RuntimeEvent`（`src/runtime/runtime-event.ts`）は app の型で、`GameEvent` や replay / state hash には含めない。
 

@@ -17,6 +17,7 @@ import { ColliderOverlay } from "./collider-overlay.ts";
 import { EntityViews } from "./entity-views.ts";
 import { HitSparkViews } from "./hit-spark-views.ts";
 import { fitCameraToPlayfield } from "./render-scale.ts";
+import { addScaledSvgFile } from "./svg-file.ts";
 
 export type StageSceneOptions = Readonly<{
   shell: GameShell;
@@ -190,7 +191,7 @@ export class StageScene extends Scene {
     const temporaryKeys = requests.map((request) => `${request.key}#hot-reload-${this.#textureReloads}`);
     requests.forEach((request, index) => {
       if (request.format === "svg") {
-        this.load.svg(temporaryKeys[index]!, request.url, { scale: request.rasterScale });
+        addScaledSvgFile(this.load, temporaryKeys[index]!, request.url, request.rasterScale);
       } else {
         this.load.image(temporaryKeys[index]!, request.url);
       }

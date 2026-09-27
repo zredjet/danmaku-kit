@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { expect, test } from "@playwright/test";
-import { createServer, type Plugin, type ViteDevServer } from "vite";
+import { createServer, type ViteDevServer } from "vite";
 
 import { sampleTitleContentPlugin } from "../vite/content-plugin.ts";
 import { playerCenterRgb, readDump, readReplay, waitForLifecycle, waitForTicks } from "./support.ts";
@@ -28,10 +28,7 @@ test.beforeAll(async () => {
     configFile: false,
     // 壊れた content を試す間の Vite の error log は想定どおりなので出さない。
     logLevel: "silent",
-    plugins: [
-      sampleTitleContentPlugin({ gameDefinitionPath: path.join(workRoot, "config/game-definition.yaml"), contentRoot }),
-      missingSpritePlugin(),
-    ],
+    plugins: [sampleTitleContentPlugin({ gameDefinitionPath: path.join(workRoot, "config/game-definition.yaml"), contentRoot })],
     server: { host: "127.0.0.1", port: 4190, strictPort: false },
   });
   await server.listen();
@@ -41,23 +38,6 @@ test.afterAll(async () => {
   await server?.close();
   await rm(workRoot, { recursive: true, force: true });
 });
-
-/** 本番と同じく、`missing-` で始まる sprite の path に 404 を返す（dev server は存在しない path に index.html を返すため）。 */
-function missingSpritePlugin(): Plugin {
-  return {
-    name: "e2e-missing-sprite",
-    configureServer(devServer) {
-      devServer.middlewares.use((request, response, next) => {
-        if (request.url?.includes("/assets/sprites/missing-")) {
-          response.statusCode = 404;
-          response.end();
-          return;
-        }
-        next();
-      });
-    },
-  };
-}
 
 /** 一時 content の file の最初の `search` を `replace` に置き換える。 */
 async function editContent(file: string, search: string, replace: string): Promise<void> {
@@ -122,8 +102,9 @@ test("reloads a page that loaded broken content once the content is fixed", asyn
   await waitForLifecycle(page, "title");
 });
 
-test("swaps a sprite that fell back at boot for its own texture once its path is fixed", async ({ page }) => {
-  // 自機の sprite の path を壊し、読めなければ scout の sprite で代える（fallback）ようにしてから開く。
+test("boots with the fallback of a missing sprite and swaps it for its own texture once its path is fixed", async ({ page }) => {
+  // 自機の sprite の path を壊し、読めなければ scout の sprite で代える（fallback）ようにしてから開く。dev server は存在しない path に
+  // index.html を返すので、起動は SVG として処理できなかった asset として fallback を使う（404 と同じ扱い）。
   const manifestPath = path.join(contentRoot, "assets/manifest.yaml");
   const manifest = await readFile(manifestPath, "utf8");
   const playerEntry = /  player\.default:\n    type: sprite\n    path: [^\n]+\n    required: true\n/u;
@@ -136,6 +117,7 @@ test("swaps a sprite that fell back at boot for its own texture once its path is
   await page.waitForTimeout(1_000);
   await page.goto(`${server.resolvedUrls!.local[0]!}?seed=hot-reload-fallback`);
   await waitForLifecycle(page, "title");
+  expect((await readDump(page)).assetStatus).toBe("ready");
   await page.keyboard.press("Enter");
   await waitForLifecycle(page, "playing");
   await expect.poll(async () => (await playerCenterRgb(page))[0]).toBeGreaterThan(200);
@@ -149,4 +131,11 @@ test("swaps a sprite that fell back at boot for its own texture once its path is
     return red < 100 && blue > 90;
   }, { timeout: 15_000 }).toBe(true);
   expect(await page.evaluate(() => (window as unknown as { hotReloadMarker?: boolean }).hotReloadMarker)).toBe(true);
+
+  // 遊んでいる途中に存在しない SVG の path へ変えると、読み直しは止まらずに失敗し、page を読み込み直して fallback で起動し直す。
+  await editContent("assets/manifest.yaml", "path: assets/sprites/player.svg", "path: assets/sprites/missing-player-again.svg");
+  await expect.poll(async () => page.evaluate(() => (window as unknown as { hotReloadMarker?: boolean }).hotReloadMarker ?? false)
+    .catch(() => "navigating"), { timeout: 15_000 }).toBe(false);
+  await waitForLifecycle(page, "title");
+  expect((await readDump(page)).assetStatus).toBe("ready");
 });

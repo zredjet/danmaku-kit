@@ -9,6 +9,7 @@ import { describeRuntimeEvent } from "../runtime-event.ts";
 import type { RuntimeEvent } from "../runtime-event.ts";
 import { resolveDefinitionTextures } from "../view/definition-assets.ts";
 import type { ViewPoolPlan } from "../view/view-pool-plan.ts";
+import { addScaledSvgFile } from "./svg-file.ts";
 
 export type BootSceneOptions = Readonly<{
   assetManifest: AssetManifest;
@@ -73,7 +74,7 @@ export class BootScene extends Scene {
     });
     for (const request of plan.requests) {
       if (request.format === "svg") {
-        this.load.svg(request.key, request.url, { scale: request.rasterScale });
+        addScaledSvgFile(this.load, request.key, request.url, request.rasterScale);
       } else {
         this.load.image(request.key, request.url);
       }
@@ -81,8 +82,9 @@ export class BootScene extends Scene {
   }
 
   create(): void {
-    // Phaser は取得の失敗だけを FILE_LOAD_ERROR で知らせ、画像として decode できなかった file は texture に加えずに黙って捨てる
-    // （dev server が存在しない path に index.html を返す場合もこちらになる）。texture ができなかった asset も失敗として数える。
+    // Phaser は取得の失敗だけを FILE_LOAD_ERROR で知らせ、画像や SVG として処理できなかった file は texture に加えずに黙って捨てる
+    // （dev server が存在しない path に index.html を返す場合もこちらになる。SVG は `addScaledSvgFile()` が解析の例外を処理の失敗に
+    // 変える）。texture ができなかった asset も失敗として数える。
     for (const request of this.#requests) {
       if (!this.#failures.has(request.key) && !this.textures.exists(request.key)) {
         this.#failures.set(request.key, `could not decode ${request.url}`);
