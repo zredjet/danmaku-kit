@@ -64,7 +64,7 @@ npm run test:browser
 | コマンド | 内容 |
 | --- | --- |
 | `npm run validate-content:sample` | sample app の content を validate-content の CLI で検証し、JSON で出力する |
-| `npm run validate-content -- --game-definition <file> --content-root <dir> --format human` | 任意の content を検証する。content の最小の例は `docs/content-authoring/examples/` にある |
+| `npm run validate-content -- --game-definition <file> --content-root <dir> --format human` | 任意の content を検証する。content の最小の例は `docs/content-authoring/examples/`、診断の code ごとの説明は `docs/content-authoring/error-guide.md` にある |
 | `UPDATE_SAMPLE_TITLE_GOLDENS=1 npm test` | sample stage 1 の headless replay golden を作り直す（差分を確かめてから commit する） |
 | `npm run update-validate-content-goldens` | validate-content の CLI golden を作り直す |
 | `npm run test:browser -- --update-snapshots` | browser smoke test の screenshot baseline を作り直す（baseline は platform ごと） |

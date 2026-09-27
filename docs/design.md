@@ -1272,7 +1272,7 @@ Content 制作者向け workflow:
 
 YAML loader と CLI は parse 後の object に `SourceSpan` を付与する。Core が直接ファイルを知らない場合でも、registry validation は validation context 経由で `sourceId`、`path`、`line`、`column`、`schemaPath` を diagnostic に戻せるようにする。cross-file reference error は参照元 span と未解決 target id を必ず含める。
 
-Content 制作者向け docs には `docs/content-authoring/examples/` と `docs/content-authoring/error-guide.md` を用意する。minimal YAML examples（Phase 2B-11）は game-definition、asset manifest、player、player shot、bullet、enemy（pickup の drops を含む）、path、pattern（`wait` / `fire` / `loop` と、`repeat`、`radial`、`stream`、difficulty の `if`）、pickup、stage を 1 つの content として置き、各 file の comment で field の意味を説明する。scoring rule の例は `advancedScoring` を足すときに加える。error guide は diagnostic `code` ごとに原因、修正例、関連 schema path を載せる。
+Content 制作者向け docs には `docs/content-authoring/examples/` と `docs/content-authoring/error-guide.md` を用意する。minimal YAML examples（Phase 2B-11）は game-definition、asset manifest、player、player shot、bullet、enemy（pickup の drops を含む）、path、pattern（`wait` / `fire` / `loop` と、`repeat`、`radial`、`stream`、difficulty の `if`）、pickup、stage を 1 つの content として置き、各 file の comment で field の意味を説明する。scoring rule の例は `advancedScoring` を足すときに加える。error guide（Phase 2B-12）は診断の読み方と、diagnostic `code` ごとの重要度、原因、直し方、関連 schema path を載せる。見出しの code は Core の `CoreErrorCode`、Core の warning の code、validate-content の `VALIDATE_CONTENT_DIAGNOSTIC_CODES`（と YAML parser の code をまとめた `yaml.parse.*`）と一致させ、`tests/error-guide.test.mjs` が過不足、重要度と code の種類の一致、content の診断の schema path を検査する。validate-content は自分で出す code をこの一覧に置き、診断を作る関数の型で一覧にない code を拒む。tick の途中で session を止めた error は `stageSession.fatal` の message に元の code が並ぶので、guide もその形で説明する。
 
 Preview scene の操作仕様:
 
