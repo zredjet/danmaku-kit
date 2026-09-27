@@ -1893,6 +1893,16 @@ collision / event metrics は test serializer が登録された session でだ�
 
 Browser Test では Phase 2A 以降に `apps/sample-title` が `BrowserDebugStateDump` を所有し、最新の public `GameFrame` と runtime adapter の lifecycle / viewport / input / asset / audio / overlay state から `window.__SHOOTING_DEBUG_STATE__()` を組み立てる。この global hook は dev / test build にだけ設置し、production build では定義しない。sample app は Vite の mode が `production` でないとき（dev server と `vite build --mode test`）だけ `src/debug/debug-state-hook.ts` で hook を置き、production build では分岐ごと消える。`apps/sample-title/vite/debug-state-hook-build.test.ts` が production と test の mode で app を build し、hook 名が test の bundle にだけ含まれることを検査する。browser schema は headless dump を継承せず、Core 内部の `stateHash`、`prngHash`、`collisionCandidates` を含めないため、非公開 helper のdeep importや新しいCore diagnostics portを必要としない。
 
+Browser の入力の再生（Phase 2A-12）: dev / test build は stage ごとに Core が受け付けた `InputFrame` を残し（`StageLoop` の `recordInputs`）、dump の schema の外にある `window.__SHOOTING_DEBUG_REPLAY__()` が `BrowserReplayRecord`（`schemaVersion: "1"`、`kind: "browserReplay"`、開始条件の `stage`（stageId / difficulty / seed）、`inputs`、最後の入力の後の serialize 結果 `state`）を返す（`src/runtime/debug/browser-replay-record.ts`）。Node の headless replay は `stage` を始めて `inputs` を順に渡し、`state` と同じ serialize 結果に着くことを、`serialize()` の JSON の SHA-256 で比べる。Core の内部 hash は browser に出さない。
+
+Phase 2A-12 の Browser test（`apps/sample-title/e2e/`、`npm run test:browser`）:
+
+- Playwright の Chromium で、`vite build --mode test` の bundle を `vite preview` で配って試す。node:test の `npm test` と `npm run check` には含めない。
+- smoke: 起動して asset を読み終え title に進むこと、canvas に自機が描かれること（screenshot の自機の中心が背景色でない）、矢印 key で 4 px / tick、Shift を押すと 1.8 px / tick で動き、低速移動中は自機の中心に当たり判定が出ること、drone を倒すと HUD の score が変わること、Backquote / F3 で debug overlay を切り替え、pause 中の自機のまわりに collider が描かれることを、dump と screenshot の画素で確かめる。
+- viewport: desktop（DPR 1）、high DPI（DPR 2）、mobile 相当（Pixel 7）、playfield より小さい窓（320x400）と、resize の後で、dump の `viewport` が `computeViewportLayout()` と一致し、canvas の画素数が render scale 倍、canvas の実際の位置と大きさが `overlayTransform` と一致し、scroll が出ないことを確かめる。
+- replay: 移動、低速移動、shot を含む入力で遊んで pause し、再生記録を Node で再生して、tick、kind 別 entity 数、自機座標が dump と、serialize 結果の digest が記録の `state` と一致することを確かめる。
+- screenshot diff は title 画面だけを対象にした補助とし、debug HUD を mask して画素の 2% までの差を許す。font の描画は OS で違うため、baseline は platform ごとに commit する。
+
 CI artifact path は `artifacts/debug-state/<test-name>-tick-<tick>.json` とする。`test-name` は 1..128 文字の lower-case ASCII slug とし、英数字の区間を `.`, `_`, `-` のいずれか1文字で区切る。test helper はこの規則と non-negative safe integer tick を検証し、`/`、`\\`、`..` を artifact path へ流さない。JSON artifact は schema 固定の property order、2-space indent、末尾 LF で固定し、caller object の property 挿入順へ依存させない。
 
 ```ts
