@@ -205,8 +205,8 @@ Status legend:
 | `docs/design.md` 9.9 / 20 Pickup feature | feature module の基盤（Done: 2B-4）、PickupDefinition と drops（Done: 2B-5）、pickup の simulation と state（Done: 2B-6）、sample app の pickup（Done: 2B-7） | Done | `packages/core/src/features/`, `tools/validate-content/`, `apps/sample-title/` | feature の gating matrix、pickup の golden、serialize / hash / restore、module graph の feature rule | `npm run check`, `npm run test:browser` |
 | `docs/design.md` 19 Authoring workflow | content hot reload（Done: 2B-8）、Preview scene（Done: 2B-9）、dev-only cheat（Done: 2B-10） | Done | `apps/sample-title/vite/`, `apps/sample-title/src/` | 変更の分類と restart の判断、definition の合成を node:test、production build に入らないことを build して検査 | `npm run check`, `npm run test:browser` |
 | `docs/design.md` 19 / 21.6 / 25 Authoring docs | minimal YAML examples（Done: 2B-11）、error guide（Done: 2B-12）、sample content spec（Done: 2B-13） | Done | `docs/content-authoring/`, `docs/sample-content-spec.md` | example の validate-content、code の一覧と guide の一致、spec と content / golden の一致 | `npm run check` |
-| `docs/design.md` 21.5 Browser regression | Preview の決定的な画面の screenshot diff、CI の browser test job | Done（手元で pass。CI は未実行、Linux の baseline は未作成） | `apps/sample-title/e2e/`, `.github/workflows/` | Linux / macOS の baseline、CI での `npm run test:browser` | `npm run test:browser` |
-| `docs/design.md` 22 / 23 Phase 2B 完了 | design 22 の Phase 2B の 9 項目、design 23 と 21.6 の Phase 2B の項目の判定 | Done（CI と Linux の baseline を除く条件付き） | `docs/implementation-plan.md` の「Phase 2B 完了判定」 | 各項目に対応する test | `npm run check`, `npm run test:browser` |
+| `docs/design.md` 21.5 Browser regression | Preview の決定的な画面の screenshot diff、CI の browser test job | Done（Linux の baseline は判定の後に commit） | `apps/sample-title/e2e/`, `.github/workflows/` | Linux / macOS の baseline、CI での `npm run test:browser` | `npm run test:browser` |
+| `docs/design.md` 22 / 23 Phase 2B 完了 | design 22 の Phase 2B の 9 項目、design 23 と 21.6 の Phase 2B の項目の判定 | Done（判定の後に CI の実行と Linux の baseline で条件を満たした） | `docs/implementation-plan.md` の「Phase 2B 完了判定」 | 各項目に対応する test | `npm run check`, `npm run test:browser` |
 
 ## 次の作業順
 
@@ -752,7 +752,7 @@ Phase 2B では、content 制作者が YAML を書き、validate-content の意�
 - enemy の drops は Phase 2B では乱数を使わず、決まった個数と配置で出す。pickup score は PickupDefinition の固定値とし、`ScoringRule` と scoring rule の example は `advancedScoring` feature と一緒に Phase 2B の外にする（design 19 の「Phase 2B で pickup と scoring rule を追加する」は 2B-11 で pickup だけに直す）
 - content hot reload は dev server だけに、Preview scene と dev-only の cheat は dev server と test build（browser test のため）に置き、production build に入れない（debug hook と同じく build して検査する）。Preview は app が合成した `GameDefinition`（選んだ enemy、pattern、path を 1 つだけ出す stage など）で Core を動かし、Core に preview 専用の API を足さない。overlay の pattern cursor と PRNG state は公開の `serialize()` から読み、collision candidate 数は Core 内部の diagnostics なので出さない（design 19 を 2B-9 で直す）
 - sample content spec（`docs/sample-content-spec.md`）を sample stage の仕様の正本とし、wave、敵、弾、pickup、golden の主要な値を test が content と golden に照らして確かめる
-- browser test の CI job と Linux の screenshot baseline は 2B-14 で足す（2B-14 で、remote がなく Linux の環境もないため、Linux の baseline は CI を実行できるようになってから作ることにし、Phase 2B の外へ移した）
+- browser test の CI job と Linux の screenshot baseline は 2B-14 で足す（2B-14 では remote がなく Linux の環境もないため、Linux の baseline は CI を実行できるようになってから作ることにした。判定の後、GitHub の remote で作って commit した）
 
 共通ルール:
 
@@ -822,7 +822,7 @@ Phase 2B では、content 制作者が YAML を書き、validate-content の意�
 14. Phase 2B-14: browser regression test
     - Done: Preview に start paused（`paused=1`、`GameShell.setPauseOnStageStart()`）を足し、開始演出の後に tick 0 の前で止めて N で 1 tick ずつ進められるようにした。`e2e/preview-regression.spec.ts` は N を押すたびに render frame を待って、gunship の弾幕（扇、狙い弾、radial の輪）、scout、撃ち落とした drone の pickup の画面を固定の seed と tick で dump の entity 数と playfield の screenshot（差 16 画素まで、darwin の baseline）で確かめる。Preview の操作は `e2e/preview.spec.ts`（選択、pause、step、restart、seed）と、difficulty の切り替え（hard の輪が 24 方向）、paused の URL の維持を確かめる
     - Done: difficulty の切り替えを確かめるため、stage 1 に hard を足し、gunship の輪を difficulty の `if` で hard だけ 24 方向にした（`sample-title@content.11`）。normal の golden は digest だけが変わり、`npm test` は hard の撃たない run の clear と 24 方向の輪も確かめる。enemy の Preview は選んだ path の spawn の位置を優先して借りる
-    - Done: CI に browser test の job（`ubuntu-24.04`、`npx playwright install --with-deps chromium`、`npm run test:browser`）と、Linux の baseline を作る手動の `browser-baselines.yml`（`--update-snapshots=missing`、`*-linux.png` を artifact にする）を足した。この repository には remote がなく、手元は macOS で Docker もないため、Linux の baseline はまだ作っていない。commit するまでの CI は `ALLOW_MISSING_BROWSER_BASELINES=1` で baseline のない screenshot を skip し、Linux の baseline がないものを warning で出す（remote に push して workflow を実行し、artifact を commit したら env を外す）
+    - Done: CI に browser test の job（`ubuntu-24.04`、`npx playwright install --with-deps chromium`、`npm run test:browser`）と、Linux の baseline を作る手動の `browser-baselines.yml`（`--update-snapshots=missing`、`*-linux.png` を artifact にする）を足した。2B-14 の時点では remote がなく、手元は macOS で Docker もなかったため、Linux の baseline は作らず、CI は `ALLOW_MISSING_BROWSER_BASELINES=1` で baseline のない screenshot を skip していた。判定の後、GitHub の remote（`zredjet/danmaku-kit`）で `browser-baselines.yml` を実行して Linux の baseline を作って commit し、CI の env を外した（Linux の baseline のない screenshot は、今は CI で失敗する）
     - Done: review で、config の 2% の許容差では敵や pickup が消えても screenshot が通る問題（16 画素に締めた）、hit spark が render frame にまとめた tick の数で変わる非決定性（1 tick ごとに描画を待つ）、CI の skip が黙って続く問題（明示の env と warning）を直した
 15. Phase 2B-15: docs と Phase 2B の完了判定
     - Done: `docs/design.md` の Phase 2B の実装状況（22、23、26）、この文書の対応表、README の現状を更新し、design 22 の Phase 2B の各項目を test と確認に対応付けて Phase 2B の完了を判定した（「Phase 2B 完了判定」）。`AGENTS.md` は各 slice の docs の commit で更新済み
@@ -840,7 +840,7 @@ Later（Phase 2B の外）:
 
 ## Phase 2B 完了判定
 
-判定: Phase 2B は、Linux の screenshot baseline と CI での実行を除いて完了した（条件付きの完了）。手元（macOS）で確かめられる成果物と test はすべて揃い、下の表のとおり pass する。CI の browser job と Linux の baseline は、remote に push して CI を実行できるようになってから確かめる（残す課題）。
+判定: Phase 2B は完了した。判定の時点（2B-15）では、手元（macOS）で確かめられる成果物と test がすべて揃って下の表のとおり pass し、CI の実行と Linux の screenshot baseline だけが remote がないため残っていた（条件付きの完了）。判定の後、GitHub の remote（`zredjet/danmaku-kit`）で PR #1 の CI（check と browser test、ubuntu-24.04）が通り、merge した後に `browser-baselines.yml` で Linux の baseline を作って commit したので、その条件も満たした。
 
 判定時点（Phase 2B-15）: `npm run check` は 670 test pass、sample content と `docs/content-authoring/examples/` の `validate-content` は diagnostic 0 件、`npm run test:browser` は 21 test pass（Playwright 1.63.0 の Chromium、macOS）。
 
@@ -856,13 +856,13 @@ design 22 の Phase 2B:
 | minimal YAML examples | 満たす | `docs/content-authoring/examples/` と `tests/content-authoring-examples.test.ts`（診断 0 件、公開型から網羅させた field と DSL、各 stage と difficulty の clear、README の索引） | — |
 | content authoring error guide | 満たす | `docs/content-authoring/error-guide.md` と `tests/error-guide.test.mjs`（`CoreErrorCode`、Core の warning、`VALIDATE_CONTENT_DIAGNOSTIC_CODES` と見出しの一致、重要度、schema path） | — |
 | Preview scene | 満たす | app `runtime/preview/*.test.ts`（合成、選択、cheat、overlay の文字）、`runtime/lifecycle/game-shell.test.ts`（restart、1 tick 送り、start paused）、`e2e/preview.spec.ts`（stage、enemy、pattern、path の選択、spawn の印と entity id、pause、step、restart、seed、cheat）、`e2e/preview-regression.spec.ts`（difficulty、start paused）、`vite/dev-only-build.test.ts`（production build に入らない）。design 19 の content hot reload は `runtime/content/hot-reload.test.ts`・`vite/content-plugin.test.ts`・`e2e/hot-reload.spec.ts` | test build の Preview を開き、stage、enemy、pattern の対象、overlay、cheat の画面を screenshot で確かめた |
-| Browser regression test | 手元では満たす（CI は未実行、Linux の baseline は未作成） | `e2e/preview-regression.spec.ts`（start paused から 1 tick ずつ進めた弾幕、scout、pickup の画面を dump と darwin の screenshot で確かめる）、CI の browser job（`.github/workflows/ci.yml`） | CI の job と `browser-baselines.yml` は remote がないため実行していない |
+| Browser regression test | 満たす（判定の後に CI と Linux の baseline で確かめた） | `e2e/preview-regression.spec.ts`（start paused から 1 tick ずつ進めた弾幕、scout、pickup の画面を dump と screenshot（darwin と Linux の baseline）で確かめる）、CI の browser job（`.github/workflows/ci.yml`） | 判定の時点では remote がなく未実行だった。判定の後、PR #1 の CI（check と browser、ubuntu-24.04）が通り、`browser-baselines.yml`（run 36325861108）で Linux の baseline を作って PR #2 で commit し、CI が Linux の baseline と比べる |
 
 design 23 の Phase 2B の項目（`content/pickups/*.yaml`、`content/patterns/*.yaml` の radial 弾幕、`docs/sample-content-spec.md`、content authoring examples）は、上の Pickup definition、Pattern DSL、sample content spec、minimal YAML examples の行のとおり満たす。design 21.6 の Phase 2B の検査（examples を validate-content に通して drift を検出する、Preview の選択、pause、step、seed、difficulty、overlay の browser test）も上の test が確かめる。
 
 残す課題（Phase 2B の完了は妨げない）:
 
-- Linux の screenshot baseline: この repository には remote がなく、手元は macOS で Docker もないため作っていない。remote に push して `browser-baselines.yml` を実行し、artifact の `*-linux.png` を確かめて commit してから、`ci.yml` の `ALLOW_MISSING_BROWSER_BASELINES` を外す。それまでの CI は Linux の screenshot を比べない（dump と replay の検査は走る）。CI の job 自体も一度も実行していない。
+- （解消）Linux の screenshot baseline と CI の実行: 判定の後、GitHub の remote で PR #1 の CI が通り、`browser-baselines.yml` で作った `*-linux.png`（title と Preview の 3 画面）を commit して、`ci.yml` の `ALLOW_MISSING_BROWSER_BASELINES` を外した。
 - scoring rule の example は `advancedScoring` を足すときに加える（design 19）。boss phase jump は boss を足すときに検討する（2B-10）。
 - 手動確認の記録: 上の表の「確認」は、test build の Preview を Playwright の screenshot で見て確かめたもので、再現できる記録は e2e の test と baseline の画像にある。
 - 「Later（Phase 2B の外）」の項目。

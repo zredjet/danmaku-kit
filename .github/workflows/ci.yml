@@ -25,16 +25,14 @@ jobs:
       - name: Check
         run: npm run check
 
-  # browser smoke / regression test（design 21.5）。判定の正本の dump と replay の検査は常に走る。screenshot の baseline は platform
-  # ごとで、Linux の baseline を commit するまでは、baseline のない screenshot を比べずに skip して warning を出す
-  # （ALLOW_MISSING_BROWSER_BASELINES。baseline は browser-baselines workflow で作る。commit したら env を外す）。
+  # browser smoke / regression test（design 21.5）。判定の正本は dump と replay の検査で、screenshot は Linux の baseline と比べる
+  # （baseline は platform ごと）。screenshot を足したら browser-baselines workflow で Linux の baseline を作って commit する。baseline
+  # のない screenshot は失敗し、darwin の baseline に対応する Linux の baseline がなければ warning も出す。
   browser:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
-    env:
-      ALLOW_MISSING_BROWSER_BASELINES: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
